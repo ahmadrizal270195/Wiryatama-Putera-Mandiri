@@ -3,7 +3,7 @@ import { loadKey, saveKey } from "./storage";
 import {
   LayoutDashboard, Package, Truck, Users, ShoppingCart, ClipboardList,
   AlertTriangle, Plus, X, Trash2, Search, CheckCircle2, Clock,
-  Boxes, ArrowUpRight, ArrowDownRight, Loader2, Edit, Calendar,
+  Boxes, ArrowUpRight, ArrowDownRight, Loader2, Edit, Calendar, Printer,
   Wallet, Receipt, CreditCard, PiggyBank, BarChart3, FileText, LogOut
 } from "lucide-react";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
@@ -135,7 +135,6 @@ const inputStyle = {
   color: COLOR.ink,
 };
 
-// KOMPONEN INPUT TANGGAL KUSTOM DENGAN IKON KALENDER LENGKAP
 function DateInput(props) {
   const { value, onChange, className = "", required, disabled, style } = props;
 
@@ -467,8 +466,32 @@ function PharmaERP({ userEmail, onLogout }) {
 
   return (
     <div style={{ background: COLOR.bg, minHeight: "600px", fontFamily: "ui-sans-serif, system-ui, sans-serif" }} className="flex rounded-2xl overflow-hidden">
+      {/* CSS untuk Mode Cetak (Print) */}
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #printable-invoice, #printable-invoice * {
+            visibility: visible !important;
+          }
+          #printable-invoice {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            padding: 20px !important;
+            margin: 0 !important;
+            background: white !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+
       {/* Sidebar */}
-      <div className="w-56 shrink-0 flex flex-col py-5 px-3" style={{ background: COLOR.primary }}>
+      <div className="w-56 shrink-0 flex flex-col py-5 px-3 no-print" style={{ background: COLOR.primary }}>
         <div className="px-2 mb-6">
           <div className="text-white font-semibold text-sm leading-tight">PT Wiryatama Putera Mandiri</div>
           <div className="font-mono text-[11px] uppercase tracking-wider" style={{ color: "#8FC2C0" }}>ERP SYSTEM</div>
@@ -521,7 +544,7 @@ function PharmaERP({ userEmail, onLogout }) {
       </div>
 
       {/* Main */}
-      <div className="flex-1 p-6 overflow-y-auto max-h-[85vh]">
+      <div className="flex-1 p-6 overflow-y-auto max-h-[85vh] no-print">
         {tab === "dashboard" && (
           <Dashboard {...{ products, batches, pos, sos, suppliers, customers, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth }} />
         )}
@@ -574,7 +597,7 @@ function PharmaERP({ userEmail, onLogout }) {
       </div>
 
       {toast && (
-        <div className="fixed bottom-6 right-6 z-[60] px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg" style={{ background: toast.tone === "danger" ? COLOR.danger : COLOR.primary, color: "#fff" }}>
+        <div className="fixed bottom-6 right-6 z-[60] px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg no-print" style={{ background: toast.tone === "danger" ? COLOR.danger : COLOR.primary, color: "#fff" }}>
           {toast.msg}
         </div>
       )}
@@ -2185,6 +2208,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
 
 function FakturTab({ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, saveInvoices, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount }) {
   const [detailInv, setDetailInv] = useState(null);
+  const [printInv, setPrintInv] = useState(null);
   const eligibleSOs = sos.filter((so) => getSOStatus(so) === "ready_to_invoice");
 
   async function createInvoice(so) {
@@ -2252,8 +2276,11 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(inv.date)}</td>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(total)}</td>
                   <td className="px-4 py-2.5"><Badge tone={sisa > 0 ? "warn" : "good"}>{sisa > 0 ? fmtIDR(sisa) : "Lunas"}</Badge></td>
-                  <td className="px-4 py-2.5 text-right">
-                    <button onClick={() => setDetailInv(inv)} className="text-xs mr-3" style={{ color: COLOR.accent }}>Detail</button>
+                  <td className="px-4 py-2.5 text-right flex items-center justify-end gap-2">
+                    <button onClick={() => setPrintInv(inv)} className="text-xs flex items-center gap-1 font-semibold" style={{ color: COLOR.primary }}>
+                      <Printer size={13} /> Cetak
+                    </button>
+                    <button onClick={() => setDetailInv(inv)} className="text-xs" style={{ color: COLOR.accent }}>Detail</button>
                     {canCancel && <button onClick={() => cancelInvoice(inv)} className="text-xs" style={{ color: COLOR.danger }}>Batalkan Faktur</button>}
                   </td>
                 </tr>
@@ -2282,6 +2309,142 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
               })}
             </tbody>
           </table>
+        </Modal>
+      )}
+
+      {/* TEMPLATE INVOICE RESMI PT WIRYATAMA PUTERA MANDIRI */}
+      {printInv && (
+        <Modal title={`Faktur Penjualan — ${printInv.noFaktur}`} onClose={() => setPrintInv(null)} wide>
+          <div className="flex justify-end gap-2 mb-4 no-print">
+            <Button onClick={() => window.print()} variant="primary">
+              <Printer size={15} /> Cetak Sekarang / Simpan PDF
+            </Button>
+          </div>
+
+          <div id="printable-invoice" className="p-6 bg-white border rounded-xl text-xs text-gray-800" style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
+            {/* KOP SURAT */}
+            <div className="flex items-start justify-between border-b-2 pb-4 mb-4" style={{ borderColor: COLOR.primary }}>
+              <div>
+                <h1 className="text-lg font-bold uppercase tracking-wide" style={{ color: COLOR.primary }}>PT Wiryatama Putera Mandiri</h1>
+                <p className="text-[11px] text-gray-600 font-medium">Distributor Penyalur Farmasi & Alat Kesehatan (Alkes)</p>
+                <p className="text-[10px] text-gray-500 mt-1">Jl. Utama Bintaro Jaya, Tangerang Selatan, Banten</p>
+                <p className="text-[10px] text-gray-500">Email: info@wiryatamaputera.co.id | Telp: (021) 555-0192</p>
+              </div>
+              <div className="text-right">
+                <div className="text-xl font-bold uppercase tracking-wider text-gray-700">FAKTUR PENJUALAN</div>
+                <div className="font-mono text-sm font-semibold mt-1" style={{ color: COLOR.primary }}>{printInv.noFaktur}</div>
+              </div>
+            </div>
+
+            {/* INFORMASI TRANSAKSI */}
+            {(() => {
+              const so = sos.find((s) => s.id === printInv.soId);
+              const cust = customers.find((c) => c.id === so?.customerId);
+              const dp = soDPAmount(printInv.soId);
+              const paid = invoicePaidAmount(printInv.id);
+              const ret = invoiceReturnedAmount(printInv.id);
+              const subtotal = invoiceTotal(printInv);
+              const sisa = Math.max(0, subtotal - ret - dp - paid);
+
+              return (
+                <div>
+                  <div className="grid grid-cols-2 gap-4 mb-6 bg-gray-50 p-3 rounded-lg border">
+                    <div>
+                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Kepada Yth.</div>
+                      <div className="font-bold text-sm text-gray-900">{cust?.name || "Pelanggan"}</div>
+                      <div className="text-[11px] text-gray-600 mt-0.5">{cust?.address || "-"}</div>
+                      <div className="text-[11px] text-gray-600">{cust?.contact || "-"}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Detail Dokumen</div>
+                      <div><span className="text-gray-500">Tanggal Faktur:</span> <span className="font-mono font-medium">{fmtDate(printInv.date)}</span></div>
+                      <div><span className="text-gray-500">No. Sales Order:</span> <span className="font-mono font-medium">{so?.soNumber || "-"}</span></div>
+                      <div><span className="text-gray-500">Tanggal SO:</span> <span className="font-mono font-medium">{fmtDate(so?.date)}</span></div>
+                    </div>
+                  </div>
+
+                  {/* TABEL ITEM */}
+                  <table className="w-full text-xs border-collapse mb-6">
+                    <thead>
+                      <tr className="border-b-2" style={{ background: COLOR.primarySoft, borderColor: COLOR.primary }}>
+                        <th className="py-2 px-2 text-left font-semibold" style={{ color: COLOR.primary }}>No</th>
+                        <th className="py-2 px-2 text-left font-semibold" style={{ color: COLOR.primary }}>Nama Barang / Alkes</th>
+                        <th className="py-2 px-2 text-center font-semibold" style={{ color: COLOR.primary }}>Qty</th>
+                        <th className="py-2 px-2 text-right font-semibold" style={{ color: COLOR.primary }}>Harga Satuan</th>
+                        <th className="py-2 px-2 text-right font-semibold" style={{ color: COLOR.primary }}>Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {printInv.items.map((it, idx) => {
+                        const p = products.find((x) => x.id === it.productId);
+                        return (
+                          <tr key={idx} className="border-b">
+                            <td className="py-2 px-2 font-mono text-gray-500">{idx + 1}</td>
+                            <td className="py-2 px-2 font-medium text-gray-900">{p?.name || "-"}</td>
+                            <td className="py-2 px-2 text-center font-mono">{it.qty} {p?.unit || "unit"}</td>
+                            <td className="py-2 px-2 text-right font-mono">{fmtIDR(it.unitPrice)}</td>
+                            <td className="py-2 px-2 text-right font-mono font-semibold">{fmtIDR(it.qty * it.unitPrice)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  {/* PERHITUNGAN TOTAL */}
+                  <div className="flex justify-between items-start mb-8">
+                    <div className="w-1/2 p-3 rounded-lg border bg-gray-50 text-[11px]">
+                      <div className="font-semibold text-gray-700 mb-1">Catatan Pembayaran:</div>
+                      <p className="text-gray-500 leading-relaxed">
+                        Pembayaran dapat ditransfer melalui Bank BCA A/C: <strong>883-0912-331</strong> a.n PT Wiryatama Putera Mandiri.<br />
+                        Harap cantumkan No. Faktur ({printInv.noFaktur}) saat konfirmasi transfer.
+                      </p>
+                    </div>
+
+                    <div className="w-5/12 text-xs flex flex-col gap-1.5">
+                      <div className="flex justify-between py-1 border-b">
+                        <span className="text-gray-600">Subtotal Penjualan</span>
+                        <span className="font-mono font-semibold">{fmtIDR(subtotal)}</span>
+                      </div>
+                      {dp > 0 && (
+                        <div className="flex justify-between py-1 border-b text-emerald-700">
+                          <span>Potongan Uang Muka (DP)</span>
+                          <span className="font-mono font-semibold">- {fmtIDR(dp)}</span>
+                        </div>
+                      )}
+                      {ret > 0 && (
+                        <div className="flex justify-between py-1 border-b text-red-600">
+                          <span>Potongan Retur Barang</span>
+                          <span className="font-mono font-semibold">- {fmtIDR(ret)}</span>
+                        </div>
+                      )}
+                      {paid > 0 && (
+                        <div className="flex justify-between py-1 border-b text-blue-700">
+                          <span>Telah Dibayar (Pelunasan)</span>
+                          <span className="font-mono font-semibold">- {fmtIDR(paid)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between py-2 border-b-2 font-bold text-sm" style={{ color: COLOR.primary, borderColor: COLOR.primary }}>
+                        <span>Sisa Tagihan</span>
+                        <span className="font-mono">{fmtIDR(sisa)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* TANDA TANGAN */}
+                  <div className="grid grid-cols-2 gap-8 text-center text-xs mt-12 pt-4">
+                    <div>
+                      <p className="text-gray-500 mb-12">Tanda Tangan Penerima / Pelanggan,</p>
+                      <p className="font-bold underline text-gray-900">( {cust?.name || "..........................."} )</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 mb-12">Hormat Kami (PT Wiryatama Putera Mandiri),</p>
+                      <p className="font-bold underline text-gray-900">( Bagian Finance & Kasir )</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
         </Modal>
       )}
     </div>
