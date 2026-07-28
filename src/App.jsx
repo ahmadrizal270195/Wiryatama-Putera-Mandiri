@@ -138,10 +138,10 @@ function Modal({ title, onClose, children, wide }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(15,30,28,0.45)" }} onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
-        className={"rounded-2xl w-full " + (wide ? "max-w-2xl" : "max-w-md") + " max-h-[85vh] overflow-y-auto"}
+        className={"rounded-2xl w-full " + (wide ? "max-w-3xl" : "max-w-md") + " max-h-[85vh] overflow-y-auto"}
         style={{ background: COLOR.surface }}
       >
-        <div className="flex items-center justify-between px-5 py-4 sticky top-0" style={{ background: COLOR.surface, borderBottom: `1px solid ${COLOR.border}` }}>
+        <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10" style={{ background: COLOR.surface, borderBottom: `1px solid ${COLOR.border}` }}>
           <h3 className="font-semibold text-base" style={{ color: COLOR.ink }}>{title}</h3>
           <button onClick={onClose} className="p-1 rounded-lg hover:opacity-60"><X size={18} color={COLOR.inkSoft} /></button>
         </div>
@@ -496,6 +496,7 @@ function PharmaERP({ userEmail, onLogout }) {
             savePOs={persist.pos} saveBatches={persist.batches} savePReceipts={persist.pReceipts}
             savePInvoices={persist.pInvoices} savePReturns={persist.pReturns} findName={findName} notify={notify}
             poTotal={poTotal} pInvoiceTotal={pInvoiceTotal} pInvoicePaidAmount={pInvoicePaidAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount} pInvoiceSisa={pInvoiceSisa}
+            stockByProduct={stockByProduct}
           />
         )}
         {tab === "sales" && (
@@ -880,7 +881,7 @@ function CustomersView({ customers, save, notify }) {
 function PurchasesView({
   products, suppliers, pos, batches, pReceipts, pInvoices, pReturns, paymentsOut,
   savePOs, saveBatches, savePReceipts, savePInvoices, savePReturns, findName, notify,
-  poTotal, pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa,
+  poTotal, pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa, stockByProduct
 }) {
   const [subTab, setSubTab] = useState("po");
 
@@ -936,7 +937,7 @@ function PurchasesView({
       </div>
 
       {subTab === "po" && (
-        <POTab {...{ products, suppliers, pos, pReceipts, savePOs, findName, notify, poTotal, getPOStatus, STATUS_LABEL }} />
+        <POTab {...{ products, suppliers, pos, pReceipts, savePOs, findName, notify, poTotal, getPOStatus, STATUS_LABEL, stockByProduct }} />
       )}
       {subTab === "bpb" && (
         <BPBTab {...{ products, suppliers, pos, batches, pReceipts, pInvoices, saveBatches, savePOs, savePReceipts, findName, notify, getPOStatus, receivedQty }} />
@@ -951,30 +952,38 @@ function PurchasesView({
   );
 }
 
-function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify, poTotal, getPOStatus, STATUS_LABEL }) {
+function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify, poTotal, getPOStatus, STATUS_LABEL, stockByProduct }) {
   const [modal, setModal] = useState(null);
   const [detailPO, setDetailPO] = useState(null);
   const [supplierId, setSupplierId] = useState("");
   const [date, setDate] = useState(todayISO());
   const [items, setItems] = useState([]);
+  const [searchProd, setSearchProd] = useState("");
 
   function openNew() {
     setSupplierId(suppliers[0]?.id || "");
     setDate(todayISO());
     setItems([]);
+    setSearchProd("");
     setModal("new");
   }
-  function addItem() {
-    if (products.length === 0) return notify("Tambahkan produk dahulu", "danger");
-    setItems([...items, { productId: products[0].id, qty: 1, unitPrice: products[0].sellPrice * 0.7 }]);
+
+  function addProductToPO(prod) {
+    const existing = items.find((x) => x.productId === prod.id);
+    if (existing) {
+      setItems(items.map((x) => x.productId === prod.id ? { ...x, qty: x.qty + 1 } : x));
+    } else {
+      setItems([...items, { productId: prod.id, qty: 1, unitPrice: prod.sellPrice * 0.7 }]);
+    }
   }
+
   function updateItem(i, patch) { setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it))); }
   function removeItem(i) { setItems(items.filter((_, idx) => idx !== i)); }
   const total = items.reduce((s, it) => s + it.qty * it.unitPrice, 0);
 
   async function submit() {
     if (!supplierId) return notify("Pilih supplier", "danger");
-    if (items.length === 0) return notify("Tambahkan minimal 1 item", "danger");
+    if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
     const poNumber = `PO-${new Date(date).getFullYear()}-${String(pos.length + 1).padStart(4, "0")}`;
     await savePOs([...pos, { id: uid(), poNumber, supplierId, date, items, status: "ordered" }]);
     notify(`${poNumber} dibuat`);
@@ -988,6 +997,8 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify,
     await savePOs(pos.filter((p) => p.id !== po.id));
     notify(`${po.poNumber} berhasil dibatalkan`);
   }
+
+  const filteredProds = products.filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
 
   return (
     <div>
@@ -1031,34 +1042,68 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify,
 
       {modal === "new" && (
         <Modal title="Buat Purchase Order" onClose={() => setModal(null)} wide>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Supplier">
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <Field label="Supplier / PBF">
               <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
                 {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Select>
             </Field>
             <Field label="Tanggal PO"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
           </div>
-          <div className="flex items-center justify-between mt-2 mb-2">
-            <div className="text-xs font-medium" style={{ color: COLOR.inkSoft }}>Item</div>
-            <Button variant="ghost" onClick={addItem}><Plus size={13} /> Tambah Item</Button>
+
+          {/* PEMILIH PRODUK BANYAK */}
+          <div className="mb-4 p-3 rounded-xl border" style={{ background: COLOR.bg, borderColor: COLOR.border }}>
+            <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Pilih / Tambah Produk Kebijakan PO</div>
+            <div className="relative mb-2">
+              <Search size={14} className="absolute left-3 top-2.5" color={COLOR.inkSoft} />
+              <TextInput placeholder="Cari nama produk / kategori untuk ditambahkan..." value={searchProd} onChange={(e) => setSearchProd(e.target.value)} className="pl-8" />
+            </div>
+            <div className="max-h-36 overflow-y-auto flex flex-col gap-1 pr-1">
+              {filteredProds.map((prod) => {
+                const s = stockByProduct[prod.id];
+                return (
+                  <div key={prod.id} className="flex items-center justify-between p-2 rounded-lg bg-white border text-xs" style={{ borderColor: COLOR.border }}>
+                    <div>
+                      <span className="font-semibold" style={{ color: COLOR.ink }}>{prod.name}</span>
+                      <span className="ml-2 text-[11px] font-mono" style={{ color: COLOR.inkSoft }}>({prod.category}) · Stok: {s?.qty || 0} {prod.unit}</span>
+                    </div>
+                    <Button variant="ghost" onClick={() => addProductToPO(prod)} className="!py-0.5 !px-2 text-xs">
+                      <Plus size={12} /> Tambah
+                    </Button>
+                  </div>
+                );
+              })}
+              {filteredProds.length === 0 && <div className="text-xs py-2 text-center" style={{ color: COLOR.inkSoft }}>Produk tidak ditemukan.</div>}
+            </div>
           </div>
-          <div className="flex flex-col gap-2">
-            {items.map((it, i) => (
-              <div key={i} className="flex gap-2 items-center">
-                <Select value={it.productId} onChange={(e) => updateItem(i, { productId: e.target.value })} className="flex-[2]">
-                  {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </Select>
-                <TextInput type="number" value={it.qty} onChange={(e) => updateItem(i, { qty: Number(e.target.value) })} className="w-20" placeholder="Qty" />
-                <TextInput type="number" value={it.unitPrice} onChange={(e) => updateItem(i, { unitPrice: Number(e.target.value) })} className="w-32" placeholder="Harga beli" />
-                <button onClick={() => removeItem(i)}><Trash2 size={15} color={COLOR.danger} /></button>
-              </div>
-            ))}
-            {items.length === 0 && <div className="text-xs py-3 text-center" style={{ color: COLOR.inkSoft }}>Belum ada item.</div>}
+
+          {/* ITEM YANG DITAMBAHKAN */}
+          <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Rincian Item Dipesan ({items.length})</div>
+          <div className="flex flex-col gap-2 max-h-48 overflow-y-auto mb-4 pr-1">
+            {items.map((it, i) => {
+              const p = products.find((x) => x.id === it.productId);
+              return (
+                <div key={i} className="flex gap-2 items-center p-2 rounded-lg bg-white border" style={{ borderColor: COLOR.border }}>
+                  <div className="flex-1">
+                    <div className="text-sm font-medium" style={{ color: COLOR.ink }}>{p?.name}</div>
+                    <div className="text-[11px] font-mono" style={{ color: COLOR.inkSoft }}>Subtotal: {fmtIDR(it.qty * it.unitPrice)}</div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-mono" style={{ color: COLOR.inkSoft }}>Qty:</span>
+                    <TextInput type="number" value={it.qty} onChange={(e) => updateItem(i, { qty: Math.max(1, Number(e.target.value)) })} className="w-16 text-center" />
+                    <span className="text-xs font-mono ml-1" style={{ color: COLOR.inkSoft }}>Harga Beli:</span>
+                    <TextInput type="number" value={it.unitPrice} onChange={(e) => updateItem(i, { unitPrice: Number(e.target.value) })} className="w-28" />
+                    <button onClick={() => removeItem(i)} className="p-1.5 text-red-500 hover:opacity-70"><Trash2 size={16} color={COLOR.danger} /></button>
+                  </div>
+                </div>
+              );
+            })}
+            {items.length === 0 && <div className="text-xs py-6 text-center rounded-lg border border-dashed" style={{ color: COLOR.inkSoft, borderColor: COLOR.border }}>Belum ada item terpilih. Silakan klik tombol "Tambah" pada produk di atas.</div>}
           </div>
+
           <div className="flex justify-between items-center mt-4 pt-3" style={{ borderTop: `1px solid ${COLOR.border}` }}>
-            <div className="font-mono text-sm" style={{ color: COLOR.ink }}>Total: {fmtIDR(total)}</div>
-            <Button onClick={submit}>Buat PO</Button>
+            <div className="font-mono font-bold text-base" style={{ color: COLOR.ink }}>Total PO: {fmtIDR(total)}</div>
+            <Button onClick={submit}>Simpan & Terbitkan PO</Button>
           </div>
         </Modal>
       )}
@@ -1448,7 +1493,6 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
         return notify(`${p?.name}: melebihi sisa barang yang bisa diretur (${l.maxReturn})`, "danger");
       }
 
-      // Potong stok batch terkini untuk barang yang dikembalikan ke supplier
       const prs = pReceipts.filter((pr) => pr.poId === selectedInvoice.poId);
       let remainingToDeduct = l.qtyReturn;
 
@@ -1478,7 +1522,6 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
   async function cancelReturn(ret) {
     let working = batches.map((b) => ({ ...b }));
 
-    // Kembalikan lagi stok ke batch
     const prs = pReceipts.filter((pr) => pr.poId === ret.poId);
     ret.items.forEach((it) => {
       let remainingToAdd = it.qty;
@@ -1630,7 +1673,7 @@ function SalesView({
       </div>
 
       {subTab === "so" && (
-        <SOTab {...{ products, customers, sos, deliveryNotes, saveSOs, findName, notify, soTotal, getSOStatus, STATUS_LABEL }} />
+        <SOTab {...{ products, customers, sos, deliveryNotes, saveSOs, findName, notify, soTotal, getSOStatus, STATUS_LABEL, stockByProduct }} />
       )}
       {subTab === "sj" && (
         <SJTab {...{ products, customers, sos, batches, deliveryNotes, invoices, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty }} />
@@ -1645,30 +1688,38 @@ function SalesView({
   );
 }
 
-function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, notify, soTotal, getSOStatus, STATUS_LABEL }) {
+function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, notify, soTotal, getSOStatus, STATUS_LABEL, stockByProduct }) {
   const [modal, setModal] = useState(null);
   const [detailSO, setDetailSO] = useState(null);
   const [customerId, setCustomerId] = useState("");
   const [date, setDate] = useState(todayISO());
   const [items, setItems] = useState([]);
+  const [searchProd, setSearchProd] = useState("");
 
   function openNew() {
     setCustomerId(customers[0]?.id || "");
     setDate(todayISO());
     setItems([]);
+    setSearchProd("");
     setModal("new");
   }
-  function addItem() {
-    if (products.length === 0) return notify("Tambahkan produk dahulu", "danger");
-    setItems([...items, { productId: products[0].id, qty: 1, unitPrice: products[0].sellPrice }]);
+
+  function addProductToSO(prod) {
+    const existing = items.find((x) => x.productId === prod.id);
+    if (existing) {
+      setItems(items.map((x) => x.productId === prod.id ? { ...x, qty: x.qty + 1 } : x));
+    } else {
+      setItems([...items, { productId: prod.id, qty: 1, unitPrice: prod.sellPrice }]);
+    }
   }
+
   function updateItem(i, patch) { setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it))); }
   function removeItem(i) { setItems(items.filter((_, idx) => idx !== i)); }
   const total = items.reduce((s, it) => s + it.qty * it.unitPrice, 0);
 
   async function submit() {
     if (!customerId) return notify("Pilih pelanggan", "danger");
-    if (items.length === 0) return notify("Tambahkan minimal 1 item", "danger");
+    if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
     const soNumber = `SO-${new Date(date).getFullYear()}-${String(sos.length + 1).padStart(4, "0")}`;
     await saveSOs([...sos, { id: uid(), soNumber, customerId, date, items, status: "open" }]);
     notify(`${soNumber} dibuat`);
@@ -1682,6 +1733,8 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
     await saveSOs(sos.filter((s) => s.id !== so.id));
     notify(`${so.soNumber} berhasil dibatalkan`);
   }
+
+  const filteredProds = products.filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
 
   return (
     <div>
@@ -1724,8 +1777,8 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
       </Card>
 
       {modal === "new" && (
-        <Modal title="Buat Sales Order" onClose={() => setModal(null)} wide>
-          <div className="grid grid-cols-2 gap-3">
+        <Modal title="Buat Sales Order (SO)" onClose={() => setModal(null)} wide>
+          <div className="grid grid-cols-2 gap-3 mb-4">
             <Field label="Pelanggan">
               <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
                 {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -1733,26 +1786,64 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
             </Field>
             <Field label="Tanggal SO"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
           </div>
-          <div className="flex items-center justify-between mt-2 mb-2">
-            <div className="text-xs font-medium" style={{ color: COLOR.inkSoft }}>Item</div>
-            <Button variant="ghost" onClick={addItem}><Plus size={13} /> Tambah Item</Button>
+
+          {/* PEMILIH PRODUK BANYAK */}
+          <div className="mb-4 p-3 rounded-xl border" style={{ background: COLOR.bg, borderColor: COLOR.border }}>
+            <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Pilih / Tambah Produk Pesanan</div>
+            <div className="relative mb-2">
+              <Search size={14} className="absolute left-3 top-2.5" color={COLOR.inkSoft} />
+              <TextInput placeholder="Cari nama produk / kategori..." value={searchProd} onChange={(e) => setSearchProd(e.target.value)} className="pl-8" />
+            </div>
+            <div className="max-h-36 overflow-y-auto flex flex-col gap-1 pr-1">
+              {filteredProds.map((prod) => {
+                const s = stockByProduct[prod.id];
+                return (
+                  <div key={prod.id} className="flex items-center justify-between p-2 rounded-lg bg-white border text-xs" style={{ borderColor: COLOR.border }}>
+                    <div>
+                      <span className="font-semibold" style={{ color: COLOR.ink }}>{prod.name}</span>
+                      <span className="ml-2 text-[11px] font-mono" style={{ color: COLOR.inkSoft }}>({prod.category}) · Stok: {s?.qty || 0} {prod.unit}</span>
+                    </div>
+                    <Button variant="ghost" onClick={() => addProductToSO(prod)} className="!py-0.5 !px-2 text-xs">
+                      <Plus size={12} /> Tambah
+                    </Button>
+                  </div>
+                );
+              })}
+              {filteredProds.length === 0 && <div className="text-xs py-2 text-center" style={{ color: COLOR.inkSoft }}>Produk tidak ditemukan.</div>}
+            </div>
           </div>
-          <div className="flex flex-col gap-2">
-            {items.map((it, i) => (
-              <div key={i} className="flex gap-2 items-center">
-                <Select value={it.productId} onChange={(e) => updateItem(i, { productId: e.target.value, unitPrice: products.find((p) => p.id === e.target.value)?.sellPrice || 0 })} className="flex-[2]">
-                  {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </Select>
-                <TextInput type="number" value={it.qty} onChange={(e) => updateItem(i, { qty: Number(e.target.value) })} className="w-20" placeholder="Qty" />
-                <TextInput type="number" value={it.unitPrice} onChange={(e) => updateItem(i, { unitPrice: Number(e.target.value) })} className="w-32" placeholder="Harga jual" />
-                <button onClick={() => removeItem(i)}><Trash2 size={15} color={COLOR.danger} /></button>
-              </div>
-            ))}
-            {items.length === 0 && <div className="text-xs py-3 text-center" style={{ color: COLOR.inkSoft }}>Belum ada item.</div>}
+
+          {/* ITEM YANG DITAMBAHKAN */}
+          <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Rincian Item Dipesan ({items.length})</div>
+          <div className="flex flex-col gap-2 max-h-48 overflow-y-auto mb-4 pr-1">
+            {items.map((it, i) => {
+              const p = products.find((x) => x.id === it.productId);
+              const s = stockByProduct[it.productId];
+              const isStockShort = s && s.qty < it.qty;
+              return (
+                <div key={i} className="flex gap-2 items-center p-2 rounded-lg bg-white border" style={{ borderColor: isStockShort ? COLOR.warn : COLOR.border }}>
+                  <div className="flex-1">
+                    <div className="text-sm font-medium" style={{ color: COLOR.ink }}>{p?.name}</div>
+                    <div className="text-[11px] font-mono" style={{ color: isStockShort ? COLOR.danger : COLOR.inkSoft }}>
+                      Stok tersedia: {s?.qty || 0} {p?.unit} · Subtotal: {fmtIDR(it.qty * it.unitPrice)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-mono" style={{ color: COLOR.inkSoft }}>Qty:</span>
+                    <TextInput type="number" value={it.qty} onChange={(e) => updateItem(i, { qty: Math.max(1, Number(e.target.value)) })} className="w-16 text-center" />
+                    <span className="text-xs font-mono ml-1" style={{ color: COLOR.inkSoft }}>Harga Jual:</span>
+                    <TextInput type="number" value={it.unitPrice} onChange={(e) => updateItem(i, { unitPrice: Number(e.target.value) })} className="w-28" />
+                    <button onClick={() => removeItem(i)} className="p-1.5 text-red-500 hover:opacity-70"><Trash2 size={16} color={COLOR.danger} /></button>
+                  </div>
+                </div>
+              );
+            })}
+            {items.length === 0 && <div className="text-xs py-6 text-center rounded-lg border border-dashed" style={{ color: COLOR.inkSoft, borderColor: COLOR.border }}>Belum ada item terpilih. Silakan klik tombol "Tambah" pada produk di atas.</div>}
           </div>
+
           <div className="flex justify-between items-center mt-4 pt-3" style={{ borderTop: `1px solid ${COLOR.border}` }}>
-            <div className="font-mono text-sm" style={{ color: COLOR.ink }}>Total: {fmtIDR(total)}</div>
-            <Button onClick={submit}>Buat SO</Button>
+            <div className="font-mono font-bold text-base" style={{ color: COLOR.ink }}>Total SO: {fmtIDR(total)}</div>
+            <Button onClick={submit}>Simpan & Konfirmasi SO</Button>
           </div>
         </Modal>
       )}
@@ -2300,7 +2391,7 @@ function FinanceView(props) {
   } = props;
 
   const [subTab, setSubTab] = useState("ar");
-  const [payModal, setPayModal] = useState(null); // { kind: 'invoice'|'dp'|'pInvoice'|'edit-in'|'edit-out', doc, pay }
+  const [payModal, setPayModal] = useState(null);
   const [payForm, setPayForm] = useState({ amount: "", date: todayISO(), method: PAYMENT_METHODS[0], note: "" });
   const [expModal, setExpModal] = useState(false);
   const [expForm, setExpForm] = useState({ category: EXPENSE_CATEGORIES[0], amount: "", date: todayISO(), note: "" });
@@ -2662,7 +2753,7 @@ function FinanceView(props) {
             </Select>
           </Field>
           <Field label="Jumlah"><TextInput type="number" value={expForm.amount} onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })} /></Field>
-          <Field label="Tanggal"><TextInput type="date" value={expForm.date} onChange={(e) => setExpForm({ ...expForm, date: e.target.value })} /></Field>
+          <Field label="Tanggal"><TextInput type="date" value={expForm.date} onChange={(e) => setDate(e.target.value)} /></Field>
           <Field label="Catatan (opsional)"><TextInput value={expForm.note} onChange={(e) => setExpForm({ ...expForm, note: e.target.value })} /></Field>
           <Button onClick={submitExpense} className="w-full justify-center mt-2">Simpan Biaya</Button>
         </Modal>
