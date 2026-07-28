@@ -42,6 +42,9 @@ const KEYS = {
   customers: "erp-customers",
   batches: "erp-stock-batches",
   pos: "erp-purchase-orders",
+  pReceipts: "erp-purchase-receipts",
+  pInvoices: "erp-purchase-invoices",
+  pReturns: "erp-purchase-returns",
   sos: "erp-sales-orders",
   paymentsOut: "erp-payments-out",
   paymentsIn: "erp-payments-in",
@@ -255,6 +258,9 @@ function PharmaERP({ userEmail, onLogout }) {
   const [customers, setCustomers] = useState([]);
   const [batches, setBatches] = useState([]);
   const [pos, setPOs] = useState([]);
+  const [pReceipts, setPReceipts] = useState([]);
+  const [pInvoices, setPInvoices] = useState([]);
+  const [pReturns, setPReturns] = useState([]);
   const [sos, setSOs] = useState([]);
   const [paymentsOut, setPaymentsOut] = useState([]);
   const [paymentsIn, setPaymentsIn] = useState([]);
@@ -269,15 +275,16 @@ function PharmaERP({ userEmail, onLogout }) {
   async function refreshAll() {
     setSyncState("syncing");
     try {
-      const [p, s, c, b, po, so, pout, pin, exp, dn, inv, ret] = await Promise.all([
+      const [p, s, c, b, po, pr, pi, pret, so, pout, pin, exp, dn, inv, ret] = await Promise.all([
         loadKey(KEYS.products), loadKey(KEYS.suppliers), loadKey(KEYS.customers),
-        loadKey(KEYS.batches), loadKey(KEYS.pos), loadKey(KEYS.sos),
+        loadKey(KEYS.batches), loadKey(KEYS.pos), loadKey(KEYS.pReceipts), loadKey(KEYS.pInvoices), loadKey(KEYS.pReturns), loadKey(KEYS.sos),
         loadKey(KEYS.paymentsOut), loadKey(KEYS.paymentsIn), loadKey(KEYS.expenses),
         loadKey(KEYS.deliveryNotes), loadKey(KEYS.invoices), loadKey(KEYS.returns),
       ]);
       const swap = (setter) => (next) => setter((prev) => (JSON.stringify(prev) !== JSON.stringify(next) ? next : prev));
       swap(setProducts)(p); swap(setSuppliers)(s); swap(setCustomers)(c); swap(setBatches)(b);
-      swap(setPOs)(po); swap(setSOs)(so); swap(setPaymentsOut)(pout); swap(setPaymentsIn)(pin); swap(setExpenses)(exp);
+      swap(setPOs)(po); swap(setPReceipts)(pr); swap(setPInvoices)(pi); swap(setPReturns)(pret); swap(setSOs)(so); 
+      swap(setPaymentsOut)(pout); swap(setPaymentsIn)(pin); swap(setExpenses)(exp);
       swap(setDeliveryNotes)(dn); swap(setInvoices)(inv); swap(setReturns)(ret);
       setLastSync(Date.now());
       setSyncState("ok");
@@ -310,6 +317,9 @@ function PharmaERP({ userEmail, onLogout }) {
     customers: async (list) => { setCustomers(list); await saveKey(KEYS.customers, list); },
     batches: async (list) => { setBatches(list); await saveKey(KEYS.batches, list); },
     pos: async (list) => { setPOs(list); await saveKey(KEYS.pos, list); },
+    pReceipts: async (list) => { setPReceipts(list); await saveKey(KEYS.pReceipts, list); },
+    pInvoices: async (list) => { setPInvoices(list); await saveKey(KEYS.pInvoices, list); },
+    pReturns: async (list) => { setPReturns(list); await saveKey(KEYS.pReturns, list); },
     sos: async (list) => { setSOs(list); await saveKey(KEYS.sos, list); },
     paymentsOut: async (list) => { setPaymentsOut(list); await saveKey(KEYS.paymentsOut, list); },
     paymentsIn: async (list) => { setPaymentsIn(list); await saveKey(KEYS.paymentsIn, list); },
@@ -343,6 +353,11 @@ function PharmaERP({ userEmail, onLogout }) {
 
   function soTotal(so) { return so.items.reduce((s, it) => s + it.qty * it.unitPrice, 0); }
   function poTotal(po) { return po.items.reduce((s, it) => s + it.qty * it.unitPrice, 0); }
+  function pInvoiceTotal(inv) { return inv.items.reduce((s, it) => s + it.qty * it.unitPrice, 0); }
+  function pInvoicePaidAmount(invId) { return paymentsOut.filter((p) => p.pInvoiceId === invId).reduce((s, p) => s + p.amount, 0); }
+  function pInvoiceReturnedAmount(invId) { return pReturns.filter((r) => r.pInvoiceId === invId).reduce((s, r) => s + r.items.reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
+  function pInvoiceSisa(inv) { return Math.max(0, pInvoiceTotal(inv) - pInvoiceReturnedAmount(inv.id) - pInvoicePaidAmount(inv.id)); }
+
   function invoiceTotal(inv) { return inv.items.reduce((s, it) => s + it.qty * it.unitPrice, 0); }
   function soDPAmount(soId) { return paymentsIn.filter((p) => p.soId === soId && p.type === "DP").reduce((s, p) => s + p.amount, 0); }
   function invoicePaidAmount(invId) { return paymentsIn.filter((p) => p.invoiceId === invId).reduce((s, p) => s + p.amount, 0); }
@@ -357,7 +372,7 @@ function PharmaERP({ userEmail, onLogout }) {
   }
 
   const arOutstanding = useMemo(() => invoices.reduce((s, inv) => s + invoiceSisa(inv), 0), [invoices, returns, paymentsIn]);
-  const apOutstanding = useMemo(() => pos.filter((po) => po.status === "received").reduce((s, po) => s + Math.max(0, poTotal(po) - poPaidAmount(po.id)), 0), [pos, paymentsOut]);
+  const apOutstanding = useMemo(() => pInvoices.reduce((s, inv) => s + pInvoiceSisa(inv), 0), [pInvoices, pReturns, paymentsOut]);
   const cashInMonth = useMemo(() => paymentsIn.filter((p) => isThisMonth(p.date)).reduce((s, p) => s + p.amount, 0), [paymentsIn]);
   const cashOutMonth = useMemo(() => {
     const out = paymentsOut.filter((p) => isThisMonth(p.date)).reduce((s, p) => s + p.amount, 0);
@@ -388,7 +403,7 @@ function PharmaERP({ userEmail, onLogout }) {
     { id: "stock", label: "Stok & Batch", icon: Boxes },
     { id: "suppliers", label: "Supplier", icon: Truck },
     { id: "customers", label: "Pelanggan", icon: Users },
-    { id: "purchases", label: "Pembelian (PO)", icon: ClipboardList },
+    { id: "purchases", label: "Pembelian", icon: ClipboardList },
     { id: "sales", label: "Penjualan", icon: ShoppingCart },
     { id: "finance", label: "Finance", icon: Wallet },
     { id: "reports", label: "Laporan", icon: BarChart3 },
@@ -477,7 +492,10 @@ function PharmaERP({ userEmail, onLogout }) {
         {tab === "purchases" && (
           <PurchasesView
             products={products} suppliers={suppliers} pos={pos} batches={batches}
-            savePOs={persist.pos} saveBatches={persist.batches} findName={findName} notify={notify}
+            pReceipts={pReceipts} pInvoices={pInvoices} pReturns={pReturns} paymentsOut={paymentsOut}
+            savePOs={persist.pos} saveBatches={persist.batches} savePReceipts={persist.pReceipts}
+            savePInvoices={persist.pInvoices} savePReturns={persist.pReturns} findName={findName} notify={notify}
+            poTotal={poTotal} pInvoiceTotal={pInvoiceTotal} pInvoicePaidAmount={pInvoicePaidAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount} pInvoiceSisa={pInvoiceSisa}
           />
         )}
         {tab === "sales" && (
@@ -493,11 +511,12 @@ function PharmaERP({ userEmail, onLogout }) {
         )}
         {tab === "finance" && (
           <FinanceView
-            {...{ pos, sos, suppliers, customers, batches, invoices, returns, paymentsOut, paymentsIn, expenses, findName, notify }}
+            {...{ pos, sos, suppliers, customers, batches, invoices, pInvoices, pReturns, returns, paymentsOut, paymentsIn, expenses, findName, notify }}
             savePaymentsOut={persist.paymentsOut} savePaymentsIn={persist.paymentsIn} saveExpenses={persist.expenses}
             arOutstanding={arOutstanding} apOutstanding={apOutstanding} cashInMonth={cashInMonth} cashOutMonth={cashOutMonth}
             grossProfitMonth={grossProfitMonth} expensesMonth={expensesMonth}
             invoiceTotal={invoiceTotal} soDPAmount={soDPAmount} invoicePaidAmount={invoicePaidAmount} invoiceReturnedAmount={invoiceReturnedAmount} invoiceSisa={invoiceSisa}
+            pInvoiceTotal={pInvoiceTotal} pInvoicePaidAmount={pInvoicePaidAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount} pInvoiceSisa={pInvoiceSisa}
           />
         )}
         {tab === "reports" && (
@@ -857,14 +876,87 @@ function CustomersView({ customers, save, notify }) {
   );
 }
 
-// ---------- Purchases (PO) ----------
-function PurchasesView({ products, suppliers, pos, batches, savePOs, saveBatches, findName, notify }) {
+// ---------- Purchases (PO → Penerimaan Barang → Faktur Pembelian → Retur Pembelian) ----------
+function PurchasesView({
+  products, suppliers, pos, batches, pReceipts, pInvoices, pReturns, paymentsOut,
+  savePOs, saveBatches, savePReceipts, savePInvoices, savePReturns, findName, notify,
+  poTotal, pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa,
+}) {
+  const [subTab, setSubTab] = useState("po");
+
+  function receivedQty(poId, productId) {
+    return pReceipts.filter((pr) => pr.poId === poId).reduce((s, pr) => {
+      const it = pr.items.find((x) => x.productId === productId);
+      return s + (it ? it.qty : 0);
+    }, 0);
+  }
+
+  function getPOStatus(po) {
+    if (pInvoices.some((inv) => inv.poId === po.id)) return "invoiced";
+    const prs = pReceipts.filter((pr) => pr.poId === po.id);
+    const fullyReceived = po.items.every((it) => receivedQty(po.id, it.productId) >= it.qty);
+    if (prs.length === 0) return "ordered";
+    if (!fullyReceived) return "partially_received";
+    return "ready_to_invoice";
+  }
+
+  const STATUS_LABEL = {
+    ordered: { label: "Dipesan", tone: "warn" },
+    partially_received: { label: "Sebagian Diterima", tone: "warn" },
+    ready_to_invoice: { label: "Siap Difaktur", tone: "good" },
+    invoiced: { label: "Sudah Difaktur", tone: "good" },
+  };
+
+  const SUBNAV = [
+    { id: "po", label: `Purchase Order (${pos.length})` },
+    { id: "bpb", label: `Penerimaan Barang (${pReceipts.length})` },
+    { id: "faktur", label: `Faktur Pembelian (${pInvoices.length})` },
+    { id: "retur", label: `Retur Pembelian (${pReturns.length})` },
+  ];
+
+  return (
+    <div>
+      <Eyebrow>Transaksi</Eyebrow>
+      <h2 className="text-xl font-semibold mb-1" style={{ color: COLOR.ink }}>Pembelian</h2>
+      <p className="text-sm mb-4" style={{ color: COLOR.inkSoft }}>
+        Alur: Purchase Order (PO) → Penerimaan Barang (Stok masuk & Batch) → Faktur Pembelian → Retur (bila ada).
+      </p>
+
+      <div className="flex gap-1 mb-4 p-1 rounded-lg w-fit flex-wrap" style={{ background: COLOR.primarySoft }}>
+        {SUBNAV.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => setSubTab(s.id)}
+            className="px-3 py-1.5 rounded-md text-sm font-medium"
+            style={{ background: subTab === s.id ? COLOR.primary : "transparent", color: subTab === s.id ? "#fff" : COLOR.primary }}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "po" && (
+        <POTab {...{ products, suppliers, pos, pReceipts, savePOs, findName, notify, poTotal, getPOStatus, STATUS_LABEL }} />
+      )}
+      {subTab === "bpb" && (
+        <BPBTab {...{ products, suppliers, pos, batches, pReceipts, pInvoices, saveBatches, savePOs, savePReceipts, findName, notify, getPOStatus, receivedQty }} />
+      )}
+      {subTab === "faktur" && (
+        <FakturPembelianTab {...{ products, suppliers, pos, pReceipts, pInvoices, paymentsOut, pReturns, savePInvoices, findName, notify, getPOStatus, pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa }} />
+      )}
+      {subTab === "retur" && (
+        <ReturPembelianTab {...{ products, suppliers, pos, pInvoices, pReturns, pReceipts, batches, saveBatches, savePReturns, findName, notify, pInvoiceTotal, pInvoiceReturnedAmount }} />
+      )}
+    </div>
+  );
+}
+
+function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify, poTotal, getPOStatus, STATUS_LABEL }) {
   const [modal, setModal] = useState(null);
   const [detailPO, setDetailPO] = useState(null);
   const [supplierId, setSupplierId] = useState("");
   const [date, setDate] = useState(todayISO());
   const [items, setItems] = useState([]);
-  const [receiveForm, setReceiveForm] = useState({});
 
   function openNew() {
     setSupplierId(suppliers[0]?.id || "");
@@ -878,46 +970,28 @@ function PurchasesView({ products, suppliers, pos, batches, savePOs, saveBatches
   }
   function updateItem(i, patch) { setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it))); }
   function removeItem(i) { setItems(items.filter((_, idx) => idx !== i)); }
-  const poTotal = items.reduce((s, it) => s + it.qty * it.unitPrice, 0);
+  const total = items.reduce((s, it) => s + it.qty * it.unitPrice, 0);
 
-  async function submitPO() {
+  async function submit() {
     if (!supplierId) return notify("Pilih supplier", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item", "danger");
     const poNumber = `PO-${new Date(date).getFullYear()}-${String(pos.length + 1).padStart(4, "0")}`;
-    const newPO = { id: uid(), poNumber, supplierId, date, items, status: "ordered" };
-    await savePOs([...pos, newPO]);
+    await savePOs([...pos, { id: uid(), poNumber, supplierId, date, items, status: "ordered" }]);
     notify(`${poNumber} dibuat`);
     setModal(null);
   }
 
-  function openReceive(po) {
-    const init = {};
-    po.items.forEach((it, idx) => { init[idx] = { batchNo: "", expiryDate: "" }; });
-    setReceiveForm(init);
-    setModal({ receive: po });
-  }
-  async function submitReceive(po) {
-    for (let i = 0; i < po.items.length; i++) {
-      if (!receiveForm[i]?.batchNo || !receiveForm[i]?.expiryDate) return notify("Lengkapi no. batch & tanggal expiry semua item", "danger");
-    }
-    const newBatches = po.items.map((it, i) => ({
-      id: uid(), productId: it.productId, batchNo: receiveForm[i].batchNo, expiryDate: receiveForm[i].expiryDate,
-      qty: it.qty, costPrice: it.unitPrice, receivedDate: todayISO(), poId: po.id,
-    }));
-    await saveBatches([...batches, ...newBatches]);
-    await savePOs(pos.map((p) => (p.id === po.id ? { ...p, status: "received" } : p)));
-    notify(`Barang untuk ${po.poNumber} diterima & masuk stok`);
-    setModal(null);
-  }
   async function cancelPO(po) {
+    if (pReceipts.some((pr) => pr.poId === po.id)) {
+      return notify("Gagal membatalkan: PO ini sudah memiliki riwayat Penerimaan Barang. Batalkan Penerimaan terlebih dahulu.", "danger");
+    }
     await savePOs(pos.filter((p) => p.id !== po.id));
-    notify("PO dibatalkan");
+    notify(`${po.poNumber} berhasil dibatalkan`);
   }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
-        <div><Eyebrow>Transaksi</Eyebrow><h2 className="text-xl font-semibold" style={{ color: COLOR.ink }}>Pembelian (Purchase Order)</h2></div>
+      <div className="flex justify-end mb-3">
         <Button onClick={openNew}><Plus size={15} /> Buat PO</Button>
       </div>
       <Card className="!p-0 overflow-hidden">
@@ -925,33 +999,31 @@ function PurchasesView({ products, suppliers, pos, batches, savePOs, saveBatches
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
               {["No. PO", "Supplier", "Tanggal", "Total", "Status", ""].map((h) => (
-                <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
+                <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {[...pos].sort((a, b) => new Date(b.date) - new Date(a.date)).map((po) => (
-              <tr key={po.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{po.poNumber}</td>
-                <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(suppliers, po.supplierId)}</td>
-                <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.inkSoft }}>{fmtDate(po.date)}</td>
-                <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(po.items.reduce((s, it) => s + it.qty * it.unitPrice, 0))}</td>
-                <td className="px-4 py-2.5">
-                  <Badge tone={po.status === "received" ? "good" : "warn"}>
-                    {po.status === "received" ? <CheckCircle2 size={11} /> : <Clock size={11} />} {po.status === "received" ? "Diterima" : "Dipesan"}
-                  </Badge>
-                </td>
-                <td className="px-4 py-2.5 text-right">
-                  <button onClick={() => setDetailPO(po)} className="text-xs mr-3" style={{ color: COLOR.accent }}>Detail</button>
-                  {po.status === "ordered" && (
-                    <>
-                      <button onClick={() => openReceive(po)} className="text-xs mr-3" style={{ color: COLOR.good }}>Terima Barang</button>
-                      <button onClick={() => cancelPO(po)} className="text-xs" style={{ color: COLOR.danger }}>Batalkan</button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {[...pos].sort((a, b) => new Date(b.date) - new Date(a.date)).map((po) => {
+              const st = getPOStatus(po);
+              const s = STATUS_LABEL[st];
+              const canCancel = !pReceipts.some((pr) => pr.poId === po.id);
+              return (
+                <tr key={po.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{po.poNumber}</td>
+                  <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(suppliers, po.supplierId)}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(po.date)}</td>
+                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(poTotal(po))}</td>
+                  <td className="px-4 py-2.5"><Badge tone={s.tone}>{s.label}</Badge></td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button onClick={() => setDetailPO(po)} className="text-xs mr-3" style={{ color: COLOR.accent }}>Detail</button>
+                    {canCancel && (
+                      <button onClick={() => cancelPO(po)} className="text-xs" style={{ color: COLOR.danger }}>Batalkan PO</button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
             {pos.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada PO.</td></tr>}
           </tbody>
         </table>
@@ -985,48 +1057,25 @@ function PurchasesView({ products, suppliers, pos, batches, savePOs, saveBatches
             {items.length === 0 && <div className="text-xs py-3 text-center" style={{ color: COLOR.inkSoft }}>Belum ada item.</div>}
           </div>
           <div className="flex justify-between items-center mt-4 pt-3" style={{ borderTop: `1px solid ${COLOR.border}` }}>
-            <div className="font-mono text-sm" style={{ color: COLOR.ink }}>Total: {fmtIDR(poTotal)}</div>
-            <Button onClick={submitPO}>Buat PO</Button>
+            <div className="font-mono text-sm" style={{ color: COLOR.ink }}>Total: {fmtIDR(total)}</div>
+            <Button onClick={submit}>Buat PO</Button>
           </div>
-        </Modal>
-      )}
-
-      {modal?.receive && (
-        <Modal title={`Terima Barang — ${modal.receive.poNumber}`} onClose={() => setModal(null)} wide>
-          <p className="text-xs mb-3" style={{ color: COLOR.inkSoft }}>Masukkan nomor batch dan tanggal expiry untuk setiap item. Stok akan otomatis bertambah setelah konfirmasi.</p>
-          {modal.receive.items.map((it, i) => {
-            const p = products.find((x) => x.id === it.productId);
-            return (
-              <div key={i} className="grid grid-cols-3 gap-2 items-end mb-2 p-2 rounded-lg" style={{ background: COLOR.bg }}>
-                <div className="text-sm col-span-3 mb-1" style={{ color: COLOR.ink }}>{p?.name} <span className="font-mono text-xs" style={{ color: COLOR.inkSoft }}>({it.qty} {p?.unit})</span></div>
-                <TextInput placeholder="No. Batch" value={receiveForm[i]?.batchNo || ""} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], batchNo: e.target.value } })} />
-                <TextInput type="date" value={receiveForm[i]?.expiryDate || ""} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], expiryDate: e.target.value } })} />
-              </div>
-            );
-          })}
-          <Button onClick={() => submitReceive(modal.receive)} className="w-full justify-center mt-2">Konfirmasi Terima</Button>
         </Modal>
       )}
 
       {detailPO && (
         <Modal title={`Detail ${detailPO.poNumber}`} onClose={() => setDetailPO(null)} wide>
           <div className="text-xs mb-3" style={{ color: COLOR.inkSoft }}>
-            Supplier: {findName(suppliers, detailPO.supplierId)} · Tanggal: {fmtDate(detailPO.date)} · Status: {detailPO.status === "received" ? "Diterima" : "Dipesan"}
+            Supplier: {findName(suppliers, detailPO.supplierId)} · Tanggal: {fmtDate(detailPO.date)} · Status: {STATUS_LABEL[getPOStatus(detailPO)].label}
           </div>
           <table className="w-full text-sm mb-3">
-            <thead>
-              <tr style={{ background: COLOR.primarySoft }}>
-                {["Produk", "Qty", "Harga Beli", "Subtotal"].map((h) => (
-                  <th key={h} className="text-left px-3 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
+            <thead><tr style={{ background: COLOR.primarySoft }}>{["Produk", "Qty", "Harga Beli", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>{h}</th>)}</tr></thead>
             <tbody>
               {detailPO.items.map((it, i) => {
                 const p = products.find((x) => x.id === it.productId);
                 return (
                   <tr key={i} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-3 py-2" style={{ color: COLOR.ink }}>{p?.name || "-"}</td>
+                    <td className="px-3 py-2" style={{ color: COLOR.ink }}>{p?.name}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: COLOR.inkSoft }}>{it.qty} {p?.unit}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: COLOR.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(it.qty * it.unitPrice)}</td>
@@ -1035,23 +1084,485 @@ function PurchasesView({ products, suppliers, pos, batches, savePOs, saveBatches
               })}
             </tbody>
           </table>
-          <div className="text-right font-mono text-sm mb-4" style={{ color: COLOR.ink }}>
-            Total: {fmtIDR(detailPO.items.reduce((s, it) => s + it.qty * it.unitPrice, 0))}
-          </div>
-          {detailPO.status === "received" && (
-            <div>
-              <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Batch yang diterima</div>
-              <div className="flex flex-wrap gap-2">
-                {batches.filter((b) => b.poId === detailPO.id).map((b) => {
-                  const p = products.find((x) => x.id === b.productId);
-                  return (
-                    <span key={b.id} className="text-[11px] font-mono px-2 py-1 rounded-md" style={{ background: COLOR.bg, color: COLOR.inkSoft, border: `1px solid ${COLOR.border}` }}>
-                      {p?.name}: {b.batchNo} · {b.qty} {p?.unit} · exp {fmtDate(b.expiryDate)}
-                    </span>
-                  );
-                })}
+          <div className="text-right font-mono text-sm mb-2" style={{ color: COLOR.ink }}>Total: {fmtIDR(poTotal(detailPO))}</div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveBatches, savePOs, savePReceipts, findName, notify, getPOStatus, receivedQty }) {
+  const [modal, setModal] = useState(null);
+  const [detailPR, setDetailPR] = useState(null);
+  const [poId, setPoId] = useState("");
+  const [date, setDate] = useState(todayISO());
+  const [receiveForm, setReceiveForm] = useState({});
+
+  const eligiblePOs = pos.filter((po) => ["ordered", "partially_received"].includes(getPOStatus(po)));
+  const selectedPO = pos.find((x) => x.id === poId);
+
+  function openNew() {
+    const firstPO = eligiblePOs[0];
+    setPoId(firstPO?.id || "");
+    setDate(todayISO());
+    if (firstPO) {
+      const init = {};
+      firstPO.items.forEach((it, idx) => {
+        init[idx] = { qty: Math.max(0, it.qty - receivedQty(firstPO.id, it.productId)), batchNo: "", expiryDate: "" };
+      });
+      setReceiveForm(init);
+    } else setReceiveForm({});
+    setModal("new");
+  }
+
+  function changePO(id) {
+    setPoId(id);
+    const po = pos.find((x) => x.id === id);
+    const init = {};
+    if (po) {
+      po.items.forEach((it, idx) => {
+        init[idx] = { qty: Math.max(0, it.qty - receivedQty(po.id, it.productId)), batchNo: "", expiryDate: "" };
+      });
+    }
+    setReceiveForm(init);
+  }
+
+  async function submitBPB() {
+    if (!selectedPO) return notify("Pilih PO terlebih dahulu", "danger");
+    for (let i = 0; i < selectedPO.items.length; i++) {
+      const rf = receiveForm[i];
+      if (rf && Number(rf.qty) > 0) {
+        if (!rf.batchNo || !rf.expiryDate) {
+          return notify("Lengkapi nomor batch dan tanggal expiry untuk semua item yang diterima", "danger");
+        }
+      }
+    }
+
+    const newBatches = [];
+    const receivedItems = [];
+
+    selectedPO.items.forEach((it, i) => {
+      const rf = receiveForm[i];
+      const qtyToRec = Number(rf?.qty) || 0;
+      if (qtyToRec > 0) {
+        const batchId = uid();
+        newBatches.push({
+          id: batchId,
+          productId: it.productId,
+          batchNo: rf.batchNo,
+          expiryDate: rf.expiryDate,
+          qty: qtyToRec,
+          costPrice: it.unitPrice,
+          receivedDate: date,
+          poId: selectedPO.id,
+        });
+        receivedItems.push({
+          productId: it.productId,
+          qty: qtyToRec,
+          unitPrice: it.unitPrice,
+          batchId: batchId,
+          batchNo: rf.batchNo,
+          expiryDate: rf.expiryDate,
+        });
+      }
+    });
+
+    if (receivedItems.length === 0) return notify("Isi jumlah barang yang diterima", "danger");
+
+    const noBPB = `BPB-${new Date(date).getFullYear()}-${String(pReceipts.length + 1).padStart(4, "0")}`;
+    await saveBatches([...batches, ...newBatches]);
+    await savePReceipts([...pReceipts, { id: uid(), noBPB, poId: selectedPO.id, date, items: receivedItems }]);
+    notify(`${noBPB} berhasil disimpan, stok batch bertambah`);
+    setModal(null);
+  }
+
+  async function cancelBPB(pr) {
+    if (pInvoices.some((inv) => inv.poId === pr.poId)) {
+      return notify("Gagal membatalkan: Faktur Pembelian untuk transaksi ini sudah ada. Batalkan Faktur Pembelian terlebih dahulu.", "danger");
+    }
+
+    let working = batches.map((b) => ({ ...b }));
+    let shortage = false;
+
+    pr.items.forEach((it) => {
+      const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
+      if (b) {
+        if (b.qty < it.qty) shortage = true;
+        b.qty = Math.max(0, b.qty - it.qty);
+      }
+    });
+
+    if (shortage) {
+      notify("Peringatan: Sebagian barang dari batch ini sudah terpakai transaksi lain. Stok disesuaikan ke 0.", "warn");
+    }
+
+    await saveBatches(working);
+    await savePReceipts(pReceipts.filter((x) => x.id !== pr.id));
+    notify(`${pr.noBPB} berhasil dibatalkan & stok ditarik kembali`);
+  }
+
+  return (
+    <div>
+      <div className="flex justify-end mb-3">
+        <Button onClick={openNew} disabled={eligiblePOs.length === 0}><Plus size={15} /> Penerimaan Barang (BPB)</Button>
+      </div>
+      <Card className="!p-0 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: COLOR.primarySoft }}>
+              {["No. BPB", "PO", "Supplier", "Tanggal Terima", "Item & Batch", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {[...pReceipts].sort((a, b) => new Date(b.date) - new Date(a.date)).map((pr) => {
+              const po = pos.find((x) => x.id === pr.poId);
+              const canCancel = !pInvoices.some((inv) => inv.poId === pr.poId);
+              return (
+                <tr key={pr.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{pr.noBPB}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{po?.poNumber}</td>
+                  <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{po ? findName(suppliers, po.supplierId) : "-"}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(pr.date)}</td>
+                  <td className="px-4 py-2.5 text-xs font-mono" style={{ color: COLOR.inkSoft }}>
+                    {pr.items.map((it) => `${findName(products, it.productId)} (${it.qty} unit - ${it.batchNo})`).join(", ")}
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button onClick={() => setDetailPR(pr)} className="text-xs mr-3" style={{ color: COLOR.accent }}>Detail</button>
+                    {canCancel && <button onClick={() => cancelBPB(pr)} className="text-xs" style={{ color: COLOR.danger }}>Batalkan Terima</button>}
+                  </td>
+                </tr>
+              );
+            })}
+            {pReceipts.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada riwayat Penerimaan Barang.</td></tr>}
+          </tbody>
+        </table>
+      </Card>
+
+      {modal === "new" && (
+        <Modal title="Penerimaan Barang Supplier (BPB)" onClose={() => setModal(null)} wide>
+          {eligiblePOs.length === 0 ? (
+            <div className="text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada PO yang aktif/menunggu barang.</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <Field label="Purchase Order (PO)">
+                  <Select value={poId} onChange={(e) => changePO(e.target.value)}>
+                    {eligiblePOs.map((po) => <option key={po.id} value={po.id}>{po.poNumber} · {findName(suppliers, po.supplierId)}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Tanggal Terima"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
               </div>
-            </div>
+
+              {selectedPO && (
+                <div>
+                  <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Lengkapi Rincian Barang & Batch yang Diterima</div>
+                  {selectedPO.items.map((it, i) => {
+                    const p = products.find((x) => x.id === it.productId);
+                    const remaining = Math.max(0, it.qty - receivedQty(selectedPO.id, it.productId));
+                    if (remaining <= 0) return null;
+                    return (
+                      <div key={i} className="p-3 rounded-lg mb-2 border flex flex-col gap-2" style={{ background: COLOR.bg, borderColor: COLOR.border }}>
+                        <div className="text-sm font-medium" style={{ color: COLOR.ink }}>{p?.name} <span className="text-xs font-mono font-normal" style={{ color: COLOR.inkSoft }}>(Sisa pesan: {remaining} {p?.unit})</span></div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <TextInput type="number" placeholder="Qty Diterima" value={receiveForm[i]?.qty ?? remaining} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], qty: e.target.value } })} />
+                          <TextInput placeholder="No. Batch" value={receiveForm[i]?.batchNo || ""} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], batchNo: e.target.value } })} />
+                          <TextInput type="date" value={receiveForm[i]?.expiryDate || ""} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], expiryDate: e.target.value } })} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <Button onClick={submitBPB} className="w-full justify-center mt-3">Simpan BPB & Tambah Stok Batch</Button>
+            </>
+          )}
+        </Modal>
+      )}
+
+      {detailPR && (
+        <Modal title={`Detail ${detailPR.noBPB}`} onClose={() => setDetailPR(null)} wide>
+          <table className="w-full text-sm mb-3">
+            <thead><tr style={{ background: COLOR.primarySoft }}>{["Produk", "Qty Diterima", "No. Batch", "Exp Date"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {detailPR.items.map((it, i) => {
+                const p = products.find((x) => x.id === it.productId);
+                return (
+                  <tr key={i} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                    <td className="px-3 py-2" style={{ color: COLOR.ink }}>{p?.name}</td>
+                    <td className="px-3 py-2 font-mono" style={{ color: COLOR.inkSoft }}>{it.qty} {p?.unit}</td>
+                    <td className="px-3 py-2 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{it.batchNo}</td>
+                    <td className="px-3 py-2 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(it.expiryDate)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function FakturPembelianTab({ products, suppliers, pos, pReceipts, pInvoices, paymentsOut, pReturns, savePInvoices, findName, notify, getPOStatus, pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa }) {
+  const [detailInv, setDetailInv] = useState(null);
+  const eligiblePOs = pos.filter((po) => getPOStatus(po) === "ready_to_invoice");
+
+  async function createInvoice(po) {
+    const prs = pReceipts.filter((pr) => pr.poId === po.id);
+    const receivedByProduct = {};
+    prs.forEach((pr) => pr.items.forEach((it) => {
+      receivedByProduct[it.productId] = (receivedByProduct[it.productId] || 0) + it.qty;
+    }));
+
+    const items = po.items
+      .map((it) => ({ productId: it.productId, qty: receivedByProduct[it.productId] || 0, unitPrice: it.unitPrice }))
+      .filter((it) => it.qty > 0);
+
+    if (items.length === 0) return notify("Tidak ada barang yang diterima untuk difakturkan", "danger");
+    const noFaktur = `VINV-${new Date().getFullYear()}-${String(pInvoices.length + 1).padStart(4, "0")}`;
+    await savePInvoices([...pInvoices, { id: uid(), noFaktur, poId: po.id, supplierId: po.supplierId, date: todayISO(), items }]);
+    notify(`${noFaktur} berhasil diterbitkan`);
+  }
+
+  async function cancelInvoice(inv) {
+    const paid = pInvoicePaidAmount(inv.id);
+    if (paid > 0) {
+      return notify("Gagal membatalkan: Faktur ini sudah memiliki riwayat pembayaran ke supplier.", "danger");
+    }
+    if (pReturns.some((r) => r.pInvoiceId === inv.id)) {
+      return notify("Gagal membatalkan: Faktur ini memiliki riwayat retur pembelian. Batalkan retur terlebih dahulu.", "danger");
+    }
+
+    await savePInvoices(pInvoices.filter((x) => x.id !== inv.id));
+    notify(`${inv.noFaktur} berhasil dibatalkan`);
+  }
+
+  return (
+    <div>
+      {eligiblePOs.length > 0 && (
+        <Card className="mb-4">
+          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>PO Siap Difakturkan Supplier (Barang sudah diterima)</div>
+          <div className="flex flex-col gap-2">
+            {eligiblePOs.map((po) => (
+              <div key={po.id} className="flex items-center justify-between text-sm py-1" style={{ borderBottom: `1px solid ${COLOR.border}` }}>
+                <span style={{ color: COLOR.ink }}>{po.poNumber} · {findName(suppliers, po.supplierId)}</span>
+                <Button onClick={() => createInvoice(po)}><FileText size={13} /> Terbitkan Faktur Pembelian</Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Card className="!p-0 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: COLOR.primarySoft }}>
+              {["No. Faktur Vendor", "PO", "Supplier", "Tanggal", "Total Tagihan", "Sisa Hutang", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {[...pInvoices].sort((a, b) => new Date(b.date) - new Date(a.date)).map((inv) => {
+              const po = pos.find((x) => x.id === inv.poId);
+              const total = pInvoiceTotal(inv);
+              const sisa = pInvoiceSisa(inv);
+              const canCancel = pInvoicePaidAmount(inv.id) === 0 && !pReturns.some((r) => r.pInvoiceId === inv.id);
+              return (
+                <tr key={inv.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{inv.noFaktur}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{po?.poNumber}</td>
+                  <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(suppliers, inv.supplierId)}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(inv.date)}</td>
+                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(total)}</td>
+                  <td className="px-4 py-2.5"><Badge tone={sisa > 0 ? "danger" : "good"}>{sisa > 0 ? fmtIDR(sisa) : "Lunas"}</Badge></td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button onClick={() => setDetailInv(inv)} className="text-xs mr-3" style={{ color: COLOR.accent }}>Detail</button>
+                    {canCancel && <button onClick={() => cancelInvoice(inv)} className="text-xs" style={{ color: COLOR.danger }}>Batalkan Faktur</button>}
+                  </td>
+                </tr>
+              );
+            })}
+            {pInvoices.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada Faktur Pembelian.</td></tr>}
+          </tbody>
+        </table>
+      </Card>
+
+      {detailInv && (
+        <Modal title={`Detail ${detailInv.noFaktur}`} onClose={() => setDetailInv(null)} wide>
+          <table className="w-full text-sm mb-3">
+            <thead><tr style={{ background: COLOR.primarySoft }}>{["Produk", "Qty", "Harga Beli", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {detailInv.items.map((it, i) => {
+                const p = products.find((x) => x.id === it.productId);
+                return (
+                  <tr key={i} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                    <td className="px-3 py-2" style={{ color: COLOR.ink }}>{p?.name}</td>
+                    <td className="px-3 py-2 font-mono" style={{ color: COLOR.inkSoft }}>{it.qty} {p?.unit}</td>
+                    <td className="px-3 py-2 font-mono" style={{ color: COLOR.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
+                    <td className="px-3 py-2 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(it.qty * it.unitPrice)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pReceipts, batches, saveBatches, savePReturns, findName, notify, pInvoiceTotal, pInvoiceReturnedAmount }) {
+  const [modal, setModal] = useState(null);
+  const [pInvoiceId, setPInvoiceId] = useState("");
+  const [returnQty, setReturnQty] = useState({});
+
+  const returnableInvoices = pInvoices.filter((inv) => pInvoiceReturnedAmount(inv.id) < pInvoiceTotal(inv));
+  const selectedInvoice = pInvoices.find((x) => x.id === pInvoiceId);
+
+  function alreadyReturnedQty(invId, productId) {
+    return pReturns.filter((r) => r.pInvoiceId === invId).reduce((s, r) => {
+      const it = r.items.find((x) => x.productId === productId);
+      return s + (it ? it.qty : 0);
+    }, 0);
+  }
+
+  function openNew() {
+    setPInvoiceId(returnableInvoices[0]?.id || "");
+    setReturnQty({});
+    setModal("new");
+  }
+
+  async function submitRetur() {
+    if (!selectedInvoice) return notify("Pilih Faktur Pembelian terlebih dahulu", "danger");
+    const lines = selectedInvoice.items
+      .map((it) => ({ ...it, qtyReturn: Number(returnQty[it.productId]) || 0, maxReturn: it.qty - alreadyReturnedQty(selectedInvoice.id, it.productId) }))
+      .filter((l) => l.qtyReturn > 0);
+
+    if (lines.length === 0) return notify("Isi jumlah yang ingin diretur", "danger");
+
+    let working = batches.map((b) => ({ ...b }));
+    const returnItems = [];
+
+    for (const l of lines) {
+      if (l.qtyReturn > l.maxReturn) {
+        const p = products.find((x) => x.id === l.productId);
+        return notify(`${p?.name}: melebihi sisa barang yang bisa diretur (${l.maxReturn})`, "danger");
+      }
+
+      // Potong stok batch terkini untuk barang yang dikembalikan ke supplier
+      const prs = pReceipts.filter((pr) => pr.poId === selectedInvoice.poId);
+      let remainingToDeduct = l.qtyReturn;
+
+      prs.forEach((pr) => {
+        pr.items.forEach((rit) => {
+          if (rit.productId === l.productId && remainingToDeduct > 0) {
+            const b = working.find((x) => x.id === rit.batchId || (x.batchNo === rit.batchNo && x.productId === l.productId));
+            if (b && b.qty > 0) {
+              const take = Math.min(b.qty, remainingToDeduct);
+              b.qty -= take;
+              remainingToDeduct -= take;
+            }
+          }
+        });
+      });
+
+      returnItems.push({ productId: l.productId, qty: l.qtyReturn, unitPrice: l.unitPrice });
+    }
+
+    await saveBatches(working);
+    const noRetur = `PRET-${new Date().getFullYear()}-${String(pReturns.length + 1).padStart(4, "0")}`;
+    await savePReturns([...pReturns, { id: uid(), noRetur, pInvoiceId: selectedInvoice.id, poId: selectedInvoice.poId, date: todayISO(), items: returnItems }]);
+    notify(`${noRetur} berhasil disimpan, stok dikurangi & hutang berkurang`);
+    setModal(null);
+  }
+
+  async function cancelReturn(ret) {
+    let working = batches.map((b) => ({ ...b }));
+
+    // Kembalikan lagi stok ke batch
+    const prs = pReceipts.filter((pr) => pr.poId === ret.poId);
+    ret.items.forEach((it) => {
+      let remainingToAdd = it.qty;
+      prs.forEach((pr) => {
+        pr.items.forEach((rit) => {
+          if (rit.productId === it.productId && remainingToAdd > 0) {
+            const b = working.find((x) => x.id === rit.batchId || (x.batchNo === rit.batchNo && x.productId === it.productId));
+            if (b) {
+              b.qty += remainingToAdd;
+              remainingToAdd = 0;
+            }
+          }
+        });
+      });
+    });
+
+    await saveBatches(working);
+    await savePReturns(pReturns.filter((r) => r.id !== ret.id));
+    notify(`${ret.noRetur} berhasil dibatalkan`);
+  }
+
+  return (
+    <div>
+      <div className="flex justify-end mb-3">
+        <Button onClick={openNew} disabled={returnableInvoices.length === 0}><Plus size={15} /> Catat Retur Pembelian</Button>
+      </div>
+      <Card className="!p-0 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: COLOR.primarySoft }}>
+              {["No. Retur", "Faktur Vendor", "Tanggal", "Nilai Retur", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {[...pReturns].sort((a, b) => new Date(b.date) - new Date(a.date)).map((r) => {
+              const inv = pInvoices.find((x) => x.id === r.pInvoiceId);
+              const value = r.items.reduce((s, it) => s + it.qty * it.unitPrice, 0);
+              return (
+                <tr key={r.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{r.noRetur}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{inv?.noFaktur || "-"}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(r.date)}</td>
+                  <td className="px-4 py-2.5 font-mono font-medium" style={{ color: COLOR.good }}>{fmtIDR(value)}</td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button onClick={() => cancelReturn(r)} className="text-xs" style={{ color: COLOR.danger }}>Batalkan Retur</button>
+                  </td>
+                </tr>
+              );
+            })}
+            {pReturns.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada Retur Pembelian.</td></tr>}
+          </tbody>
+        </table>
+      </Card>
+
+      {modal === "new" && (
+        <Modal title="Catat Retur Pembelian ke Supplier" onClose={() => setModal(null)} wide>
+          {returnableInvoices.length === 0 ? (
+            <div className="text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian yang bisa diretur.</div>
+          ) : (
+            <>
+              <Field label="Pilih Faktur Pembelian">
+                <Select value={pInvoiceId} onChange={(e) => { setPInvoiceId(e.target.value); setReturnQty({}); }}>
+                  {returnableInvoices.map((inv) => <option key={inv.id} value={inv.id}>{inv.noFaktur} · {findName(suppliers, inv.supplierId)}</option>)}
+                </Select>
+              </Field>
+
+              {selectedInvoice && (
+                <div className="flex flex-col gap-2 mt-2">
+                  <div className="text-xs font-medium" style={{ color: COLOR.inkSoft }}>Isi Qty Barang yang Dikembalikan Ke Supplier</div>
+                  {selectedInvoice.items.map((it) => {
+                    const p = products.find((x) => x.id === it.productId);
+                    const maxReturn = it.qty - alreadyReturnedQty(selectedInvoice.id, it.productId);
+                    if (maxReturn <= 0) return null;
+                    return (
+                      <div key={it.productId} className="flex items-center gap-2">
+                        <div className="flex-1 text-sm" style={{ color: COLOR.ink }}>{p?.name} <span className="text-xs font-mono" style={{ color: COLOR.inkSoft }}>(maks {maxReturn} {p?.unit})</span></div>
+                        <TextInput type="number" value={returnQty[it.productId] || 0} onChange={(e) => setReturnQty({ ...returnQty, [it.productId]: Number(e.target.value) })} className="w-24" />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <Button onClick={submitRetur} className="w-full justify-center mt-4">Simpan Retur & Potong Stok Batch</Button>
+            </>
           )}
         </Modal>
       )}
@@ -1781,26 +2292,24 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
 // ---------- Finance ----------
 function FinanceView(props) {
   const {
-    pos, sos, suppliers, customers, batches, invoices, returns, paymentsOut, paymentsIn, expenses,
+    pos, sos, suppliers, customers, batches, invoices, pInvoices, pReturns, returns, paymentsOut, paymentsIn, expenses,
     findName, notify, savePaymentsOut, savePaymentsIn, saveExpenses,
     arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth,
     invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount, invoiceSisa,
+    pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa,
   } = props;
 
   const [subTab, setSubTab] = useState("ar");
-  const [payModal, setPayModal] = useState(null); // { kind: 'invoice'|'dp'|'po'|'edit-in'|'edit-out', doc, pay }
+  const [payModal, setPayModal] = useState(null); // { kind: 'invoice'|'dp'|'pInvoice'|'edit-in'|'edit-out', doc, pay }
   const [payForm, setPayForm] = useState({ amount: "", date: todayISO(), method: PAYMENT_METHODS[0], note: "" });
   const [expModal, setExpModal] = useState(false);
   const [expForm, setExpForm] = useState({ category: EXPENSE_CATEGORIES[0], amount: "", date: todayISO(), note: "" });
-
-  function poTotal(po) { return po.items.reduce((s, it) => s + it.qty * it.unitPrice, 0); }
-  function poPaid(poId) { return paymentsOut.filter((p) => p.poId === poId).reduce((s, p) => s + p.amount, 0); }
 
   function openPay(kind, doc) {
     let amount = 0;
     if (kind === "invoice") amount = invoiceSisa(doc);
     else if (kind === "dp") amount = 0;
-    else amount = Math.max(0, poTotal(doc) - poPaid(doc.id));
+    else if (kind === "pInvoice") amount = pInvoiceSisa(doc);
     setPayForm({ amount, date: todayISO(), method: PAYMENT_METHODS[0], note: "" });
     setPayModal({ kind, doc });
   }
@@ -1837,9 +2346,9 @@ function FinanceView(props) {
     } else if (payModal.kind === "dp") {
       await savePaymentsIn([...paymentsIn, { ...entry, soId: payModal.doc.id, type: "DP" }]);
       notify(`DP untuk ${payModal.doc.soNumber} dicatat`);
-    } else {
-      await savePaymentsOut([...paymentsOut, { ...entry, poId: payModal.doc.id }]);
-      notify(`Pembayaran ke ${findName(suppliers, payModal.doc.supplierId)} dicatat`);
+    } else if (payModal.kind === "pInvoice") {
+      await savePaymentsOut([...paymentsOut, { ...entry, pInvoiceId: payModal.doc.id }]);
+      notify(`Pembayaran Faktur Supplier ${payModal.doc.noFaktur} dicatat`);
     }
     setPayModal(null);
   }
@@ -1868,11 +2377,11 @@ function FinanceView(props) {
 
   const invoiceARList = invoices.map((inv) => ({ inv, total: invoiceTotal(inv), sisa: invoiceSisa(inv) })).filter((x) => x.sisa > 0);
   const dpOnlySOList = sos.filter((so) => !invoices.some((inv) => inv.soId === so.id) && soDPAmount(so.id) > 0);
-  const apList = pos.filter((po) => po.status === "received").map((po) => ({ po, total: poTotal(po), paid: poPaid(po.id) })).filter((x) => x.total - x.paid > 0);
+  const pInvoiceAPList = pInvoices.map((inv) => ({ inv, total: pInvoiceTotal(inv), sisa: pInvoiceSisa(inv) })).filter((x) => x.sisa > 0);
 
   const SUBNAV = [
     { id: "ar", label: `Piutang (${invoiceARList.length})` },
-    { id: "ap", label: `Hutang (${apList.length})` },
+    { id: "ap", label: `Hutang (${pInvoiceAPList.length})` },
     { id: "history", label: `Riwayat Pembayaran (${paymentsIn.length + paymentsOut.length})` },
     { id: "expenses", label: "Biaya Operasional" },
   ];
@@ -1940,7 +2449,7 @@ function FinanceView(props) {
                     </tr>
                   );
                 })}
-                {invoiceARList.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada piutang tersisa — semua Faktur sudah lunas.</td></tr>}
+                {invoiceARList.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada piutang tersisa — semua Faktur Penjualan sudah lunas.</td></tr>}
               </tbody>
             </table>
           </Card>
@@ -1994,30 +2503,29 @@ function FinanceView(props) {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: COLOR.primarySoft }}>
-                {["No. PO", "Supplier", "Total", "Sudah Dibayar", "Sisa Hutang", "Diterima Sejak", ""].map((h) => (
+                {["No. Faktur Vendor", "Supplier", "Total Tagihan", "Sudah Dibayar", "Sisa Hutang", "Tanggal Faktur", ""].map((h) => (
                   <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {apList.map(({ po, total, paid }) => (
-                <tr key={po.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{po.poNumber}</td>
-                  <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(suppliers, po.supplierId)}</td>
+              {pInvoiceAPList.map(({ inv, total, sisa }) => (
+                <tr key={inv.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{inv.noFaktur}</td>
+                  <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(suppliers, inv.supplierId)}</td>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.inkSoft }}>{fmtIDR(total)}</td>
-                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.good }}>{fmtIDR(paid)}</td>
-                  <td className="px-4 py-2.5 font-mono font-medium" style={{ color: COLOR.danger }}>{fmtIDR(total - paid)}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(po.date)}</td>
-                  <td className="px-4 py-2.5 text-right"><button onClick={() => openPay("po", po)} className="text-xs" style={{ color: COLOR.accent }}>Catat Pembayaran</button></td>
+                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.good }}>{fmtIDR(total - sisa)}</td>
+                  <td className="px-4 py-2.5 font-mono font-medium" style={{ color: COLOR.danger }}>{fmtIDR(sisa)}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(inv.date)}</td>
+                  <td className="px-4 py-2.5 text-right"><button onClick={() => openPay("pInvoice", inv)} className="text-xs" style={{ color: COLOR.accent }}>Bayar Hutang</button></td>
                 </tr>
               ))}
-              {apList.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada hutang tersisa — semua PO sudah lunas.</td></tr>}
+              {pInvoiceAPList.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada hutang tersisa — semua Faktur Pembelian sudah lunas.</td></tr>}
             </tbody>
           </table>
         </Card>
       )}
 
-      {/* --- SUB-TAB BARU: RIWAYAT PEMBAYARAN (EDIT & HAPUS) --- */}
       {subTab === "history" && (
         <div>
           <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Pembayaran Masuk (Pelanggan / DP)</div>
@@ -2055,23 +2563,25 @@ function FinanceView(props) {
             </table>
           </Card>
 
-          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Pembayaran Keluar (Supplier / PO)</div>
+          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Pembayaran Keluar (Supplier / Faktur Pembelian)</div>
           <Card className="!p-0 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["Tanggal", "No. PO", "Jumlah", "Metode", "Catatan", ""].map((h) => (
+                  {["Tanggal", "No. Faktur Vendor / PO", "Jumlah", "Metode", "Catatan", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {[...paymentsOut].sort((a, b) => new Date(b.date) - new Date(a.date)).map((p) => {
+                  const inv = pInvoices.find((x) => x.id === p.pInvoiceId);
                   const po = pos.find((x) => x.id === p.poId);
+                  const ref = inv ? inv.noFaktur : po ? po.poNumber : "-";
                   return (
                     <tr key={p.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                       <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(p.date)}</td>
-                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.ink }}>{po?.poNumber || "-"}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.ink }}>{ref}</td>
                       <td className="px-4 py-2.5 font-mono font-medium" style={{ color: COLOR.danger }}>{fmtIDR(p.amount)}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.method}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.note || "-"}</td>
@@ -2125,9 +2635,10 @@ function FinanceView(props) {
           title={
             payModal.kind === "invoice" ? `Catat Pembayaran — ${payModal.doc.noFaktur}`
             : payModal.kind === "dp" ? `Catat DP — ${payModal.doc.soNumber}`
+            : payModal.kind === "pInvoice" ? `Bayar Hutang Supplier — ${payModal.doc.noFaktur}`
             : payModal.kind === "edit-in" ? `Edit Pembayaran Masuk`
             : payModal.kind === "edit-out" ? `Edit Pembayaran Keluar`
-            : `Catat Pembayaran Keluar — ${payModal.doc.poNumber}`
+            : `Catat Pembayaran Keluar`
           }
           onClose={() => setPayModal(null)}
         >
