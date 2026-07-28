@@ -9,9 +9,25 @@ import {
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./firebase";
 
-// ---------- constants ----------
+// ---------- CONSTANTS & COMPANY PROFILE CONFIG ----------
 const CATEGORIES = ["Obat Generik", "Obat Paten", "Alat Kesehatan", "Vitamin & Suplemen", "Consumables"];
 const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Toko Obat", "Distributor Lain"];
+
+// UBAH DETAIL PROFIL PERUSAHAAN DI SINI SESUAI KEBUTUHAN ANDA
+const COMPANY_PROFILE = {
+  name: "PT WIRYATAMA PUTERA MANDIRI",
+  tagline: "Distributor Penyalur Farmasi & Alat Kesehatan (Alkes)",
+  address: "Jl. Utama Bintaro Jaya No. 88, Sektor 3A, Tangerang Selatan, Banten 15222",
+  contact: "Email: finance@wiryatamaputera.co.id | Telp: (021) 555-0192 / WhatsApp: 0812-3456-7890",
+  // Masukkan URL/Link Logo Perusahaan Anda di bawah ini (Kosongkan "" jika tidak ada logo gambar)
+  logoUrl: "https://via.placeholder.com/150x60?text=LOGO+WPM", 
+  bankDetails: {
+    bankName: "Bank Central Asia (BCA)",
+    accountNumber: "883-0912-331",
+    accountName: "PT WIRYATAMA PUTERA MANDIRI",
+  },
+  paymentNotes: "Pembayaran dianggap sah apabila uang telah masuk ke rekening atas nama PT Wiryatama Putera Mandiri."
+};
 
 const COLOR = {
   bg: "#F5F8F7",
@@ -34,7 +50,6 @@ const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const fmtIDR = (n) => "Rp" + Math.round(n || 0).toLocaleString("id-ID");
 
-// FORMAT TANGGAL DD/MM/YYYY UNTUK DITAMPILKAN
 const fmtDate = (d) => {
   if (!d) return "-";
   const [year, month, day] = String(d).slice(0, 10).split("-");
@@ -1695,7 +1710,7 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
   );
 }
 
-// ---------- Sales (SO → Surat Jalan → Faktur → Retur) ----------
+// ---------- Sales ----------
 function SalesView({
   products, customers, sos, batches, deliveryNotes, invoices, returns, paymentsIn,
   saveSOs, saveBatches, saveDeliveryNotes, saveInvoices, saveReturns, allocateFEFO,
@@ -2322,13 +2337,18 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
           </div>
 
           <div id="printable-invoice" className="p-6 bg-white border rounded-xl text-xs text-gray-800" style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
-            {/* KOP SURAT */}
+            {/* KOP SURAT BERDASERKAN PROFIL PERUSAHAAN (COMPANY_PROFILE) */}
             <div className="flex items-start justify-between border-b-2 pb-4 mb-4" style={{ borderColor: COLOR.primary }}>
-              <div>
-                <h1 className="text-lg font-bold uppercase tracking-wide" style={{ color: COLOR.primary }}>PT Wiryatama Putera Mandiri</h1>
-                <p className="text-[11px] text-gray-600 font-medium">Distributor Penyalur Farmasi & Alat Kesehatan (Alkes)</p>
-                <p className="text-[10px] text-gray-500 mt-1">Jl. Utama Bintaro Jaya, Tangerang Selatan, Banten</p>
-                <p className="text-[10px] text-gray-500">Email: info@wiryatamaputera.co.id | Telp: (021) 555-0192</p>
+              <div className="flex items-start gap-3">
+                {COMPANY_PROFILE.logoUrl && (
+                  <img src={COMPANY_PROFILE.logoUrl} alt="Logo" className="h-12 object-contain" />
+                )}
+                <div>
+                  <h1 className="text-base font-bold uppercase tracking-wide" style={{ color: COLOR.primary }}>{COMPANY_PROFILE.name}</h1>
+                  <p className="text-[11px] text-gray-600 font-medium">{COMPANY_PROFILE.tagline}</p>
+                  <p className="text-[10px] text-gray-500 mt-1">{COMPANY_PROFILE.address}</p>
+                  <p className="text-[10px] text-gray-500">{COMPANY_PROFILE.contact}</p>
+                </div>
               </div>
               <div className="text-right">
                 <div className="text-xl font-bold uppercase tracking-wider text-gray-700">FAKTUR PENJUALAN</div>
@@ -2395,8 +2415,9 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                     <div className="w-1/2 p-3 rounded-lg border bg-gray-50 text-[11px]">
                       <div className="font-semibold text-gray-700 mb-1">Catatan Pembayaran:</div>
                       <p className="text-gray-500 leading-relaxed">
-                        Pembayaran dapat ditransfer melalui Bank BCA A/C: <strong>883-0912-331</strong> a.n PT Wiryatama Putera Mandiri.<br />
-                        Harap cantumkan No. Faktur ({printInv.noFaktur}) saat konfirmasi transfer.
+                        Pembayaran dapat ditransfer melalui Bank: <strong>{COMPANY_PROFILE.bankDetails.bankName}</strong><br />
+                        No. Rekening: <strong>{COMPANY_PROFILE.bankDetails.accountNumber}</strong> a.n <strong>{COMPANY_PROFILE.bankDetails.accountName}</strong>.<br />
+                        <span className="italic">{COMPANY_PROFILE.paymentNotes}</span>
                       </p>
                     </div>
 
@@ -2437,7 +2458,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                       <p className="font-bold underline text-gray-900">( {cust?.name || "..........................."} )</p>
                     </div>
                     <div>
-                      <p className="text-gray-500 mb-12">Hormat Kami (PT Wiryatama Putera Mandiri),</p>
+                      <p className="text-gray-500 mb-12">Hormat Kami ({COMPANY_PROFILE.name}),</p>
                       <p className="font-bold underline text-gray-900">( Bagian Finance & Kasir )</p>
                     </div>
                   </div>
@@ -2977,7 +2998,7 @@ function FinanceView(props) {
             </Select>
           </Field>
           <Field label="Jumlah"><TextInput type="number" value={expForm.amount} onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })} /></Field>
-          <Field label="Tanggal"><TextInput type="date" value={expForm.date} onChange={(e) => setExpForm({ ...expForm, date: e.target.value })} /></Field>
+          <Field label="Tanggal"><TextInput type="date" value={expForm.date} onChange={(e) => setDate(e.target.value)} /></Field>
           <Field label="Catatan (opsional)"><TextInput value={expForm.note} onChange={(e) => setExpForm({ ...expForm, note: e.target.value })} /></Field>
           <Button onClick={submitExpense} className="w-full justify-center mt-2">Simpan Biaya</Button>
         </Modal>
