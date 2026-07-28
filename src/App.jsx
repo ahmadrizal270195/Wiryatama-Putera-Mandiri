@@ -3,7 +3,7 @@ import { loadKey, saveKey } from "./storage";
 import {
   LayoutDashboard, Package, Truck, Users, ShoppingCart, ClipboardList,
   AlertTriangle, Plus, X, Trash2, Search, CheckCircle2, Clock,
-  Boxes, ArrowUpRight, ArrowDownRight, Loader2,
+  Boxes, ArrowUpRight, ArrowDownRight, Loader2, Edit,
   Wallet, Receipt, CreditCard, PiggyBank, BarChart3, FileText, LogOut
 } from "lucide-react";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
@@ -1386,7 +1386,6 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
     setModal(null);
   }
 
-  // --- FUNGSIONALITAS CANCEL / REVERSE SURAT JALAN ---
   async function cancelSJ(dn) {
     if (invoices.some((inv) => inv.soId === dn.soId)) {
       return notify("Gagal membatalkan: Faktur Penjualan untuk transaksi ini sudah terbit. Batalkan Faktur terlebih dahulu.", "danger");
@@ -1541,7 +1540,6 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     notify(`${noFaktur} dibuat`);
   }
 
-  // --- FUNGSIONALITAS CANCEL FAKTUR ---
   async function cancelInvoice(inv) {
     const paid = invoicePaidAmount(inv.id);
     if (paid > 0) {
@@ -1687,12 +1685,10 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
     setModal(null);
   }
 
-  // --- FUNGSIONALITAS CANCEL RETUR ---
   async function cancelReturn(ret) {
     let working = batches.map((b) => ({ ...b }));
     let shortage = false;
 
-    // Kurangi kembali stok yang sebelumnya dikembalikan saat retur
     ret.items.forEach((it) => {
       (it.restockedBatches || []).forEach((r) => {
         const b = working.find((x) => x.id === r.batchId);
@@ -1792,7 +1788,7 @@ function FinanceView(props) {
   } = props;
 
   const [subTab, setSubTab] = useState("ar");
-  const [payModal, setPayModal] = useState(null);
+  const [payModal, setPayModal] = useState(null); // { kind: 'invoice'|'dp'|'po'|'edit-in'|'edit-out', doc, pay }
   const [payForm, setPayForm] = useState({ amount: "", date: todayISO(), method: PAYMENT_METHODS[0], note: "" });
   const [expModal, setExpModal] = useState(false);
   const [expForm, setExpForm] = useState({ category: EXPENSE_CATEGORIES[0], amount: "", date: todayISO(), note: "" });
@@ -1809,9 +1805,31 @@ function FinanceView(props) {
     setPayModal({ kind, doc });
   }
 
+  function openEditPay(kind, payObj) {
+    setPayForm({ amount: payObj.amount, date: payObj.date || todayISO(), method: payObj.method || PAYMENT_METHODS[0], note: payObj.note || "" });
+    setPayModal({ kind, pay: payObj });
+  }
+
   async function submitPayment() {
     const amt = Number(payForm.amount) || 0;
     if (amt <= 0) return notify("Jumlah pembayaran harus lebih dari 0", "danger");
+
+    if (payModal.kind === "edit-in") {
+      const updated = paymentsIn.map((p) => (p.id === payModal.pay.id ? { ...p, amount: amt, date: payForm.date, method: payForm.method, note: payForm.note } : p));
+      await savePaymentsIn(updated);
+      notify("Pembayaran masuk diperbarui");
+      setPayModal(null);
+      return;
+    }
+
+    if (payModal.kind === "edit-out") {
+      const updated = paymentsOut.map((p) => (p.id === payModal.pay.id ? { ...p, amount: amt, date: payForm.date, method: payForm.method, note: payForm.note } : p));
+      await savePaymentsOut(updated);
+      notify("Pembayaran keluar diperbarui");
+      setPayModal(null);
+      return;
+    }
+
     const entry = { id: uid(), amount: amt, date: payForm.date, method: payForm.method, note: payForm.note };
     if (payModal.kind === "invoice") {
       await savePaymentsIn([...paymentsIn, { ...entry, invoiceId: payModal.doc.id, type: "Pelunasan" }]);
@@ -1824,6 +1842,16 @@ function FinanceView(props) {
       notify(`Pembayaran ke ${findName(suppliers, payModal.doc.supplierId)} dicatat`);
     }
     setPayModal(null);
+  }
+
+  async function deletePaymentIn(id) {
+    await savePaymentsIn(paymentsIn.filter((p) => p.id !== id));
+    notify("Pembayaran masuk dihapus");
+  }
+
+  async function deletePaymentOut(id) {
+    await savePaymentsOut(paymentsOut.filter((p) => p.id !== id));
+    notify("Pembayaran keluar dihapus");
   }
 
   async function submitExpense() {
@@ -1845,6 +1873,7 @@ function FinanceView(props) {
   const SUBNAV = [
     { id: "ar", label: `Piutang (${invoiceARList.length})` },
     { id: "ap", label: `Hutang (${apList.length})` },
+    { id: "history", label: `Riwayat Pembayaran (${paymentsIn.length + paymentsOut.length})` },
     { id: "expenses", label: "Biaya Operasional" },
   ];
 
@@ -1872,7 +1901,7 @@ function FinanceView(props) {
         </Card>
       </div>
 
-      <div className="flex gap-1 mb-4 p-1 rounded-lg w-fit" style={{ background: COLOR.primarySoft }}>
+      <div className="flex gap-1 mb-4 p-1 rounded-lg w-fit flex-wrap" style={{ background: COLOR.primarySoft }}>
         {SUBNAV.map((s) => (
           <button
             key={s.id}
@@ -1988,6 +2017,78 @@ function FinanceView(props) {
         </Card>
       )}
 
+      {/* --- SUB-TAB BARU: RIWAYAT PEMBAYARAN (EDIT & HAPUS) --- */}
+      {subTab === "history" && (
+        <div>
+          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Pembayaran Masuk (Pelanggan / DP)</div>
+          <Card className="!p-0 overflow-hidden mb-5">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: COLOR.primarySoft }}>
+                  {["Tanggal", "Tipe", "Referensi", "Jumlah", "Metode", "Catatan", ""].map((h) => (
+                    <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...paymentsIn].sort((a, b) => new Date(b.date) - new Date(a.date)).map((p) => {
+                  const inv = invoices.find((x) => x.id === p.invoiceId);
+                  const so = sos.find((x) => x.id === p.soId);
+                  const ref = inv ? inv.noFaktur : so ? so.soNumber : "-";
+                  return (
+                    <tr key={p.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(p.date)}</td>
+                      <td className="px-4 py-2.5"><Badge tone="good">{p.type || "Pelunasan"}</Badge></td>
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.ink }}>{ref}</td>
+                      <td className="px-4 py-2.5 font-mono font-medium" style={{ color: COLOR.good }}>{fmtIDR(p.amount)}</td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.method}</td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.note || "-"}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <button onClick={() => openEditPay("edit-in", p)} className="text-xs mr-3" style={{ color: COLOR.accent }}>Edit</button>
+                        <button onClick={() => deletePaymentIn(p.id)} className="text-xs" style={{ color: COLOR.danger }}>Hapus</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {paymentsIn.length === 0 && <tr><td colSpan={7} className="text-center py-6 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada pembayaran masuk.</td></tr>}
+              </tbody>
+            </table>
+          </Card>
+
+          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Pembayaran Keluar (Supplier / PO)</div>
+          <Card className="!p-0 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: COLOR.primarySoft }}>
+                  {["Tanggal", "No. PO", "Jumlah", "Metode", "Catatan", ""].map((h) => (
+                    <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...paymentsOut].sort((a, b) => new Date(b.date) - new Date(a.date)).map((p) => {
+                  const po = pos.find((x) => x.id === p.poId);
+                  return (
+                    <tr key={p.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(p.date)}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.ink }}>{po?.poNumber || "-"}</td>
+                      <td className="px-4 py-2.5 font-mono font-medium" style={{ color: COLOR.danger }}>{fmtIDR(p.amount)}</td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.method}</td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.note || "-"}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <button onClick={() => openEditPay("edit-out", p)} className="text-xs mr-3" style={{ color: COLOR.accent }}>Edit</button>
+                        <button onClick={() => deletePaymentOut(p.id)} className="text-xs" style={{ color: COLOR.danger }}>Hapus</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {paymentsOut.length === 0 && <tr><td colSpan={6} className="text-center py-6 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada pembayaran keluar.</td></tr>}
+              </tbody>
+            </table>
+          </Card>
+        </div>
+      )}
+
       {subTab === "expenses" && (
         <div>
           <div className="flex justify-end mb-3">
@@ -2024,6 +2125,8 @@ function FinanceView(props) {
           title={
             payModal.kind === "invoice" ? `Catat Pembayaran — ${payModal.doc.noFaktur}`
             : payModal.kind === "dp" ? `Catat DP — ${payModal.doc.soNumber}`
+            : payModal.kind === "edit-in" ? `Edit Pembayaran Masuk`
+            : payModal.kind === "edit-out" ? `Edit Pembayaran Keluar`
             : `Catat Pembayaran Keluar — ${payModal.doc.poNumber}`
           }
           onClose={() => setPayModal(null)}
