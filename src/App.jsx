@@ -3,7 +3,7 @@ import { loadKey, saveKey } from "./storage";
 import {
   LayoutDashboard, Package, Truck, Users, ShoppingCart, ClipboardList,
   AlertTriangle, Plus, X, Trash2, Search, CheckCircle2, Clock,
-  Boxes, ArrowUpRight, ArrowDownRight, Loader2, Edit,
+  Boxes, ArrowUpRight, ArrowDownRight, Loader2, Edit, Calendar,
   Wallet, Receipt, CreditCard, PiggyBank, BarChart3, FileText, LogOut
 } from "lucide-react";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
@@ -135,7 +135,7 @@ const inputStyle = {
   color: COLOR.ink,
 };
 
-// KOMPONEN INPUT TANGGAL KUSTOM AGAR TAMPIL SELALU DD/MM/YYYY
+// KOMPONEN INPUT TANGGAL KUSTOM DENGAN IKON KALENDER LENGKAP
 function DateInput(props) {
   const { value, onChange, className = "", required, disabled, style } = props;
 
@@ -153,9 +153,10 @@ function DateInput(props) {
         readOnly
         value={formatDisplay(value)}
         placeholder="dd/mm/yyyy"
-        className={"w-full rounded-lg px-3 py-1.5 text-sm outline-none bg-white " + className}
+        className={"w-full rounded-lg pl-3 pr-9 py-1.5 text-sm outline-none bg-white " + className}
         style={{ ...inputStyle, ...style }}
       />
+      <Calendar size={15} className="absolute right-3 pointer-events-none" style={{ color: COLOR.inkSoft }} />
       <input
         type="date"
         value={value || ""}
