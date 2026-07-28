@@ -33,7 +33,15 @@ const COLOR = {
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + "-" + Math.random().toString(16).slice(2));
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const fmtIDR = (n) => "Rp" + Math.round(n || 0).toLocaleString("id-ID");
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "-";
+
+// FORMAT TANGGAL DD/MM/YYYY UNTUK DITAMPILKAN
+const fmtDate = (d) => {
+  if (!d) return "-";
+  const [year, month, day] = d.slice(0, 10).split("-");
+  if (year && month && day) return `${day}/${month}/${year}`;
+  return d;
+};
+
 const daysUntil = (d) => Math.ceil((new Date(d) - new Date(todayISO())) / (1000 * 60 * 60 * 24));
 
 const KEYS = {
@@ -877,7 +885,7 @@ function CustomersView({ customers, save, notify }) {
   );
 }
 
-// ---------- Purchases (PO → Penerimaan Barang → Faktur Pembelian → Retur Pembelian) ----------
+// ---------- Purchases ----------
 function PurchasesView({
   products, suppliers, pos, batches, pReceipts, pInvoices, pReturns, paymentsOut,
   savePOs, saveBatches, savePReceipts, savePInvoices, savePReturns, findName, notify,
@@ -1009,7 +1017,7 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify,
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. PO", "Supplier", "Tanggal", "Total", "Status", ""].map((h) => (
+              {["No. PO", "Supplier", "Tanggal (dd/mm/yyyy)", "Total", "Status", ""].map((h) => (
                 <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
               ))}
             </tr>
@@ -1048,7 +1056,9 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify,
                 {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Select>
             </Field>
-            <Field label="Tanggal PO"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+            <Field label="Tanggal PO">
+              <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </Field>
           </div>
 
           {/* PEMILIH PRODUK BANYAK */}
@@ -1153,7 +1163,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
     if (firstPO) {
       const init = {};
       firstPO.items.forEach((it, idx) => {
-        init[idx] = { qty: Math.max(0, it.qty - receivedQty(firstPO.id, it.productId)), batchNo: "", expiryDate: "" };
+        init[idx] = { qty: Math.max(0, it.qty - receivedQty(firstPO.id, it.productId)), batchNo: "", expiryDate: todayISO() };
       });
       setReceiveForm(init);
     } else setReceiveForm({});
@@ -1166,7 +1176,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
     const init = {};
     if (po) {
       po.items.forEach((it, idx) => {
-        init[idx] = { qty: Math.max(0, it.qty - receivedQty(po.id, it.productId)), batchNo: "", expiryDate: "" };
+        init[idx] = { qty: Math.max(0, it.qty - receivedQty(po.id, it.productId)), batchNo: "", expiryDate: todayISO() };
       });
     }
     setReceiveForm(init);
@@ -1255,7 +1265,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. BPB", "PO", "Supplier", "Tanggal Terima", "Item & Batch", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+              {["No. BPB", "PO", "Supplier", "Tanggal Terima (dd/mm/yyyy)", "Item & Batch", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -1295,7 +1305,9 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
                     {eligiblePOs.map((po) => <option key={po.id} value={po.id}>{po.poNumber} · {findName(suppliers, po.supplierId)}</option>)}
                   </Select>
                 </Field>
-                <Field label="Tanggal Terima"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+                <Field label="Tanggal Terima">
+                  <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                </Field>
               </div>
 
               {selectedPO && (
@@ -1309,9 +1321,18 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
                       <div key={i} className="p-3 rounded-lg mb-2 border flex flex-col gap-2" style={{ background: COLOR.bg, borderColor: COLOR.border }}>
                         <div className="text-sm font-medium" style={{ color: COLOR.ink }}>{p?.name} <span className="text-xs font-mono font-normal" style={{ color: COLOR.inkSoft }}>(Sisa pesan: {remaining} {p?.unit})</span></div>
                         <div className="grid grid-cols-3 gap-2">
-                          <TextInput type="number" placeholder="Qty Diterima" value={receiveForm[i]?.qty ?? remaining} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], qty: e.target.value } })} />
-                          <TextInput placeholder="No. Batch" value={receiveForm[i]?.batchNo || ""} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], batchNo: e.target.value } })} />
-                          <TextInput type="date" value={receiveForm[i]?.expiryDate || ""} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], expiryDate: e.target.value } })} />
+                          <div>
+                            <label className="text-[10px] block text-gray-500 font-mono">Qty Diterima</label>
+                            <TextInput type="number" value={receiveForm[i]?.qty ?? remaining} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], qty: e.target.value } })} />
+                          </div>
+                          <div>
+                            <label className="text-[10px] block text-gray-500 font-mono">No. Batch</label>
+                            <TextInput placeholder="No. Batch" value={receiveForm[i]?.batchNo || ""} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], batchNo: e.target.value } })} />
+                          </div>
+                          <div>
+                            <label className="text-[10px] block text-gray-500 font-mono">Exp Date</label>
+                            <TextInput type="date" value={receiveForm[i]?.expiryDate || todayISO()} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], expiryDate: e.target.value } })} />
+                          </div>
                         </div>
                       </div>
                     );
@@ -1327,7 +1348,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
       {detailPR && (
         <Modal title={`Detail ${detailPR.noBPB}`} onClose={() => setDetailPR(null)} wide>
           <table className="w-full text-sm mb-3">
-            <thead><tr style={{ background: COLOR.primarySoft }}>{["Produk", "Qty Diterima", "No. Batch", "Exp Date"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: COLOR.primarySoft }}>{["Produk", "Qty Diterima", "No. Batch", "Exp Date (dd/mm/yyyy)"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>{h}</th>)}</tr></thead>
             <tbody>
               {detailPR.items.map((it, i) => {
                 const p = products.find((x) => x.id === it.productId);
@@ -1402,7 +1423,7 @@ function FakturPembelianTab({ products, suppliers, pos, pReceipts, pInvoices, pa
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. Faktur Vendor", "PO", "Supplier", "Tanggal", "Total Tagihan", "Sisa Hutang", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+              {["No. Faktur Vendor", "PO", "Supplier", "Tanggal (dd/mm/yyyy)", "Total Tagihan", "Sisa Hutang", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -1552,7 +1573,7 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. Retur", "Faktur Vendor", "Tanggal", "Nilai Retur", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+              {["No. Retur", "Faktur Vendor", "Tanggal (dd/mm/yyyy)", "Nilai Retur", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -1745,7 +1766,7 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. SO", "Pelanggan", "Tanggal", "Total", "Status", ""].map((h) => (
+              {["No. SO", "Pelanggan", "Tanggal (dd/mm/yyyy)", "Total", "Status", ""].map((h) => (
                 <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
               ))}
             </tr>
@@ -1784,7 +1805,9 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
                 {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
             </Field>
-            <Field label="Tanggal SO"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+            <Field label="Tanggal SO">
+              <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </Field>
           </div>
 
           {/* PEMILIH PRODUK BANYAK */}
@@ -2017,7 +2040,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. SJ", "SO", "Pelanggan", "Tanggal", "Status", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+              {["No. SJ", "SO", "Pelanggan", "Tanggal (dd/mm/yyyy)", "Status", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -2056,7 +2079,9 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
                     {eligibleSOs.map((so) => <option key={so.id} value={so.id}>{so.soNumber} · {findName(customers, so.customerId)}</option>)}
                   </Select>
                 </Field>
-                <Field label="Tanggal Kirim"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+                <Field label="Tanggal Kirim">
+                  <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                </Field>
               </div>
               {selectedSO && (
                 <div className="flex flex-col gap-2 mt-2">
@@ -2174,7 +2199,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. Faktur", "SO", "Pelanggan", "Tanggal", "Total", "Sisa", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+              {["No. Faktur", "SO", "Pelanggan", "Tanggal (dd/mm/yyyy)", "Total", "Sisa", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -2319,7 +2344,7 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. Retur", "Sumber", "Referensi", "Tanggal", "Nilai", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+              {["No. Retur", "Sumber", "Referensi", "Tanggal (dd/mm/yyyy)", "Nilai", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -2520,7 +2545,7 @@ function FinanceView(props) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["No. Faktur", "Pelanggan", "Total", "DP + Dibayar", "Sisa Piutang", "Tanggal Faktur", ""].map((h) => (
+                  {["No. Faktur", "Pelanggan", "Total", "DP + Dibayar", "Sisa Piutang", "Tanggal Faktur (dd/mm/yyyy)", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
@@ -2550,7 +2575,7 @@ function FinanceView(props) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["No. SO", "Pelanggan", "Total SO", "DP Diterima", "Tanggal SO", ""].map((h) => (
+                  {["No. SO", "Pelanggan", "Total SO", "DP Diterima", "Tanggal SO (dd/mm/yyyy)", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
@@ -2594,7 +2619,7 @@ function FinanceView(props) {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: COLOR.primarySoft }}>
-                {["No. Faktur Vendor", "Supplier", "Total Tagihan", "Sudah Dibayar", "Sisa Hutang", "Tanggal Faktur", ""].map((h) => (
+                {["No. Faktur Vendor", "Supplier", "Total Tagihan", "Sudah Dibayar", "Sisa Hutang", "Tanggal Faktur (dd/mm/yyyy)", ""].map((h) => (
                   <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                 ))}
               </tr>
@@ -2624,7 +2649,7 @@ function FinanceView(props) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["Tanggal", "Tipe", "Referensi", "Jumlah", "Metode", "Catatan", ""].map((h) => (
+                  {["Tanggal (dd/mm/yyyy)", "Tipe", "Referensi", "Jumlah", "Metode", "Catatan", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
@@ -2659,7 +2684,7 @@ function FinanceView(props) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["Tanggal", "No. Faktur Vendor / PO", "Jumlah", "Metode", "Catatan", ""].map((h) => (
+                  {["Tanggal (dd/mm/yyyy)", "No. Faktur Vendor / PO", "Jumlah", "Metode", "Catatan", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
@@ -2699,7 +2724,7 @@ function FinanceView(props) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["Tanggal", "Kategori", "Jumlah", "Catatan", ""].map((h) => (
+                  {["Tanggal (dd/mm/yyyy)", "Kategori", "Jumlah", "Catatan", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
@@ -2753,7 +2778,7 @@ function FinanceView(props) {
             </Select>
           </Field>
           <Field label="Jumlah"><TextInput type="number" value={expForm.amount} onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })} /></Field>
-          <Field label="Tanggal"><TextInput type="date" value={expForm.date} onChange={(e) => setDate(e.target.value)} /></Field>
+          <Field label="Tanggal"><TextInput type="date" value={expForm.date} onChange={(e) => setExpForm({ ...expForm, date: e.target.value })} /></Field>
           <Field label="Catatan (opsional)"><TextInput value={expForm.note} onChange={(e) => setExpForm({ ...expForm, note: e.target.value })} /></Field>
           <Button onClick={submitExpense} className="w-full justify-center mt-2">Simpan Biaya</Button>
         </Modal>
@@ -2856,7 +2881,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["No. PO", "Supplier", "Tanggal", "Total"].map((h) => (
+                  {["No. PO", "Supplier", "Tanggal (dd/mm/yyyy)", "Total"].map((h) => (
                     <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
@@ -2913,7 +2938,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["No. SO", "Pelanggan", "Tanggal", "Total"].map((h) => (
+                  {["No. SO", "Pelanggan", "Tanggal (dd/mm/yyyy)", "Total"].map((h) => (
                     <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
