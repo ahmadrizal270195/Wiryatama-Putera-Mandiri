@@ -422,7 +422,7 @@ function PharmaERP({ userEmail, onLogout }) {
       {/* Sidebar */}
       <div className="w-56 shrink-0 flex flex-col py-5 px-3" style={{ background: COLOR.primary }}>
         <div className="px-2 mb-6">
-          <div className="text-white font-semibold text-sm leading-tight">Wiryatama Putera Mandiri PT</div>
+          <div className="text-white font-semibold text-sm leading-tight">PT Wiryatama Putera Mandiri</div>
           <div className="font-mono text-[11px] uppercase tracking-wider" style={{ color: "#8FC2C0" }}>ERP SYSTEM</div>
           <div className="flex items-center gap-1.5 mt-2 text-[11px] font-mono" style={{ color: syncState === "error" ? "#F0A69B" : "#8FC2C0" }}>
             <span
