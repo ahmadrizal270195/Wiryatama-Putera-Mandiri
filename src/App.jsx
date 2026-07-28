@@ -196,7 +196,7 @@ function LoginScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: COLOR.bg }}>
       <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl border w-full max-w-sm shadow-sm" style={{ borderColor: COLOR.border }}>
-        <div className="font-semibold text-lg mb-1" style={{ color: COLOR.ink }}>PT Wiryatama Putera Mandiri</div>
+        <div className="font-semibold text-lg mb-1" style={{ color: COLOR.ink }}>Wiryatama Putera Mandiri PT</div>
         <div className="text-xs mb-5" style={{ color: COLOR.inkSoft }}>ERP System — Masuk Sebagai Admin</div>
 
         <Field label="Email">
