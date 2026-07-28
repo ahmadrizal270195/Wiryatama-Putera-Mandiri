@@ -37,8 +37,8 @@ const fmtIDR = (n) => "Rp" + Math.round(n || 0).toLocaleString("id-ID");
 // FORMAT TANGGAL DD/MM/YYYY UNTUK DITAMPILKAN
 const fmtDate = (d) => {
   if (!d) return "-";
-  const [year, month, day] = d.slice(0, 10).split("-");
-  if (year && month && day) return `${day}/${month}/${year}`;
+  const [year, month, day] = String(d).slice(0, 10).split("-");
+  if (year && month && day) return `${day.padStart(2, "0")}/${month.padStart(2, "0")}/${year}`;
   return d;
 };
 
@@ -134,9 +134,48 @@ const inputStyle = {
   border: `1px solid ${COLOR.border}`,
   color: COLOR.ink,
 };
+
+// KOMPONEN INPUT TANGGAL KUSTOM AGAR TAMPIL SELALU DD/MM/YYYY
+function DateInput(props) {
+  const { value, onChange, className = "", required, disabled, style } = props;
+
+  const formatDisplay = (iso) => {
+    if (!iso) return "";
+    const [y, m, d] = String(iso).slice(0, 10).split("-");
+    if (y && m && d) return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
+    return iso;
+  };
+
+  return (
+    <div className="relative w-full flex items-center">
+      <input
+        type="text"
+        readOnly
+        value={formatDisplay(value)}
+        placeholder="dd/mm/yyyy"
+        className={"w-full rounded-lg px-3 py-1.5 text-sm outline-none bg-white " + className}
+        style={{ ...inputStyle, ...style }}
+      />
+      <input
+        type="date"
+        value={value || ""}
+        onChange={onChange}
+        required={required}
+        disabled={disabled}
+        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+        style={{ colorScheme: "light" }}
+      />
+    </div>
+  );
+}
+
 function TextInput(props) {
+  if (props.type === "date") {
+    return <DateInput {...props} />;
+  }
   return <input {...props} className={"w-full rounded-lg px-3 py-1.5 text-sm outline-none " + (props.className || "")} style={inputStyle} />;
 }
+
 function Select(props) {
   return <select {...props} className={"w-full rounded-lg px-3 py-1.5 text-sm outline-none " + (props.className || "")} style={inputStyle} />;
 }
@@ -1061,7 +1100,6 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify,
             </Field>
           </div>
 
-          {/* PEMILIH PRODUK BANYAK */}
           <div className="mb-4 p-3 rounded-xl border" style={{ background: COLOR.bg, borderColor: COLOR.border }}>
             <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Pilih / Tambah Produk Kebijakan PO</div>
             <div className="relative mb-2">
@@ -1087,7 +1125,6 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify,
             </div>
           </div>
 
-          {/* ITEM YANG DITAMBAHKAN */}
           <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Rincian Item Dipesan ({items.length})</div>
           <div className="flex flex-col gap-2 max-h-48 overflow-y-auto mb-4 pr-1">
             {items.map((it, i) => {
@@ -1348,7 +1385,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
       {detailPR && (
         <Modal title={`Detail ${detailPR.noBPB}`} onClose={() => setDetailPR(null)} wide>
           <table className="w-full text-sm mb-3">
-            <thead><tr style={{ background: COLOR.primarySoft }}>{["Produk", "Qty Diterima", "No. Batch", "Exp Date "].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: COLOR.primarySoft }}>{["Produk", "Qty Diterima", "No. Batch", "Exp Date"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>{h}</th>)}</tr></thead>
             <tbody>
               {detailPR.items.map((it, i) => {
                 const p = products.find((x) => x.id === it.productId);
@@ -1423,7 +1460,7 @@ function FakturPembelianTab({ products, suppliers, pos, pReceipts, pInvoices, pa
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. Faktur Vendor", "PO", "Supplier", "Tanggal ", "Total Tagihan", "Sisa Hutang", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+              {["No. Faktur Vendor", "PO", "Supplier", "Tanggal", "Total Tagihan", "Sisa Hutang", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -1573,7 +1610,7 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. Retur", "Faktur Vendor", "Tanggal ", "Nilai Retur", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+              {["No. Retur", "Faktur Vendor", "Tanggal", "Nilai Retur", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -1766,7 +1803,7 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. SO", "Pelanggan", "Tanggal ", "Total", "Status", ""].map((h) => (
+              {["No. SO", "Pelanggan", "Tanggal", "Total", "Status", ""].map((h) => (
                 <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
               ))}
             </tr>
@@ -1810,7 +1847,6 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
             </Field>
           </div>
 
-          {/* PEMILIH PRODUK BANYAK */}
           <div className="mb-4 p-3 rounded-xl border" style={{ background: COLOR.bg, borderColor: COLOR.border }}>
             <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Pilih / Tambah Produk Pesanan</div>
             <div className="relative mb-2">
@@ -1836,7 +1872,6 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
             </div>
           </div>
 
-          {/* ITEM YANG DITAMBAHKAN */}
           <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Rincian Item Dipesan ({items.length})</div>
           <div className="flex flex-col gap-2 max-h-48 overflow-y-auto mb-4 pr-1">
             {items.map((it, i) => {
@@ -2040,7 +2075,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. SJ", "SO", "Pelanggan", "Tanggal ", "Status", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+              {["No. SJ", "SO", "Pelanggan", "Tanggal", "Status", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -2199,7 +2234,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. Faktur", "SO", "Pelanggan", "Tanggal ", "Total", "Sisa", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+              {["No. Faktur", "SO", "Pelanggan", "Tanggal", "Total", "Sisa", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -2344,7 +2379,7 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. Retur", "Sumber", "Referensi", "Tanggal ", "Nilai", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+              {["No. Retur", "Sumber", "Referensi", "Tanggal", "Nilai", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -2545,7 +2580,7 @@ function FinanceView(props) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["No. Faktur", "Pelanggan", "Total", "DP + Dibayar", "Sisa Piutang", "Tanggal Faktur ", ""].map((h) => (
+                  {["No. Faktur", "Pelanggan", "Total", "DP + Dibayar", "Sisa Piutang", "Tanggal Faktur", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
@@ -2575,7 +2610,7 @@ function FinanceView(props) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["No. SO", "Pelanggan", "Total SO", "DP Diterima", "Tanggal SO ", ""].map((h) => (
+                  {["No. SO", "Pelanggan", "Total SO", "DP Diterima", "Tanggal SO", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
@@ -2619,7 +2654,7 @@ function FinanceView(props) {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: COLOR.primarySoft }}>
-                {["No. Faktur Vendor", "Supplier", "Total Tagihan", "Sudah Dibayar", "Sisa Hutang", "Tanggal Faktur ", ""].map((h) => (
+                {["No. Faktur Vendor", "Supplier", "Total Tagihan", "Sudah Dibayar", "Sisa Hutang", "Tanggal Faktur", ""].map((h) => (
                   <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                 ))}
               </tr>
@@ -2649,7 +2684,7 @@ function FinanceView(props) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["Tanggal ", "Tipe", "Referensi", "Jumlah", "Metode", "Catatan", ""].map((h) => (
+                  {["Tanggal", "Tipe", "Referensi", "Jumlah", "Metode", "Catatan", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
@@ -2684,7 +2719,7 @@ function FinanceView(props) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["Tanggal ", "No. Faktur Vendor / PO", "Jumlah", "Metode", "Catatan", ""].map((h) => (
+                  {["Tanggal", "No. Faktur Vendor / PO", "Jumlah", "Metode", "Catatan", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
@@ -2724,7 +2759,7 @@ function FinanceView(props) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["Tanggal ", "Kategori", "Jumlah", "Catatan", ""].map((h) => (
+                  {["Tanggal", "Kategori", "Jumlah", "Catatan", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
@@ -2881,7 +2916,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["No. PO", "Supplier", "Tanggal ", "Total"].map((h) => (
+                  {["No. PO", "Supplier", "Tanggal", "Total"].map((h) => (
                     <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
@@ -2938,7 +2973,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["No. SO", "Pelanggan", "Tanggal ", "Total"].map((h) => (
+                  {["No. SO", "Pelanggan", "Tanggal", "Total"].map((h) => (
                     <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
