@@ -3,9 +3,11 @@ import { loadKey, saveKey } from "./storage";
 import {
   LayoutDashboard, Package, Truck, Users, ShoppingCart, ClipboardList,
   AlertTriangle, Plus, X, Trash2, Search, CheckCircle2, Clock,
-  ChevronRight, Boxes, ArrowUpRight, ArrowDownRight, Loader2,
-  Wallet, Receipt, CreditCard, PiggyBank, BarChart3, FileText, RotateCcw, PackageCheck, LogOut
+  Boxes, ArrowUpRight, ArrowDownRight, Loader2,
+  Wallet, Receipt, CreditCard, PiggyBank, BarChart3, FileText, LogOut
 } from "lucide-react";
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
+import { auth } from "./firebase";
 
 // ---------- constants ----------
 const CATEGORIES = ["Obat Generik", "Obat Paten", "Alat Kesehatan", "Vitamin & Suplemen", "Consumables"];
@@ -58,10 +60,7 @@ function isThisMonth(dateStr) {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
 
-// loadKey/saveKey sekarang datang dari ./storage.js (Firestore) — lihat file itu
-// untuk versi yang jalan di dalam Claude artifact, ganti isinya kembali ke window.storage.
-
-// ---------- small UI atoms ----------
+// ---------- UI Components ----------
 function Eyebrow({ children }) {
   return <div style={{ color: COLOR.inkSoft, letterSpacing: "0.08em" }} className="text-[11px] font-mono uppercase mb-1">{children}</div>;
 }
@@ -149,7 +148,6 @@ function Modal({ title, onClose, children, wide }) {
   );
 }
 
-// expiry urgency helper -> used for the batch "ribbon" signature element
 function urgencyOf(expiryDate) {
   const d = daysUntil(expiryDate);
   if (d < 0) return { tone: "danger", label: "Kedaluwarsa", color: COLOR.danger };
@@ -173,8 +171,83 @@ function ExpiryRibbon({ productBatches }) {
   );
 }
 
+// ---------- LOGIN COMPONENT ----------
+function LoginScreen() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+      setError("Email atau password salah.");
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: COLOR.bg }}>
+      <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl border w-full max-w-sm shadow-sm" style={{ borderColor: COLOR.border }}>
+        <div className="font-semibold text-lg mb-1" style={{ color: COLOR.ink }}>PT Wiryatama Putera Mandiri</div>
+        <div className="text-xs mb-5" style={{ color: COLOR.inkSoft }}>ERP System — Masuk Sebagai Admin</div>
+
+        <Field label="Email">
+          <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </Field>
+        <Field label="Password">
+          <TextInput type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        </Field>
+
+        {error && <div className="text-xs mb-3" style={{ color: COLOR.danger }}>{error}</div>}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-2.5 rounded-lg text-white font-medium text-sm mt-2 transition-opacity"
+          style={{ background: COLOR.primary, opacity: loading ? 0.6 : 1 }}
+        >
+          {loading ? "Memproses..." : "Masuk"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// ---------- MAIN APP ENTRY POINT ----------
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthChecking(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  if (authChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm" style={{ color: COLOR.inkSoft, background: COLOR.bg }}>
+        <Loader2 className="animate-spin mr-2" size={18} /> Memeriksa autentikasi...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen />;
+  }
+
+  return <PharmaERP userEmail={user.email} onLogout={() => signOut(auth)} />;
+}
+
 // ---------- main app ----------
-export default function PharmaERP({ userEmail, onLogout }) {
+function PharmaERP({ userEmail, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("dashboard");
   const [products, setProducts] = useState([]);
@@ -189,10 +262,9 @@ export default function PharmaERP({ userEmail, onLogout }) {
   const [deliveryNotes, setDeliveryNotes] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [returns, setReturns] = useState([]);
-  const [modal, setModal] = useState(null);
   const [toast, setToast] = useState(null);
   const [lastSync, setLastSync] = useState(Date.now());
-  const [syncState, setSyncState] = useState("ok"); // ok | syncing | error
+  const [syncState, setSyncState] = useState("ok");
 
   async function refreshAll() {
     setSyncState("syncing");
@@ -247,7 +319,6 @@ export default function PharmaERP({ userEmail, onLogout }) {
     returns: async (list) => { setReturns(list); await saveKey(KEYS.returns, list); },
   };
 
-  // ---- derived data ----
   const stockByProduct = useMemo(() => {
     const map = {};
     for (const p of products) map[p.id] = { product: p, qty: 0, value: 0, batches: [] };
@@ -298,7 +369,6 @@ export default function PharmaERP({ userEmail, onLogout }) {
   }, [invoices, batches, deliveryNotes, returns]);
   const expensesMonth = useMemo(() => expenses.filter((e) => isThisMonth(e.date)).reduce((s, e) => s + e.amount, 0), [expenses]);
 
-  // FEFO allocation — dipanggil saat Surat Jalan dibuat (barang benar-benar keluar gudang)
   function allocateFEFO(productId, qty) {
     const avail = batches.filter((b) => b.productId === productId && b.qty > 0).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
     let remaining = qty;
@@ -337,8 +407,8 @@ export default function PharmaERP({ userEmail, onLogout }) {
       {/* Sidebar */}
       <div className="w-56 shrink-0 flex flex-col py-5 px-3" style={{ background: COLOR.primary }}>
         <div className="px-2 mb-6">
-          <div className="text-white font-semibold text-sm leading-tight">Farmasi & Alkes</div>
-          <div className="font-mono text-[11px] uppercase tracking-wider" style={{ color: "#8FC2C0" }}>Mini ERP · Tim</div>
+          <div className="text-white font-semibold text-sm leading-tight">PT Wiryatama Putera Mandiri</div>
+          <div className="font-mono text-[11px] uppercase tracking-wider" style={{ color: "#8FC2C0" }}>ERP SYSTEM</div>
           <div className="flex items-center gap-1.5 mt-2 text-[11px] font-mono" style={{ color: syncState === "error" ? "#F0A69B" : "#8FC2C0" }}>
             <span
               className="inline-block w-1.5 h-1.5 rounded-full"
@@ -413,7 +483,7 @@ export default function PharmaERP({ userEmail, onLogout }) {
         {tab === "sales" && (
           <SalesView
             products={products} customers={customers} sos={sos} batches={batches}
-            deliveryNotes={deliveryNotes} invoices={invoices} returns={returns}
+            deliveryNotes={deliveryNotes} invoices={invoices} returns={returns} paymentsIn={paymentsIn}
             saveSOs={persist.sos} saveBatches={persist.batches} saveDeliveryNotes={persist.deliveryNotes}
             saveInvoices={persist.invoices} saveReturns={persist.returns} allocateFEFO={allocateFEFO}
             findName={findName} notify={notify} stockByProduct={stockByProduct}
@@ -789,7 +859,7 @@ function CustomersView({ customers, save, notify }) {
 
 // ---------- Purchases (PO) ----------
 function PurchasesView({ products, suppliers, pos, batches, savePOs, saveBatches, findName, notify }) {
-  const [modal, setModal] = useState(null); // 'new' | po object for receive | null
+  const [modal, setModal] = useState(null);
   const [detailPO, setDetailPO] = useState(null);
   const [supplierId, setSupplierId] = useState("");
   const [date, setDate] = useState(todayISO());
@@ -991,7 +1061,7 @@ function PurchasesView({ products, suppliers, pos, batches, savePOs, saveBatches
 
 // ---------- Sales (SO → Surat Jalan → Faktur → Retur) ----------
 function SalesView({
-  products, customers, sos, batches, deliveryNotes, invoices, returns,
+  products, customers, sos, batches, deliveryNotes, invoices, returns, paymentsIn,
   saveSOs, saveBatches, saveDeliveryNotes, saveInvoices, saveReturns, allocateFEFO,
   findName, notify, stockByProduct, soTotal, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount,
 }) {
@@ -1049,13 +1119,13 @@ function SalesView({
       </div>
 
       {subTab === "so" && (
-        <SOTab {...{ products, customers, sos, saveSOs, findName, notify, soTotal, getSOStatus, STATUS_LABEL }} />
+        <SOTab {...{ products, customers, sos, deliveryNotes, saveSOs, findName, notify, soTotal, getSOStatus, STATUS_LABEL }} />
       )}
       {subTab === "sj" && (
-        <SJTab {...{ products, customers, sos, batches, deliveryNotes, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty }} />
+        <SJTab {...{ products, customers, sos, batches, deliveryNotes, invoices, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty }} />
       )}
       {subTab === "faktur" && (
-        <FakturTab {...{ products, customers, sos, deliveryNotes, invoices, saveInvoices, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount }} />
+        <FakturTab {...{ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, saveInvoices, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount }} />
       )}
       {subTab === "retur" && (
         <ReturTab {...{ products, customers, sos, invoices, returns, deliveryNotes, batches, saveBatches, saveReturns, findName, notify, invoiceTotal, invoiceReturnedAmount }} />
@@ -1064,7 +1134,7 @@ function SalesView({
   );
 }
 
-function SOTab({ products, customers, sos, saveSOs, findName, notify, soTotal, getSOStatus, STATUS_LABEL }) {
+function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, notify, soTotal, getSOStatus, STATUS_LABEL }) {
   const [modal, setModal] = useState(null);
   const [detailSO, setDetailSO] = useState(null);
   const [customerId, setCustomerId] = useState("");
@@ -1094,6 +1164,14 @@ function SOTab({ products, customers, sos, saveSOs, findName, notify, soTotal, g
     setModal(null);
   }
 
+  async function cancelSO(so) {
+    if (deliveryNotes.some((dn) => dn.soId === so.id)) {
+      return notify("Gagal membatalkan: SO ini sudah memiliki Surat Jalan. Batalkan Surat Jalan terlebih dahulu.", "danger");
+    }
+    await saveSOs(sos.filter((s) => s.id !== so.id));
+    notify(`${so.soNumber} berhasil dibatalkan`);
+  }
+
   return (
     <div>
       <div className="flex justify-end mb-3">
@@ -1112,6 +1190,7 @@ function SOTab({ products, customers, sos, saveSOs, findName, notify, soTotal, g
             {[...sos].sort((a, b) => new Date(b.date) - new Date(a.date)).map((so) => {
               const st = getSOStatus(so);
               const s = STATUS_LABEL[st];
+              const canCancel = !deliveryNotes.some((dn) => dn.soId === so.id);
               return (
                 <tr key={so.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{so.soNumber}</td>
@@ -1119,7 +1198,12 @@ function SOTab({ products, customers, sos, saveSOs, findName, notify, soTotal, g
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(so.date)}</td>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(soTotal(so))}</td>
                   <td className="px-4 py-2.5"><Badge tone={s.tone}>{s.label}</Badge></td>
-                  <td className="px-4 py-2.5 text-right"><button onClick={() => setDetailSO(so)} className="text-xs" style={{ color: COLOR.accent }}>Detail</button></td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button onClick={() => setDetailSO(so)} className="text-xs mr-3" style={{ color: COLOR.accent }}>Detail</button>
+                    {canCancel && (
+                      <button onClick={() => cancelSO(so)} className="text-xs" style={{ color: COLOR.danger }}>Batalkan SO</button>
+                    )}
+                  </td>
                 </tr>
               );
             })}
@@ -1184,16 +1268,13 @@ function SOTab({ products, customers, sos, saveSOs, findName, notify, soTotal, g
             </tbody>
           </table>
           <div className="text-right font-mono text-sm mb-2" style={{ color: COLOR.ink }}>Total: {fmtIDR(soTotal(detailSO))}</div>
-          <div className="text-xs" style={{ color: COLOR.inkSoft }}>
-            Untuk mengirim barang, buat Surat Jalan dari tab "Surat Jalan". Untuk menagih, buat Faktur dari tab "Faktur" setelah barang diterima penuh.
-          </div>
         </Modal>
       )}
     </div>
   );
 }
 
-function SJTab({ products, customers, sos, batches, deliveryNotes, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty }) {
+function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty }) {
   const [modal, setModal] = useState(null);
   const [detailDN, setDetailDN] = useState(null);
   const [soId, setSoId] = useState("");
@@ -1305,6 +1386,27 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, returns, save
     setModal(null);
   }
 
+  // --- FUNGSIONALITAS CANCEL / REVERSE SURAT JALAN ---
+  async function cancelSJ(dn) {
+    if (invoices.some((inv) => inv.soId === dn.soId)) {
+      return notify("Gagal membatalkan: Faktur Penjualan untuk transaksi ini sudah terbit. Batalkan Faktur terlebih dahulu.", "danger");
+    }
+
+    let working = batches.map((b) => ({ ...b }));
+    dn.items.forEach((it) => {
+      (it.allocations || []).forEach((alloc) => {
+        const b = working.find((x) => x.id === alloc.batchId);
+        if (b) {
+          b.qty += alloc.qty;
+        }
+      });
+    });
+
+    await saveBatches(working);
+    await saveDeliveryNotes(deliveryNotes.filter((x) => x.id !== dn.id));
+    notify(`${dn.noSJ} dibatalkan & stok dikembalikan ke gudang`);
+  }
+
   return (
     <div>
       <div className="flex justify-end mb-3">
@@ -1320,6 +1422,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, returns, save
           <tbody>
             {[...deliveryNotes].sort((a, b) => new Date(b.date) - new Date(a.date)).map((dn) => {
               const so = sos.find((x) => x.id === dn.soId);
+              const canCancel = !invoices.some((inv) => inv.soId === dn.soId);
               return (
                 <tr key={dn.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{dn.noSJ}</td>
@@ -1329,7 +1432,8 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, returns, save
                   <td className="px-4 py-2.5"><Badge tone={dn.status === "diterima" ? "good" : "warn"}>{dn.status === "diterima" ? "Diterima" : "Dikirim"}</Badge></td>
                   <td className="px-4 py-2.5 text-right">
                     <button onClick={() => setDetailDN(dn)} className="text-xs mr-3" style={{ color: COLOR.accent }}>Detail</button>
-                    {dn.status === "dikirim" && <button onClick={() => openReceive(dn)} className="text-xs" style={{ color: COLOR.good }}>Konfirmasi Terima</button>}
+                    {dn.status === "dikirim" && <button onClick={() => openReceive(dn)} className="text-xs mr-3" style={{ color: COLOR.good }}>Konfirmasi Terima</button>}
+                    {canCancel && <button onClick={() => cancelSJ(dn)} className="text-xs" style={{ color: COLOR.danger }}>Batalkan SJ</button>}
                   </td>
                 </tr>
               );
@@ -1417,7 +1521,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, returns, save
   );
 }
 
-function FakturTab({ products, customers, sos, deliveryNotes, invoices, saveInvoices, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount }) {
+function FakturTab({ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, saveInvoices, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount }) {
   const [detailInv, setDetailInv] = useState(null);
   const eligibleSOs = sos.filter((so) => getSOStatus(so) === "ready_to_invoice");
 
@@ -1435,6 +1539,20 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, saveInvo
     const noFaktur = `INV-${new Date().getFullYear()}-${String(invoices.length + 1).padStart(4, "0")}`;
     await saveInvoices([...invoices, { id: uid(), noFaktur, soId: so.id, date: todayISO(), items }]);
     notify(`${noFaktur} dibuat`);
+  }
+
+  // --- FUNGSIONALITAS CANCEL FAKTUR ---
+  async function cancelInvoice(inv) {
+    const paid = invoicePaidAmount(inv.id);
+    if (paid > 0) {
+      return notify("Gagal membatalkan: Faktur ini sudah memiliki riwayat pembayaran pelunasan.", "danger");
+    }
+    if (returns.some((r) => r.invoiceId === inv.id)) {
+      return notify("Gagal membatalkan: Faktur ini memiliki transaksi retur. Batalkan retur terlebih dahulu.", "danger");
+    }
+
+    await saveInvoices(invoices.filter((x) => x.id !== inv.id));
+    notify(`${inv.noFaktur} berhasil dibatalkan`);
   }
 
   return (
@@ -1464,6 +1582,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, saveInvo
               const so = sos.find((x) => x.id === inv.soId);
               const total = invoiceTotal(inv);
               const sisa = Math.max(0, total - invoiceReturnedAmount(inv.id) - soDPAmount(inv.soId) - invoicePaidAmount(inv.id));
+              const canCancel = invoicePaidAmount(inv.id) === 0 && !returns.some((r) => r.invoiceId === inv.id);
               return (
                 <tr key={inv.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{inv.noFaktur}</td>
@@ -1472,7 +1591,10 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, saveInvo
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(inv.date)}</td>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(total)}</td>
                   <td className="px-4 py-2.5"><Badge tone={sisa > 0 ? "warn" : "good"}>{sisa > 0 ? fmtIDR(sisa) : "Lunas"}</Badge></td>
-                  <td className="px-4 py-2.5 text-right"><button onClick={() => setDetailInv(inv)} className="text-xs" style={{ color: COLOR.accent }}>Detail</button></td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button onClick={() => setDetailInv(inv)} className="text-xs mr-3" style={{ color: COLOR.accent }}>Detail</button>
+                    {canCancel && <button onClick={() => cancelInvoice(inv)} className="text-xs" style={{ color: COLOR.danger }}>Batalkan Faktur</button>}
+                  </td>
                 </tr>
               );
             })}
@@ -1499,7 +1621,6 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, saveInvo
               })}
             </tbody>
           </table>
-          <div className="text-xs" style={{ color: COLOR.inkSoft }}>DP & pembayaran untuk Faktur ini dikelola dari tab Finance → Piutang.</div>
         </Modal>
       )}
     </div>
@@ -1566,6 +1687,31 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
     setModal(null);
   }
 
+  // --- FUNGSIONALITAS CANCEL RETUR ---
+  async function cancelReturn(ret) {
+    let working = batches.map((b) => ({ ...b }));
+    let shortage = false;
+
+    // Kurangi kembali stok yang sebelumnya dikembalikan saat retur
+    ret.items.forEach((it) => {
+      (it.restockedBatches || []).forEach((r) => {
+        const b = working.find((x) => x.id === r.batchId);
+        if (b) {
+          if (b.qty < r.qty) shortage = true;
+          b.qty = Math.max(0, b.qty - r.qty);
+        }
+      });
+    });
+
+    if (shortage) {
+      notify("Peringatan: Stok barang sebagian sudah terpakai transaksi lain, stok disesuaikan ke 0.", "warn");
+    }
+
+    await saveBatches(working);
+    await saveReturns(returns.filter((r) => r.id !== ret.id));
+    notify(`${ret.noRetur} berhasil dibatalkan`);
+  }
+
   return (
     <div>
       <div className="flex justify-end mb-3">
@@ -1575,7 +1721,7 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. Retur", "Sumber", "Referensi", "Tanggal", "Nilai"].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+              {["No. Retur", "Sumber", "Referensi", "Tanggal", "Nilai", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -1590,10 +1736,13 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{inv?.noFaktur || so?.soNumber || "-"}</td>
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(r.date)}</td>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(value)}</td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button onClick={() => cancelReturn(r)} className="text-xs" style={{ color: COLOR.danger }}>Batalkan Retur</button>
+                  </td>
                 </tr>
               );
             })}
-            {returns.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada retur.</td></tr>}
+            {returns.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada retur.</td></tr>}
           </tbody>
         </table>
       </Card>
@@ -1643,7 +1792,7 @@ function FinanceView(props) {
   } = props;
 
   const [subTab, setSubTab] = useState("ar");
-  const [payModal, setPayModal] = useState(null); // { kind: 'invoice'|'dp'|'po', doc }
+  const [payModal, setPayModal] = useState(null);
   const [payForm, setPayForm] = useState({ amount: "", date: todayISO(), method: PAYMENT_METHODS[0], note: "" });
   const [expModal, setExpModal] = useState(false);
   const [expForm, setExpForm] = useState({ category: EXPENSE_CATEGORIES[0], amount: "", date: todayISO(), note: "" });
@@ -1654,7 +1803,7 @@ function FinanceView(props) {
   function openPay(kind, doc) {
     let amount = 0;
     if (kind === "invoice") amount = invoiceSisa(doc);
-    else if (kind === "dp") amount = 0; // DP is a fresh advance, no auto-fill
+    else if (kind === "dp") amount = 0;
     else amount = Math.max(0, poTotal(doc) - poPaid(doc.id));
     setPayForm({ amount, date: todayISO(), method: PAYMENT_METHODS[0], note: "" });
     setPayModal({ kind, doc });
