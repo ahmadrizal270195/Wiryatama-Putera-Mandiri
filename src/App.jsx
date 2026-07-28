@@ -196,7 +196,7 @@ function LoginScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: COLOR.bg }}>
       <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl border w-full max-w-sm shadow-sm" style={{ borderColor: COLOR.border }}>
-        <div className="font-semibold text-lg mb-1" style={{ color: COLOR.ink }}>Wiryatama Putera Mandiri PT</div>
+        <div className="font-semibold text-lg mb-1" style={{ color: COLOR.ink }}>PT Wiryatama Putera Mandiri</div>
         <div className="text-xs mb-5" style={{ color: COLOR.inkSoft }}>ERP System — Masuk Sebagai Admin</div>
 
         <Field label="Email">
@@ -422,7 +422,7 @@ function PharmaERP({ userEmail, onLogout }) {
       {/* Sidebar */}
       <div className="w-56 shrink-0 flex flex-col py-5 px-3" style={{ background: COLOR.primary }}>
         <div className="px-2 mb-6">
-          <div className="text-white font-semibold text-sm leading-tight">PT Wiryatama Putera Mandiri</div>
+          <div className="text-white font-semibold text-sm leading-tight">Wiryatama Putera Mandiri PT</div>
           <div className="font-mono text-[11px] uppercase tracking-wider" style={{ color: "#8FC2C0" }}>ERP SYSTEM</div>
           <div className="flex items-center gap-1.5 mt-2 text-[11px] font-mono" style={{ color: syncState === "error" ? "#F0A69B" : "#8FC2C0" }}>
             <span
