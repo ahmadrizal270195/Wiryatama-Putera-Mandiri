@@ -5,7 +5,7 @@ import {
   AlertTriangle, Plus, X, Trash2, Search, CheckCircle2, Clock,
   Boxes, ArrowUpRight, ArrowDownRight, Loader2, Edit, Calendar, Printer,
   Wallet, Receipt, CreditCard, PiggyBank, BarChart3, FileText, LogOut,
-  Building2, Phone, Mail, MapPin, ShieldCheck, Award, ArrowRight, Lock, MessageSquare
+  Building2, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare
 } from "lucide-react";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./firebase";
@@ -18,7 +18,7 @@ const COMPANY_PROFILE = {
   name: "PT WIRYATAMA PUTERA MANDIRI",
   tagline: "Distributor Penyalur Farmasi & Alat Kesehatan (Alkes) Terpercaya",
   address: "Ruko New Aruna Residence, Jl. Serua Raya No.9, Bojongsari, Depok, Jawa Barat 16517",
-  contact: "Email: info@wiryatamaputera.co.id | Telp: (021) 7437964 / WA: 0817-773-791",
+  contact: "Email: finance@wiryatamaputera.co.id | Telp: (021) 7437964 / WA: 0817-773-791",
   whatsapp: "0817-773-791",
   logoUrl: "https://i.imgur.com/EfI1R4p.jpeg", 
   bankDetails: {
@@ -140,7 +140,7 @@ function PublicLandingPage({ onGoToLogin, isLoggedIn }) {
       <nav className="bg-white border-b sticky top-0 z-40" style={{ borderColor: COLOR.border }}>
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src={COMPANY_PROFILE.logoUrl} alt="Logo WPM" className="h-10 object-contain" />
+            <img src={COMPANY_PROFILE.logoUrl} alt="Logo WPM" className="h-10 object-contain rounded" />
             <div>
               <div className="font-bold text-sm" style={{ color: COLOR.primary }}>PT WIRYATAMA PUTERA MANDIRI</div>
               <div className="text-[10px]" style={{ color: COLOR.inkSoft }}>Distributor Farmasi & Alkes</div>
@@ -271,7 +271,7 @@ function PublicLandingPage({ onGoToLogin, isLoggedIn }) {
         <div className="max-w-6xl mx-auto px-4 grid grid-cols-1 md:grid-cols-2 gap-8">
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <img src={COMPANY_PROFILE.logoUrl} alt="Logo WPM" className="h-8 object-contain" />
+              <img src={COMPANY_PROFILE.logoUrl} alt="Logo WPM" className="h-8 object-contain rounded" />
               <div className="font-bold text-base" style={{ color: COLOR.primary }}>{COMPANY_PROFILE.name}</div>
             </div>
             <p className="text-xs leading-relaxed max-w-sm" style={{ color: COLOR.inkSoft }}>
@@ -281,8 +281,8 @@ function PublicLandingPage({ onGoToLogin, isLoggedIn }) {
           <div className="flex flex-col gap-2 text-xs" style={{ color: COLOR.inkSoft }}>
             <div className="font-bold text-sm mb-1 text-gray-900">Alamat Kantor & Gudang</div>
             <div className="flex items-center gap-2"><MapPin size={14} /> {COMPANY_PROFILE.address}</div>
-            <div className="flex items-center gap-2"><Mail size={14} /> info@wiryatamaputera.co.id</div>
-            <div className="flex items-center gap-2"><Phone size={14} /> (021) 555-0192 / WhatsApp: 0812-3456-7890</div>
+            <div className="flex items-center gap-2"><Mail size={14} /> finance@wiryatamaputera.co.id</div>
+            <div className="flex items-center gap-2"><Phone size={14} /> (021) 7437964 / WhatsApp: 0817-773-791</div>
           </div>
         </div>
         <div className="max-w-6xl mx-auto px-4 mt-8 pt-4 border-t text-center text-[11px]" style={{ borderColor: COLOR.border, color: COLOR.inkSoft }}>
@@ -339,6 +339,156 @@ function LoginScreen({ onBackToPublic }) {
           {loading ? "Memproses..." : "Masuk ke Sistem"}
         </button>
       </form>
+    </div>
+  );
+}
+
+// ---------- UI COMPONENTS UTAMA ----------
+function Eyebrow({ children }) {
+  return <div style={{ color: COLOR.inkSoft, letterSpacing: "0.08em" }} className="text-[11px] font-mono uppercase mb-1">{children}</div>;
+}
+
+function Card({ children, style, className = "" }) {
+  return (
+    <div
+      className={"rounded-xl p-4 " + className}
+      style={{ background: COLOR.surface, border: `1px solid ${COLOR.border}`, ...style }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Badge({ tone = "good", children }) {
+  const map = {
+    good: [COLOR.goodSoft, COLOR.good],
+    warn: [COLOR.warnSoft, COLOR.warn],
+    danger: [COLOR.dangerSoft, COLOR.danger],
+    neutral: [COLOR.primarySoft, COLOR.primary],
+  };
+  const [bg, fg] = map[tone];
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono font-medium"
+      style={{ background: bg, color: fg }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function Button({ children, onClick, variant = "primary", type = "button", className = "", disabled }) {
+  const base = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-opacity disabled:opacity-40";
+  const styles =
+    variant === "primary"
+      ? { background: COLOR.primary, color: "#fff" }
+      : variant === "danger"
+      ? { background: COLOR.dangerSoft, color: COLOR.danger }
+      : { background: "transparent", color: COLOR.ink, border: `1px solid ${COLOR.border}` };
+  return (
+    <button type={type} disabled={disabled} onClick={onClick} className={base + " " + className} style={styles}>
+      {children}
+    </button>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <label className="block mb-3">
+      <div className="text-xs font-medium mb-1" style={{ color: COLOR.inkSoft }}>{label}</div>
+      {children}
+    </label>
+  );
+}
+
+const inputStyle = {
+  background: "#fff",
+  border: `1px solid ${COLOR.border}`,
+  color: COLOR.ink,
+};
+
+function DateInput(props) {
+  const { value, onChange, className = "", required, disabled, style } = props;
+
+  const formatDisplay = (iso) => {
+    if (!iso) return "";
+    const [y, m, d] = String(iso).slice(0, 10).split("-");
+    if (y && m && d) return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
+    return iso;
+  };
+
+  return (
+    <div className="relative w-full flex items-center">
+      <input
+        type="text"
+        readOnly
+        value={formatDisplay(value)}
+        placeholder="dd/mm/yyyy"
+        className={"w-full rounded-lg pl-3 pr-9 py-1.5 text-sm outline-none bg-white " + className}
+        style={{ ...inputStyle, ...style }}
+      />
+      <Calendar size={15} className="absolute right-3 pointer-events-none" style={{ color: COLOR.inkSoft }} />
+      <input
+        type="date"
+        value={value || ""}
+        onChange={onChange}
+        required={required}
+        disabled={disabled}
+        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+        style={{ colorScheme: "light" }}
+      />
+    </div>
+  );
+}
+
+function TextInput(props) {
+  if (props.type === "date") {
+    return <DateInput {...props} />;
+  }
+  return <input {...props} className={"w-full rounded-lg px-3 py-1.5 text-sm outline-none " + (props.className || "")} style={inputStyle} />;
+}
+
+function Select(props) {
+  return <select {...props} className={"w-full rounded-lg px-3 py-1.5 text-sm outline-none " + (props.className || "")} style={inputStyle} />;
+}
+
+function Modal({ title, onClose, children, wide }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop" style={{ background: "rgba(15,30,28,0.45)" }} onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={"rounded-2xl w-full " + (wide ? "max-w-3xl" : "max-w-md") + " max-h-[85vh] overflow-y-auto modal-content"}
+        style={{ background: COLOR.surface }}
+      >
+        <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10 no-print" style={{ background: COLOR.surface, borderBottom: `1px solid ${COLOR.border}` }}>
+          <h3 className="font-semibold text-base" style={{ color: COLOR.ink }}>{title}</h3>
+          <button onClick={onClose} className="p-1 rounded-lg hover:opacity-60"><X size={18} color={COLOR.inkSoft} /></button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function urgencyOf(expiryDate) {
+  const d = daysUntil(expiryDate);
+  if (d < 0) return { tone: "danger", label: "Kedaluwarsa", color: COLOR.danger };
+  if (d <= 30) return { tone: "danger", label: `${d}h lagi`, color: COLOR.danger };
+  if (d <= 90) return { tone: "warn", label: `${d}h lagi`, color: COLOR.warn };
+  return { tone: "good", label: `${d}h lagi`, color: COLOR.good };
+}
+
+function ExpiryRibbon({ productBatches }) {
+  const total = productBatches.reduce((s, b) => s + b.qty, 0);
+  if (total === 0) return <div className="text-xs" style={{ color: COLOR.inkSoft }}>Tidak ada stok</div>;
+  const sorted = [...productBatches].sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+  return (
+    <div>
+      <div className="flex w-full h-2.5 rounded-full overflow-hidden" style={{ background: COLOR.border }}>
+        {sorted.map((b) => (
+          <div key={b.id} style={{ width: `${(b.qty / total) * 100}%`, background: urgencyOf(b.expiryDate).color }} title={`${b.batchNo}: ${b.qty} unit, exp ${fmtDate(b.expiryDate)}`} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -675,7 +825,7 @@ function PharmaERP({ userEmail, onLogout, onGoToPublic }) {
   );
 }
 
-// ---------- Sub-komponen Dashboard, Products, Stock, dll. tetap sama persis ----------
+// ---------- Sub-komponen Modul ERP ----------
 function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, suppliers, customers, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth }) {
   const recentPOs = [...pos].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
   const recentSOs = [...sos].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
@@ -2378,7 +2528,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         </Modal>
       )}
 
-      {/* TEMPLATE INVOICE DENGAN STRUKTUR WEIGHT RAPI */}
+      {/* TEMPLATE INVOICE RESMI DENGAN KETEBALAN FONT STABIL */}
       {printInv && (
         <Modal title={`Faktur Penjualan — ${printInv.noFaktur}`} onClose={() => setPrintInv(null)} wide>
           <div className="flex justify-end gap-2 mb-4 no-print">
@@ -2527,7 +2677,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                     </div>
                     <div>
                       <p className="text-gray-500 mb-12">Hormat Kami ({COMPANY_PROFILE.name}),</p>
-                      <p className="underline text-gray-900 font-bold">( Bagian Finance & Kasir )</p>
+                      <p className="underline text-gray-900 font-bold">( Finance )</p>
                     </div>
                   </div>
                 </div>
