@@ -18,7 +18,7 @@ const COMPANY_PROFILE = {
   tagline: "Distributor Penyalur Farmasi & Alat Kesehatan (Alkes)",
   address: "Jl. Utama Bintaro Jaya No. 88, Sektor 3A, Tangerang Selatan, Banten 15222",
   contact: "Email: finance@wiryatamaputera.co.id | Telp: (021) 555-0192 / WhatsApp: 0812-3456-7890",
-  logoUrl: "https://i.imgur.com/uuH6XKp.png", 
+  logoUrl: "https://i.imgur.com/EfI1R4p.jpeg", 
   bankDetails: {
     bankName: "Bank Central Asia (BCA)",
     accountNumber: "883-0912-331",
