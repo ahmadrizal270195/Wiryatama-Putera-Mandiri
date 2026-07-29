@@ -2497,7 +2497,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                     </div>
                     <div>
                       <p className="text-gray-500 mb-12">Hormat Kami ({COMPANY_PROFILE.name}),</p>
-                      <p className="underline text-gray-900 font-bold">( Bagian Finance & Kasir )</p>
+                      <p className="underline text-gray-900 font-bold">( Finance )</p>
                     </div>
                   </div>
                 </div>
