@@ -479,7 +479,7 @@ function PharmaERP({ userEmail, onLogout }) {
 
   return (
     <div style={{ background: COLOR.bg, minHeight: "600px", fontFamily: "ui-sans-serif, system-ui, sans-serif" }} className="flex rounded-2xl overflow-hidden">
-      {/* CSS KHUSUS PRINT REVISI PRESISI */}
+      {/* CSS KHUSUS PRINT DENGAN ISOLASI ELEMEN NO-PRINT */}
       <style>{`
         @media print {
           .no-print, .no-print * {
@@ -1717,7 +1717,7 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
   );
 }
 
-// ---------- Sales ----------
+// ---------- Sales (SO → Surat Jalan → Faktur → Retur) ----------
 function SalesView({
   products, customers, sos, batches, deliveryNotes, invoices, returns, paymentsIn,
   saveSOs, saveBatches, saveDeliveryNotes, saveInvoices, saveReturns, allocateFEFO,
@@ -1757,23 +1757,26 @@ function SalesView({
 
   return (
     <div>
-      <Eyebrow>Transaksi</Eyebrow>
-      <h2 className="text-xl font-semibold mb-1" style={{ color: COLOR.ink }}>Penjualan</h2>
-      <p className="text-sm mb-4" style={{ color: COLOR.inkSoft }}>
-        Alur: Sales Order → Surat Jalan (stok terpotong di sini) → konfirmasi terima → Faktur → Retur (bila ada).
-      </p>
+      {/* HEADER UTAMA DIBERI KELAS NO-PRINT AGAR TIDAK TERBAWA SAAT CETAK */}
+      <div className="no-print">
+        <Eyebrow>Transaksi</Eyebrow>
+        <h2 className="text-xl font-semibold mb-1" style={{ color: COLOR.ink }}>Penjualan</h2>
+        <p className="text-sm mb-4" style={{ color: COLOR.inkSoft }}>
+          Alur: Sales Order → Surat Jalan (stok terpotong di sini) → konfirmasi terima → Faktur → Retur (bila ada).
+        </p>
 
-      <div className="flex gap-1 mb-4 p-1 rounded-lg w-fit flex-wrap no-print" style={{ background: COLOR.primarySoft }}>
-        {SUBNAV.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => setSubTab(s.id)}
-            className="px-3 py-1.5 rounded-md text-sm font-medium"
-            style={{ background: subTab === s.id ? COLOR.primary : "transparent", color: subTab === s.id ? "#fff" : COLOR.primary }}
-          >
-            {s.label}
-          </button>
-        ))}
+        <div className="flex gap-1 mb-4 p-1 rounded-lg w-fit flex-wrap" style={{ background: COLOR.primarySoft }}>
+          {SUBNAV.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setSubTab(s.id)}
+              className="px-3 py-1.5 rounded-md text-sm font-medium"
+              style={{ background: subTab === s.id ? COLOR.primary : "transparent", color: subTab === s.id ? "#fff" : COLOR.primary }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {subTab === "so" && (
