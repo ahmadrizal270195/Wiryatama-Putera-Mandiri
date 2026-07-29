@@ -4,7 +4,8 @@ import {
   LayoutDashboard, Package, Truck, Users, ShoppingCart, ClipboardList,
   AlertTriangle, Plus, X, Trash2, Search, CheckCircle2, Clock,
   Boxes, ArrowUpRight, ArrowDownRight, Loader2, Edit, Calendar, Printer,
-  Wallet, Receipt, CreditCard, PiggyBank, BarChart3, FileText, LogOut
+  Wallet, Receipt, CreditCard, PiggyBank, BarChart3, FileText, LogOut,
+  Building2, Phone, Mail, MapPin, ShieldCheck, Award, ArrowRight, Lock, MessageSquare
 } from "lucide-react";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./firebase";
@@ -15,9 +16,10 @@ const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Toko Obat", "Distrib
 
 const COMPANY_PROFILE = {
   name: "PT WIRYATAMA PUTERA MANDIRI",
-  tagline: "Distributor Penyalur Farmasi & Alat Kesehatan (Alkes)",
+  tagline: "Distributor Penyalur Farmasi & Alat Kesehatan (Alkes) Terpercaya",
   address: "Ruko New Aruna Residence, Jl. Serua Raya No.9, Bojongsari, Depok, Jawa Barat 16517",
-  contact: "Email: finance@wiryatamaputera.co.id | Telp: (021) 7437964 / WhatsApp: 0817-773-791",
+  contact: "Email: info@wiryatamaputera.co.id | Telp: (021) 7437964 / WA: 0817-773-791",
+  whatsapp: "0817-773-791",
   logoUrl: "https://i.imgur.com/EfI1R4p.jpeg", 
   bankDetails: {
     bankName: "Bank Central Asia (BCA)",
@@ -84,158 +86,215 @@ function isThisMonth(dateStr) {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
 
-// ---------- UI Components ----------
-function Eyebrow({ children }) {
-  return <div style={{ color: COLOR.inkSoft, letterSpacing: "0.08em" }} className="text-[11px] font-mono uppercase mb-1">{children}</div>;
-}
+// ---------- MAIN APP ROUTER (PUBLIK / LOGIN / ERP) ----------
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [viewMode, setViewMode] = useState("public"); // "public", "login", "erp"
 
-function Card({ children, style, className = "" }) {
-  return (
-    <div
-      className={"rounded-xl p-4 " + className}
-      style={{ background: COLOR.surface, border: `1px solid ${COLOR.border}`, ...style }}
-    >
-      {children}
-    </div>
-  );
-}
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthChecking(false);
+      if (currentUser) setViewMode("erp");
+    });
+    return () => unsubscribe();
+  }, []);
 
-function Badge({ tone = "good", children }) {
-  const map = {
-    good: [COLOR.goodSoft, COLOR.good],
-    warn: [COLOR.warnSoft, COLOR.warn],
-    danger: [COLOR.dangerSoft, COLOR.danger],
-    neutral: [COLOR.primarySoft, COLOR.primary],
-  };
-  const [bg, fg] = map[tone];
-  return (
-    <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono font-medium"
-      style={{ background: bg, color: fg }}
-    >
-      {children}
-    </span>
-  );
-}
-
-function Button({ children, onClick, variant = "primary", type = "button", className = "", disabled }) {
-  const base = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-opacity disabled:opacity-40";
-  const styles =
-    variant === "primary"
-      ? { background: COLOR.primary, color: "#fff" }
-      : variant === "danger"
-      ? { background: COLOR.dangerSoft, color: COLOR.danger }
-      : { background: "transparent", color: COLOR.ink, border: `1px solid ${COLOR.border}` };
-  return (
-    <button type={type} disabled={disabled} onClick={onClick} className={base + " " + className} style={styles}>
-      {children}
-    </button>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <label className="block mb-3">
-      <div className="text-xs font-medium mb-1" style={{ color: COLOR.inkSoft }}>{label}</div>
-      {children}
-    </label>
-  );
-}
-
-const inputStyle = {
-  background: "#fff",
-  border: `1px solid ${COLOR.border}`,
-  color: COLOR.ink,
-};
-
-function DateInput(props) {
-  const { value, onChange, className = "", required, disabled, style } = props;
-
-  const formatDisplay = (iso) => {
-    if (!iso) return "";
-    const [y, m, d] = String(iso).slice(0, 10).split("-");
-    if (y && m && d) return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
-    return iso;
-  };
-
-  return (
-    <div className="relative w-full flex items-center">
-      <input
-        type="text"
-        readOnly
-        value={formatDisplay(value)}
-        placeholder="dd/mm/yyyy"
-        className={"w-full rounded-lg pl-3 pr-9 py-1.5 text-sm outline-none bg-white " + className}
-        style={{ ...inputStyle, ...style }}
-      />
-      <Calendar size={15} className="absolute right-3 pointer-events-none" style={{ color: COLOR.inkSoft }} />
-      <input
-        type="date"
-        value={value || ""}
-        onChange={onChange}
-        required={required}
-        disabled={disabled}
-        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-        style={{ colorScheme: "light" }}
-      />
-    </div>
-  );
-}
-
-function TextInput(props) {
-  if (props.type === "date") {
-    return <DateInput {...props} />;
+  if (authChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm" style={{ color: COLOR.inkSoft, background: COLOR.bg }}>
+        <Loader2 className="animate-spin mr-2" size={18} /> Memeriksa status...
+      </div>
+    );
   }
-  return <input {...props} className={"w-full rounded-lg px-3 py-1.5 text-sm outline-none " + (props.className || "")} style={inputStyle} />;
+
+  if (viewMode === "public") {
+    return <PublicLandingPage onGoToLogin={() => setViewMode(user ? "erp" : "login")} isLoggedIn={!!user} />;
+  }
+
+  if (viewMode === "login" && !user) {
+    return <LoginScreen onBackToPublic={() => setViewMode("public")} />;
+  }
+
+  return <PharmaERP userEmail={user?.email} onLogout={() => { signOut(auth); setViewMode("public"); }} onGoToPublic={() => setViewMode("public")} />;
 }
 
-function Select(props) {
-  return <select {...props} className={"w-full rounded-lg px-3 py-1.5 text-sm outline-none " + (props.className || "")} style={inputStyle} />;
-}
+// ---------- 1. PUBLIC LANDING PAGE (COMPANY PROFILE) ----------
+function PublicLandingPage({ onGoToLogin, isLoggedIn }) {
+  const [products, setProducts] = useState([]);
+  const [search, setSearch] = useState("");
 
-function Modal({ title, onClose, children, wide }) {
+  useEffect(() => {
+    (async () => {
+      const p = await loadKey(KEYS.products);
+      setProducts(p || []);
+    })();
+  }, []);
+
+  const filtered = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase()));
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop" style={{ background: "rgba(15,30,28,0.45)" }} onClick={onClose}>
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className={"rounded-2xl w-full " + (wide ? "max-w-3xl" : "max-w-md") + " max-h-[85vh] overflow-y-auto modal-content"}
-        style={{ background: COLOR.surface }}
-      >
-        <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10 no-print" style={{ background: COLOR.surface, borderBottom: `1px solid ${COLOR.border}` }}>
-          <h3 className="font-semibold text-base" style={{ color: COLOR.ink }}>{title}</h3>
-          <button onClick={onClose} className="p-1 rounded-lg hover:opacity-60"><X size={18} color={COLOR.inkSoft} /></button>
+    <div className="min-h-screen font-sans" style={{ background: COLOR.bg, color: COLOR.ink }}>
+      {/* NAVBAR PUBLIK */}
+      <nav className="bg-white border-b sticky top-0 z-40" style={{ borderColor: COLOR.border }}>
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <img src={COMPANY_PROFILE.logoUrl} alt="Logo WPM" className="h-10 object-contain" />
+            <div>
+              <div className="font-bold text-sm" style={{ color: COLOR.primary }}>PT WIRYATAMA PUTERA MANDIRI</div>
+              <div className="text-[10px]" style={{ color: COLOR.inkSoft }}>Distributor Farmasi & Alkes</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <a href="#katalog" className="text-xs font-medium hover:opacity-75 hidden sm:block">Katalog Produk</a>
+            <a href="#layanan" className="text-xs font-medium hover:opacity-75 hidden sm:block">Keunggulan Kami</a>
+            <a href="#kontak" className="text-xs font-medium hover:opacity-75 hidden sm:block">Kontak</a>
+            <button
+              onClick={onGoToLogin}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-opacity"
+              style={{ background: COLOR.primary }}
+            >
+              <Lock size={12} /> {isLoggedIn ? "Masuk ke Sistem ERP" : "Login Staff ERP"}
+            </button>
+          </div>
         </div>
-        <div className="p-5">{children}</div>
-      </div>
+      </nav>
+
+      {/* HERO BANNER */}
+      <header className="py-16 px-4 text-center bg-white border-b" style={{ borderColor: COLOR.border }}>
+        <div className="max-w-3xl mx-auto">
+          <span className="inline-block px-3 py-1 rounded-full text-xs font-mono font-medium mb-3" style={{ background: COLOR.primarySoft, color: COLOR.primary }}>
+            PEDAGANG BESAR FARMASI & ALKES
+          </span>
+          <h1 className="text-3xl sm:text-4xl font-extrabold mb-4 leading-tight" style={{ color: COLOR.primary }}>
+            Mitra Distribusi Obat & Alat Kesehatan Terpercaya
+          </h1>
+          <p className="text-sm sm:text-base mb-8 max-w-2xl mx-auto" style={{ color: COLOR.inkSoft }}>
+            Menyuplai kebutuhan Rumah Sakit, Klinik, Apotek, dan Dokter dengan jaminan kualitas standar CDOB (Cara Distribusi Obat yang Baik) serta manajemen sistem stok mutakhir.
+          </p>
+          <div className="flex items-center justify-center gap-3 flex-wrap">
+            <a
+              href={`https://wa.me/${COMPANY_PROFILE.whatsapp}?text=Halo%20PT%20Wiryatama%20Putera%20Mandiri,%20saya%20ingin%20mengajukan%20pemesanan%20produk.`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm text-white shadow-md hover:opacity-90"
+              style={{ background: COLOR.good }}
+            >
+              <MessageSquare size={16} /> Hubungi Sales via WhatsApp
+            </a>
+            <a href="#katalog" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm border hover:bg-gray-50" style={{ borderColor: COLOR.border }}>
+              Lihat Katalog Produk <ArrowRight size={15} />
+            </a>
+          </div>
+        </div>
+      </header>
+
+      {/* STATS & KEUNGGULAN */}
+      <section id="layanan" className="py-12 max-w-6xl mx-auto px-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
+          <Card className="flex items-start gap-3">
+            <div className="p-2.5 rounded-lg shrink-0" style={{ background: COLOR.primarySoft, color: COLOR.primary }}>
+              <ShieldCheck size={20} />
+            </div>
+            <div>
+              <div className="font-semibold text-sm mb-1">Standar Kualitas CDOB</div>
+              <div className="text-xs" style={{ color: COLOR.inkSoft }}>Seluruh produk farmasi & alkes tersimpan pada kondisi suhu yang terpelihara presisi.</div>
+            </div>
+          </Card>
+          <Card className="flex items-start gap-3">
+            <div className="p-2.5 rounded-lg shrink-0" style={{ background: COLOR.goodSoft, color: COLOR.good }}>
+              <Boxes size={20} />
+            </div>
+            <div>
+              <div className="font-semibold text-sm mb-1">Traceability Batch FEFO</div>
+              <div className="text-xs" style={{ color: COLOR.inkSoft }}>Jaminan penanganan First-Expire-First-Out untuk memastikan tanggal kedaluwarsa selalu aman.</div>
+            </div>
+          </Card>
+          <Card className="flex items-start gap-3">
+            <div className="p-2.5 rounded-lg shrink-0" style={{ background: COLOR.warnSoft, color: COLOR.warn }}>
+              <Truck size={20} />
+            </div>
+            <div>
+              <div className="font-semibold text-sm mb-1">Pengiriman Cepat & Tepat</div>
+              <div className="text-xs" style={{ color: COLOR.inkSoft }}>Armada pengiriman siap melayani pengantaran pesanan fasilitas kesehatan harian.</div>
+            </div>
+          </Card>
+        </div>
+
+        {/* KATALOG PRODUK PUBLIK */}
+        <div id="katalog" className="pt-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
+            <div>
+              <Eyebrow>Daftar Didistribusikan</Eyebrow>
+              <h2 className="text-xl font-bold" style={{ color: COLOR.primary }}>Katalog Obat & Alat Kesehatan</h2>
+            </div>
+            <div className="relative max-w-xs">
+              <Search size={14} className="absolute left-3 top-2.5" color={COLOR.inkSoft} />
+              <TextInput placeholder="Cari obat / alkes..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {filtered.map(p => (
+              <Card key={p.id} className="flex flex-col justify-between">
+                <div>
+                  <Badge tone="neutral">{p.category}</Badge>
+                  <h3 className="font-semibold text-base mt-2" style={{ color: COLOR.ink }}>{p.name}</h3>
+                  <div className="text-xs mt-1 font-mono" style={{ color: COLOR.inkSoft }}>Satuan Kemasan: {p.unit}</div>
+                </div>
+                <div className="mt-4 pt-3 border-t flex items-center justify-between" style={{ borderColor: COLOR.border }}>
+                  <div className="text-xs font-semibold" style={{ color: COLOR.good }}>Tersedia / Ready</div>
+                  <a
+                    href={`https://wa.me/${COMPANY_PROFILE.whatsapp}?text=Halo%20Admin,%20saya%20ingin%20menanyakan%20ketersediaan%20produk:%20${encodeURIComponent(p.name)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-semibold hover:underline"
+                    style={{ color: COLOR.primary }}
+                  >
+                    Pesan Produk &rarr;
+                  </a>
+                </div>
+              </Card>
+            ))}
+            {filtered.length === 0 && (
+              <div className="col-span-full py-12 text-center text-sm" style={{ color: COLOR.inkSoft }}>
+                Belum ada produk yang cocok dengan pencarian Anda.
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* FOOTER & KONTAK */}
+      <footer id="kontak" className="bg-white border-t mt-16 py-12" style={{ borderColor: COLOR.border }}>
+        <div className="max-w-6xl mx-auto px-4 grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <img src={COMPANY_PROFILE.logoUrl} alt="Logo WPM" className="h-8 object-contain" />
+              <div className="font-bold text-base" style={{ color: COLOR.primary }}>{COMPANY_PROFILE.name}</div>
+            </div>
+            <p className="text-xs leading-relaxed max-w-sm" style={{ color: COLOR.inkSoft }}>
+              {COMPANY_PROFILE.tagline}. Melayani distribusi terpadu produk farmasi dan alat kesehatan resmi untuk mitra fasilitas kesehatan.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 text-xs" style={{ color: COLOR.inkSoft }}>
+            <div className="font-bold text-sm mb-1 text-gray-900">Alamat Kantor & Gudang</div>
+            <div className="flex items-center gap-2"><MapPin size={14} /> {COMPANY_PROFILE.address}</div>
+            <div className="flex items-center gap-2"><Mail size={14} /> info@wiryatamaputera.co.id</div>
+            <div className="flex items-center gap-2"><Phone size={14} /> (021) 555-0192 / WhatsApp: 0812-3456-7890</div>
+          </div>
+        </div>
+        <div className="max-w-6xl mx-auto px-4 mt-8 pt-4 border-t text-center text-[11px]" style={{ borderColor: COLOR.border, color: COLOR.inkSoft }}>
+          &copy; 2026 PT Wiryatama Putera Mandiri. All rights reserved.
+        </div>
+      </footer>
     </div>
   );
 }
 
-function urgencyOf(expiryDate) {
-  const d = daysUntil(expiryDate);
-  if (d < 0) return { tone: "danger", label: "Kedaluwarsa", color: COLOR.danger };
-  if (d <= 30) return { tone: "danger", label: `${d}h lagi`, color: COLOR.danger };
-  if (d <= 90) return { tone: "warn", label: `${d}h lagi`, color: COLOR.warn };
-  return { tone: "good", label: `${d}h lagi`, color: COLOR.good };
-}
-
-function ExpiryRibbon({ productBatches }) {
-  const total = productBatches.reduce((s, b) => s + b.qty, 0);
-  if (total === 0) return <div className="text-xs" style={{ color: COLOR.inkSoft }}>Tidak ada stok</div>;
-  const sorted = [...productBatches].sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
-  return (
-    <div>
-      <div className="flex w-full h-2.5 rounded-full overflow-hidden" style={{ background: COLOR.border }}>
-        {sorted.map((b) => (
-          <div key={b.id} style={{ width: `${(b.qty / total) * 100}%`, background: urgencyOf(b.expiryDate).color }} title={`${b.batchNo}: ${b.qty} unit, exp ${fmtDate(b.expiryDate)}`} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ---------- LOGIN COMPONENT ----------
-function LoginScreen() {
+// ---------- 2. LOGIN SCREEN ----------
+function LoginScreen({ onBackToPublic }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -256,8 +315,11 @@ function LoginScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: COLOR.bg }}>
       <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl border w-full max-w-sm shadow-sm" style={{ borderColor: COLOR.border }}>
-        <div className="font-semibold text-lg mb-1" style={{ color: COLOR.ink }}>PT Wiryatama Putera Mandiri</div>
-        <div className="text-xs mb-5" style={{ color: COLOR.inkSoft }}>ERP System — Masuk Sebagai Admin</div>
+        <button type="button" onClick={onBackToPublic} className="text-xs mb-4 hover:underline flex items-center gap-1" style={{ color: COLOR.inkSoft }}>
+          &larr; Kembali ke Website Utama
+        </button>
+        <div className="font-bold text-base mb-0.5" style={{ color: COLOR.primary }}>PT Wiryatama Putera Mandiri</div>
+        <div className="text-xs mb-5" style={{ color: COLOR.inkSoft }}>ERP System — Masuk Sebagai Admin/Staff</div>
 
         <Field label="Email">
           <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -274,43 +336,15 @@ function LoginScreen() {
           className="w-full py-2.5 rounded-lg text-white font-medium text-sm mt-2 transition-opacity"
           style={{ background: COLOR.primary, opacity: loading ? 0.6 : 1 }}
         >
-          {loading ? "Memproses..." : "Masuk"}
+          {loading ? "Memproses..." : "Masuk ke Sistem"}
         </button>
       </form>
     </div>
   );
 }
 
-// ---------- MAIN APP ENTRY POINT ----------
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [authChecking, setAuthChecking] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setAuthChecking(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  if (authChecking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-sm" style={{ color: COLOR.inkSoft, background: COLOR.bg }}>
-        <Loader2 className="animate-spin mr-2" size={18} /> Memeriksa autentikasi...
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <LoginScreen />;
-  }
-
-  return <PharmaERP userEmail={user.email} onLogout={() => signOut(auth)} />;
-}
-
-// ---------- main app ----------
-function PharmaERP({ userEmail, onLogout }) {
+// ---------- 3. INTERNAL PHARMA ERP SYSTEM ----------
+function PharmaERP({ userEmail, onLogout, onGoToPublic }) {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("dashboard");
   const [products, setProducts] = useState([]);
@@ -472,14 +506,13 @@ function PharmaERP({ userEmail, onLogout }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96 gap-2" style={{ color: COLOR.inkSoft }}>
-        <Loader2 className="animate-spin" size={18} /> Memuat data...
+        <Loader2 className="animate-spin" size={18} /> Memuat data ERP...
       </div>
     );
   }
 
   return (
-    <div style={{ background: COLOR.bg, minHeight: "600px", fontFamily: "ui-sans-serif, system-ui, sans-serif" }} className="flex rounded-2xl overflow-hidden">
-      {/* CSS PRINTING DENGAN IMPORT GOOGLE FONT INTER 400 & 700 UNTUK MENGELIMINASI FONT-WEIGHT INTERMEDIT (500/600) */}
+    <div style={{ background: COLOR.bg, minHeight: "600px", fontFamily: "ui-sans-serif, system-ui, sans-serif" }} className="flex rounded-2xl overflow-hidden min-h-screen">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
 
@@ -518,9 +551,12 @@ function PharmaERP({ userEmail, onLogout }) {
         }
       `}</style>
 
-      {/* Sidebar */}
+      {/* Sidebar ERP */}
       <div className="w-56 shrink-0 flex flex-col py-5 px-3 no-print" style={{ background: COLOR.primary }}>
         <div className="px-2 mb-6">
+          <button onClick={onGoToPublic} className="text-[10px] text-teal-200 hover:underline mb-1 block">
+            &larr; Lihat Web Publik
+          </button>
           <div className="text-white font-semibold text-sm leading-tight">PT Wiryatama Putera Mandiri</div>
           <div className="font-mono text-[11px] uppercase tracking-wider" style={{ color: "#8FC2C0" }}>ERP SYSTEM</div>
           <div className="flex items-center gap-1.5 mt-2 text-[11px] font-mono" style={{ color: syncState === "error" ? "#F0A69B" : "#8FC2C0" }}>
@@ -571,8 +607,8 @@ function PharmaERP({ userEmail, onLogout }) {
         </div>
       </div>
 
-      {/* Main */}
-      <div className="flex-1 p-6 overflow-y-auto max-h-[85vh] main-container">
+      {/* Main Container ERP */}
+      <div className="flex-1 p-6 overflow-y-auto max-h-[100vh] main-container">
         <div className="no-print">
           {tab === "dashboard" && (
             <Dashboard {...{ products, batches, pos, sos, suppliers, customers, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth }} />
@@ -639,7 +675,7 @@ function PharmaERP({ userEmail, onLogout }) {
   );
 }
 
-// ---------- Dashboard ----------
+// ---------- Sub-komponen Dashboard, Products, Stock, dll. tetap sama persis ----------
 function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, suppliers, customers, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth }) {
   const recentPOs = [...pos].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
   const recentSOs = [...sos].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
@@ -647,7 +683,7 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
   return (
     <div>
       <Eyebrow>Ringkasan bisnis</Eyebrow>
-      <h2 className="text-xl font-semibold mb-5" style={{ color: COLOR.ink }}>Dashboard</h2>
+      <h2 className="text-xl font-semibold mb-5" style={{ color: COLOR.ink }}>Dashboard ERP</h2>
 
       <div className="grid grid-cols-4 gap-3 mb-4">
         <Card>
@@ -744,7 +780,6 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
   );
 }
 
-// ---------- Products ----------
 function ProductsView({ products, save, stockByProduct, notify }) {
   const [modal, setModal] = useState(null);
   const [q, setQ] = useState("");
@@ -834,7 +869,6 @@ function ProductsView({ products, save, stockByProduct, notify }) {
   );
 }
 
-// ---------- Stock & Batch ----------
 function StockView({ products, batches, stockByProduct }) {
   return (
     <div>
@@ -876,7 +910,6 @@ function StockView({ products, batches, stockByProduct }) {
   );
 }
 
-// ---------- Suppliers ----------
 function SuppliersView({ suppliers, save, notify }) {
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({ name: "", contact: "", address: "" });
@@ -926,7 +959,6 @@ function SuppliersView({ suppliers, save, notify }) {
   );
 }
 
-// ---------- Customers ----------
 function CustomersView({ customers, save, notify }) {
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({ name: "", type: CUSTOMER_TYPES[0], contact: "", address: "" });
@@ -982,7 +1014,6 @@ function CustomersView({ customers, save, notify }) {
   );
 }
 
-// ---------- Purchases ----------
 function PurchasesView({
   products, suppliers, pos, batches, pReceipts, pInvoices, pReturns, paymentsOut,
   savePOs, saveBatches, savePReceipts, savePInvoices, savePReturns, findName, notify,
@@ -1729,7 +1760,6 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
   );
 }
 
-// ---------- Sales ----------
 function SalesView({
   products, customers, sos, batches, deliveryNotes, invoices, returns, paymentsIn,
   saveSOs, saveBatches, saveDeliveryNotes, saveInvoices, saveReturns, allocateFEFO,
@@ -2348,7 +2378,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         </Modal>
       )}
 
-      {/* MODAL TEMPLATE INVOICE RESMI PRESISI DENGAN PENYESUAIAN FONT LOADING & STABLE WEIGHT */}
+      {/* TEMPLATE INVOICE DENGAN STRUKTUR WEIGHT RAPI */}
       {printInv && (
         <Modal title={`Faktur Penjualan — ${printInv.noFaktur}`} onClose={() => setPrintInv(null)} wide>
           <div className="flex justify-end gap-2 mb-4 no-print">
@@ -2497,7 +2527,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                     </div>
                     <div>
                       <p className="text-gray-500 mb-12">Hormat Kami ({COMPANY_PROFILE.name}),</p>
-                      <p className="underline text-gray-900 font-bold">( Finance )</p>
+                      <p className="underline text-gray-900 font-bold">( Bagian Finance & Kasir )</p>
                     </div>
                   </div>
                 </div>
