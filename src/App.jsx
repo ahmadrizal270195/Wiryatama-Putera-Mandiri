@@ -18,7 +18,7 @@ const COMPANY_PROFILE = {
   tagline: "Distributor Penyalur Farmasi & Alat Kesehatan (Alkes)",
   address: "Jl. Utama Bintaro Jaya No. 88, Sektor 3A, Tangerang Selatan, Banten 15222",
   contact: "Email: finance@wiryatamaputera.co.id | Telp: (021) 555-0192 / WhatsApp: 0812-3456-7890",
-  logoUrl: "https://i.imgur.com/EfI1R4p.jpeg", 
+  logoUrl: "https://i.imgur.com/uuH6XKp.png", 
   bankDetails: {
     bankName: "Bank Central Asia (BCA)",
     accountNumber: "883-0912-331",
@@ -479,9 +479,9 @@ function PharmaERP({ userEmail, onLogout }) {
 
   return (
     <div style={{ background: COLOR.bg, minHeight: "600px", fontFamily: "ui-sans-serif, system-ui, sans-serif" }} className="flex rounded-2xl overflow-hidden">
-      {/* IMPORT GOOGLE FONT INTER DAN FIX CSS PRINT FONTS */}
+      {/* CSS PRINTING DENGAN IMPORT GOOGLE FONT INTER 400 & 700 UNTUK MENGELIMINASI FONT-WEIGHT INTERMEDIT (500/600) */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
 
         @media print {
           .no-print, .no-print * {
@@ -504,13 +504,16 @@ function PharmaERP({ userEmail, onLogout }) {
             border: none !important;
             padding: 0 !important;
             margin: 0 !important;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-            -webkit-font-smoothing: antialiased !important;
-            -moz-osx-font-smoothing: grayscale !important;
-            text-rendering: optimizeLegibility !important;
+            font-family: 'Inter', Arial, Helvetica, sans-serif !important;
           }
           #printable-invoice * {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+            font-family: inherit !important;
+            font-weight: 400 !important;
+          }
+          #printable-invoice .font-bold,
+          #printable-invoice strong,
+          #printable-invoice b {
+            font-weight: 700 !important;
           }
         }
       `}</style>
@@ -1766,7 +1769,6 @@ function SalesView({
 
   return (
     <div>
-      {/* HEADER UTAMA DIBERI KELAS NO-PRINT AGAR TIDAK TERBAWA SAAT CETAK */}
       <div className="no-print">
         <Eyebrow>Transaksi</Eyebrow>
         <h2 className="text-xl font-semibold mb-1" style={{ color: COLOR.ink }}>Penjualan</h2>
@@ -2346,11 +2348,25 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         </Modal>
       )}
 
-      {/* MODAL TEMPLATE INVOICE DENGAN RENDER FONT INTER DAN FIX KETEBALAN RAPI */}
+      {/* MODAL TEMPLATE INVOICE RESMI PRESISI DENGAN PENYESUAIAN FONT LOADING & STABLE WEIGHT */}
       {printInv && (
         <Modal title={`Faktur Penjualan — ${printInv.noFaktur}`} onClose={() => setPrintInv(null)} wide>
           <div className="flex justify-end gap-2 mb-4 no-print">
-            <Button onClick={() => window.print()} variant="primary">
+            <Button
+              onClick={async () => {
+                try {
+                  if (document.fonts) {
+                    await Promise.all([
+                      document.fonts.load("400 12px Inter"),
+                      document.fonts.load("700 12px Inter"),
+                    ]);
+                    await document.fonts.ready;
+                  }
+                } catch (e) {}
+                window.print();
+              }}
+              variant="primary"
+            >
               <Printer size={15} /> Cetak Sekarang / Simpan PDF
             </Button>
           </div>
@@ -2358,12 +2374,6 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
           <div 
             id="printable-invoice" 
             className="p-6 bg-white border rounded-xl text-xs text-gray-800" 
-            style={{ 
-              fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-              WebkitFontSmoothing: "antialiased",
-              MozOsxFontSmoothing: "grayscale",
-              textRendering: "optimizeLegibility"
-            }}
           >
             {/* KOP SURAT */}
             <div className="flex items-start justify-between border-b-2 pb-4 mb-4" style={{ borderColor: COLOR.primary }}>
@@ -2372,15 +2382,15 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                   <img src={COMPANY_PROFILE.logoUrl} alt="Logo" className="h-12 object-contain" />
                 )}
                 <div>
-                  <h1 className="text-base font-bold uppercase tracking-wide" style={{ color: COLOR.primary, fontWeight: 700 }}>{COMPANY_PROFILE.name}</h1>
-                  <p className="text-[11px] text-gray-600 font-medium">{COMPANY_PROFILE.tagline}</p>
+                  <div className="text-base uppercase tracking-wide font-bold" style={{ color: COLOR.primary }}>{COMPANY_PROFILE.name}</div>
+                  <p className="text-[11px] text-gray-600">{COMPANY_PROFILE.tagline}</p>
                   <p className="text-[10px] text-gray-500 mt-1">{COMPANY_PROFILE.address}</p>
                   <p className="text-[10px] text-gray-500">{COMPANY_PROFILE.contact}</p>
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-xl font-bold uppercase tracking-wider text-gray-700" style={{ fontWeight: 700 }}>FAKTUR PENJUALAN</div>
-                <div className="font-mono text-sm font-semibold mt-1" style={{ color: COLOR.primary }}>{printInv.noFaktur}</div>
+                <div className="text-lg uppercase tracking-wider text-gray-700 font-bold">FAKTUR PENJUALAN</div>
+                <div className="font-mono text-sm mt-1 font-bold" style={{ color: COLOR.primary }}>{printInv.noFaktur}</div>
               </div>
             </div>
 
@@ -2398,16 +2408,16 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                 <div>
                   <div className="grid grid-cols-2 gap-4 mb-6 bg-gray-50 p-3 rounded-lg border">
                     <div>
-                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Kepada Yth.</div>
-                      <div className="font-bold text-sm text-gray-900" style={{ fontWeight: 600 }}>{cust?.name || "Pelanggan"}</div>
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Kepada Yth.</div>
+                      <div className="text-sm text-gray-900 font-bold">{cust?.name || "Pelanggan"}</div>
                       <div className="text-[11px] text-gray-600 mt-0.5">{cust?.address || "-"}</div>
                       <div className="text-[11px] text-gray-600">{cust?.contact || "-"}</div>
                     </div>
                     <div className="text-right">
-                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Detail Dokumen</div>
-                      <div><span className="text-gray-500">Tanggal Faktur:</span> <span className="font-mono font-medium">{fmtDate(printInv.date)}</span></div>
-                      <div><span className="text-gray-500">No. Sales Order:</span> <span className="font-mono font-medium">{so?.soNumber || "-"}</span></div>
-                      <div><span className="text-gray-500">Tanggal SO:</span> <span className="font-mono font-medium">{fmtDate(so?.date)}</span></div>
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Detail Dokumen</div>
+                      <div><span className="text-gray-500">Tanggal Faktur:</span> <span className="font-mono">{fmtDate(printInv.date)}</span></div>
+                      <div><span className="text-gray-500">No. Sales Order:</span> <span className="font-mono">{so?.soNumber || "-"}</span></div>
+                      <div><span className="text-gray-500">Tanggal SO:</span> <span className="font-mono">{fmtDate(so?.date)}</span></div>
                     </div>
                   </div>
 
@@ -2415,11 +2425,11 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                   <table className="w-full text-xs border-collapse mb-6">
                     <thead>
                       <tr className="border-b-2" style={{ background: COLOR.primarySoft, borderColor: COLOR.primary }}>
-                        <th className="py-2 px-2 text-left font-semibold" style={{ color: COLOR.primary, fontWeight: 600 }}>No</th>
-                        <th className="py-2 px-2 text-left font-semibold" style={{ color: COLOR.primary, fontWeight: 600 }}>Nama Barang / Alkes</th>
-                        <th className="py-2 px-2 text-center font-semibold" style={{ color: COLOR.primary, fontWeight: 600 }}>Qty</th>
-                        <th className="py-2 px-2 text-right font-semibold" style={{ color: COLOR.primary, fontWeight: 600 }}>Harga Satuan</th>
-                        <th className="py-2 px-2 text-right font-semibold" style={{ color: COLOR.primary, fontWeight: 600 }}>Subtotal</th>
+                        <th className="py-2 px-2 text-left font-bold" style={{ color: COLOR.primary }}>No</th>
+                        <th className="py-2 px-2 text-left font-bold" style={{ color: COLOR.primary }}>Nama Barang / Alkes</th>
+                        <th className="py-2 px-2 text-center font-bold" style={{ color: COLOR.primary }}>Qty</th>
+                        <th className="py-2 px-2 text-right font-bold" style={{ color: COLOR.primary }}>Harga Satuan</th>
+                        <th className="py-2 px-2 text-right font-bold" style={{ color: COLOR.primary }}>Subtotal</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2428,10 +2438,10 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                         return (
                           <tr key={idx} className="border-b">
                             <td className="py-2 px-2 font-mono text-gray-500">{idx + 1}</td>
-                            <td className="py-2 px-2 font-medium text-gray-900" style={{ fontWeight: 500 }}>{p?.name || "-"}</td>
+                            <td className="py-2 px-2 text-gray-900">{p?.name || "-"}</td>
                             <td className="py-2 px-2 text-center font-mono">{it.qty} {p?.unit || "unit"}</td>
                             <td className="py-2 px-2 text-right font-mono">{fmtIDR(it.unitPrice)}</td>
-                            <td className="py-2 px-2 text-right font-mono font-semibold" style={{ fontWeight: 600 }}>{fmtIDR(it.qty * it.unitPrice)}</td>
+                            <td className="py-2 px-2 text-right font-mono font-bold">{fmtIDR(it.qty * it.unitPrice)}</td>
                           </tr>
                         );
                       })}
@@ -2441,10 +2451,10 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                   {/* PERHITUNGAN TOTAL */}
                   <div className="flex justify-between items-start mb-8">
                     <div className="w-1/2 p-3 rounded-lg border bg-gray-50 text-[11px]">
-                      <div className="font-semibold text-gray-700 mb-1" style={{ fontWeight: 600 }}>Catatan Pembayaran:</div>
+                      <div className="text-gray-700 mb-1 font-bold">Catatan Pembayaran:</div>
                       <p className="text-gray-500 leading-relaxed">
-                        Pembayaran dapat ditransfer melalui Bank: <strong>{COMPANY_PROFILE.bankDetails.bankName}</strong><br />
-                        No. Rekening: <strong>{COMPANY_PROFILE.bankDetails.accountNumber}</strong> a.n <strong>{COMPANY_PROFILE.bankDetails.accountName}</strong>.<br />
+                        Pembayaran dapat ditransfer melalui Bank: <b className="font-bold">{COMPANY_PROFILE.bankDetails.bankName}</b><br />
+                        No. Rekening: <b className="font-bold">{COMPANY_PROFILE.bankDetails.accountNumber}</b> a.n <b className="font-bold">{COMPANY_PROFILE.bankDetails.accountName}</b>.<br />
                         <span className="italic">{COMPANY_PROFILE.paymentNotes}</span>
                       </p>
                     </div>
@@ -2452,27 +2462,27 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                     <div className="w-5/12 text-xs flex flex-col gap-1.5">
                       <div className="flex justify-between py-1 border-b">
                         <span className="text-gray-600">Subtotal Penjualan</span>
-                        <span className="font-mono font-semibold">{fmtIDR(subtotal)}</span>
+                        <span className="font-mono font-bold">{fmtIDR(subtotal)}</span>
                       </div>
                       {dp > 0 && (
                         <div className="flex justify-between py-1 border-b text-emerald-700">
                           <span>Potongan Uang Muka (DP)</span>
-                          <span className="font-mono font-semibold">- {fmtIDR(dp)}</span>
+                          <span className="font-mono font-bold">- {fmtIDR(dp)}</span>
                         </div>
                       )}
                       {ret > 0 && (
                         <div className="flex justify-between py-1 border-b text-red-600">
                           <span>Potongan Retur Barang</span>
-                          <span className="font-mono font-semibold">- {fmtIDR(ret)}</span>
+                          <span className="font-mono font-bold">- {fmtIDR(ret)}</span>
                         </div>
                       )}
                       {paid > 0 && (
                         <div className="flex justify-between py-1 border-b text-blue-700">
                           <span>Telah Dibayar (Pelunasan)</span>
-                          <span className="font-mono font-semibold">- {fmtIDR(paid)}</span>
+                          <span className="font-mono font-bold">- {fmtIDR(paid)}</span>
                         </div>
                       )}
-                      <div className="flex justify-between py-2 border-b-2 font-bold text-sm" style={{ color: COLOR.primary, borderColor: COLOR.primary }}>
+                      <div className="flex justify-between py-2 border-b-2 text-sm font-bold" style={{ color: COLOR.primary, borderColor: COLOR.primary }}>
                         <span>Sisa Tagihan</span>
                         <span className="font-mono">{fmtIDR(sisa)}</span>
                       </div>
@@ -2483,11 +2493,11 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                   <div className="grid grid-cols-2 gap-8 text-center text-xs mt-12 pt-4">
                     <div>
                       <p className="text-gray-500 mb-12">Tanda Tangan Penerima / Pelanggan,</p>
-                      <p className="font-bold underline text-gray-900" style={{ fontWeight: 600 }}>( {cust?.name || "..........................."} )</p>
+                      <p className="underline text-gray-900 font-bold">( {cust?.name || "..........................."} )</p>
                     </div>
                     <div>
                       <p className="text-gray-500 mb-12">Hormat Kami ({COMPANY_PROFILE.name}),</p>
-                      <p className="font-bold underline text-gray-900" style={{ fontWeight: 600 }}>( Bagian Finance & Kasir )</p>
+                      <p className="underline text-gray-900 font-bold">( Bagian Finance & Kasir )</p>
                     </div>
                   </div>
                 </div>
