@@ -7,13 +7,13 @@ import { getAuth } from "firebase/auth";
 // 3. Di menu kiri, buka "Firestore Database" -> "Create database" -> pilih mode
 //    "Start in test mode" dulu (nanti bisa diperketat, lihat firestore.rules.txt).
 const firebaseConfig = {
-  apiKey: "AIzaSyAVCoDuMez75hwYvvmj2r_5HikjG0giVao",
-  authDomain: "gen-lang-client-0289098330.firebaseapp.com",
-  projectId: "gen-lang-client-0289098330",
-  storageBucket: "gen-lang-client-0289098330.firebasestorage.app",
-  messagingSenderId: "276745189986",
-  appId: "1:276745189986:web:339db6466d40c4bac22f3b",
-  measurementId: "G-QTSJXYM8TL"
+  apiKey: "AIzaSyCFcBcw0lCl5yGAvGwEM2ylhq4yt5AXZZM",
+  authDomain: "mini-erp-system-c6448.firebaseapp.com",
+  projectId: "mini-erp-system-c6448",
+  storageBucket: "mini-erp-system-c6448.firebasestorage.app",
+  messagingSenderId: "44938060261",
+  appId: "1:44938060261:web:f79b6831f795d0f0420f0c",
+  measurementId: "G-F9T5NY6KDC"
 };
 
 const app = initializeApp(firebaseConfig);
