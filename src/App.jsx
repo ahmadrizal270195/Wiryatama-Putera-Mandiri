@@ -16,8 +16,8 @@ const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Toko Obat", "Distrib
 const COMPANY_PROFILE = {
   name: "PT WIRYATAMA PUTERA MANDIRI",
   tagline: "Distributor Penyalur Farmasi & Alat Kesehatan (Alkes)",
-  address: "Jl. Utama Bintaro Jaya No. 88, Sektor 3A, Tangerang Selatan, Banten 15222",
-  contact: "Email: finance@wiryatamaputera.co.id | Telp: (021) 555-0192 / WhatsApp: 0812-3456-7890",
+  address: "Ruko new Aruna residence no, Jl. Serua Raya No.9, Serua, Kec. Bojongsari, Kota Depok, Jawa Barat 16517",
+  contact: "Email: finance@wiryatamaputera.co.id | Telp: (021) 7437964 / WhatsApp: 0817-773-791",
   logoUrl: "https://i.imgur.com/EfI1R4p.jpeg", 
   bankDetails: {
     bankName: "Bank Central Asia (BCA)",
