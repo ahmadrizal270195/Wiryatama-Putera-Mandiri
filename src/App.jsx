@@ -13,13 +13,11 @@ import { auth } from "./firebase";
 const CATEGORIES = ["Obat Generik", "Obat Paten", "Alat Kesehatan", "Vitamin & Suplemen", "Consumables"];
 const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Toko Obat", "Distributor Lain"];
 
-// UBAH DETAIL PROFIL PERUSAHAAN DI SINI SESUAI KEBUTUHAN ANDA
 const COMPANY_PROFILE = {
   name: "PT WIRYATAMA PUTERA MANDIRI",
   tagline: "Distributor Penyalur Farmasi & Alat Kesehatan (Alkes)",
   address: "Jl. Utama Bintaro Jaya No. 88, Sektor 3A, Tangerang Selatan, Banten 15222",
   contact: "Email: finance@wiryatamaputera.co.id | Telp: (021) 555-0192 / WhatsApp: 0812-3456-7890",
-  // Masukkan URL/Link Logo Perusahaan Anda di bawah ini (Kosongkan "" jika tidak ada logo gambar)
   logoUrl: "https://via.placeholder.com/150x60?text=LOGO+WPM", 
   bankDetails: {
     bankName: "Bank Central Asia (BCA)",
@@ -197,13 +195,13 @@ function Select(props) {
 
 function Modal({ title, onClose, children, wide }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(15,30,28,0.45)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop" style={{ background: "rgba(15,30,28,0.45)" }} onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
-        className={"rounded-2xl w-full " + (wide ? "max-w-3xl" : "max-w-md") + " max-h-[85vh] overflow-y-auto"}
+        className={"rounded-2xl w-full " + (wide ? "max-w-3xl" : "max-w-md") + " max-h-[85vh] overflow-y-auto modal-content"}
         style={{ background: COLOR.surface }}
       >
-        <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10" style={{ background: COLOR.surface, borderBottom: `1px solid ${COLOR.border}` }}>
+        <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10 no-print" style={{ background: COLOR.surface, borderBottom: `1px solid ${COLOR.border}` }}>
           <h3 className="font-semibold text-base" style={{ color: COLOR.ink }}>{title}</h3>
           <button onClick={onClose} className="p-1 rounded-lg hover:opacity-60"><X size={18} color={COLOR.inkSoft} /></button>
         </div>
@@ -481,26 +479,29 @@ function PharmaERP({ userEmail, onLogout }) {
 
   return (
     <div style={{ background: COLOR.bg, minHeight: "600px", fontFamily: "ui-sans-serif, system-ui, sans-serif" }} className="flex rounded-2xl overflow-hidden">
-      {/* CSS untuk Mode Cetak (Print) */}
+      {/* CSS KHUSUS PRINT REVISI PRESISI */}
       <style>{`
         @media print {
-          body * {
-            visibility: hidden !important;
+          .no-print, .no-print * {
+            display: none !important;
           }
-          #printable-invoice, #printable-invoice * {
-            visibility: visible !important;
+          .modal-backdrop {
+            position: static !important;
+            background: none !important;
+            padding: 0 !important;
+          }
+          .modal-content {
+            max-height: none !important;
+            overflow: visible !important;
+            box-shadow: none !important;
+            border: none !important;
+            width: 100% !important;
+            max-width: 100% !important;
           }
           #printable-invoice {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            padding: 20px !important;
+            border: none !important;
+            padding: 0 !important;
             margin: 0 !important;
-            background: white !important;
-          }
-          .no-print {
-            display: none !important;
           }
         }
       `}</style>
@@ -559,32 +560,35 @@ function PharmaERP({ userEmail, onLogout }) {
       </div>
 
       {/* Main */}
-      <div className="flex-1 p-6 overflow-y-auto max-h-[85vh] no-print">
-        {tab === "dashboard" && (
-          <Dashboard {...{ products, batches, pos, sos, suppliers, customers, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth }} />
-        )}
-        {tab === "products" && (
-          <ProductsView products={products} save={persist.products} stockByProduct={stockByProduct} notify={notify} />
-        )}
-        {tab === "stock" && (
-          <StockView products={products} batches={batches} stockByProduct={stockByProduct} />
-        )}
-        {tab === "suppliers" && (
-          <SuppliersView suppliers={suppliers} save={persist.suppliers} notify={notify} />
-        )}
-        {tab === "customers" && (
-          <CustomersView customers={customers} save={persist.customers} notify={notify} />
-        )}
-        {tab === "purchases" && (
-          <PurchasesView
-            products={products} suppliers={suppliers} pos={pos} batches={batches}
-            pReceipts={pReceipts} pInvoices={pInvoices} pReturns={pReturns} paymentsOut={paymentsOut}
-            savePOs={persist.pos} saveBatches={persist.batches} savePReceipts={persist.pReceipts}
-            savePInvoices={persist.pInvoices} savePReturns={persist.pReturns} findName={findName} notify={notify}
-            poTotal={poTotal} pInvoiceTotal={pInvoiceTotal} pInvoicePaidAmount={pInvoicePaidAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount} pInvoiceSisa={pInvoiceSisa}
-            stockByProduct={stockByProduct}
-          />
-        )}
+      <div className="flex-1 p-6 overflow-y-auto max-h-[85vh] main-container">
+        <div className="no-print">
+          {tab === "dashboard" && (
+            <Dashboard {...{ products, batches, pos, sos, suppliers, customers, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth }} />
+          )}
+          {tab === "products" && (
+            <ProductsView products={products} save={persist.products} stockByProduct={stockByProduct} notify={notify} />
+          )}
+          {tab === "stock" && (
+            <StockView products={products} batches={batches} stockByProduct={stockByProduct} />
+          )}
+          {tab === "suppliers" && (
+            <SuppliersView suppliers={suppliers} save={persist.suppliers} notify={notify} />
+          )}
+          {tab === "customers" && (
+            <CustomersView customers={customers} save={persist.customers} notify={notify} />
+          )}
+          {tab === "purchases" && (
+            <PurchasesView
+              products={products} suppliers={suppliers} pos={pos} batches={batches}
+              pReceipts={pReceipts} pInvoices={pInvoices} pReturns={pReturns} paymentsOut={paymentsOut}
+              savePOs={persist.pos} saveBatches={persist.batches} savePReceipts={persist.pReceipts}
+              savePInvoices={persist.pInvoices} savePReturns={persist.pReturns} findName={findName} notify={notify}
+              poTotal={poTotal} pInvoiceTotal={pInvoiceTotal} pInvoicePaidAmount={pInvoicePaidAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount} pInvoiceSisa={pInvoiceSisa}
+              stockByProduct={stockByProduct}
+            />
+          )}
+        </div>
+
         {tab === "sales" && (
           <SalesView
             products={products} customers={customers} sos={sos} batches={batches}
@@ -596,19 +600,22 @@ function PharmaERP({ userEmail, onLogout }) {
             invoicePaidAmount={invoicePaidAmount} invoiceReturnedAmount={invoiceReturnedAmount}
           />
         )}
-        {tab === "finance" && (
-          <FinanceView
-            {...{ pos, sos, suppliers, customers, batches, invoices, pInvoices, pReturns, returns, paymentsOut, paymentsIn, expenses, findName, notify }}
-            savePaymentsOut={persist.paymentsOut} savePaymentsIn={persist.paymentsIn} saveExpenses={persist.expenses}
-            arOutstanding={arOutstanding} apOutstanding={apOutstanding} cashInMonth={cashInMonth} cashOutMonth={cashOutMonth}
-            grossProfitMonth={grossProfitMonth} expensesMonth={expensesMonth}
-            invoiceTotal={invoiceTotal} soDPAmount={soDPAmount} invoicePaidAmount={invoicePaidAmount} invoiceReturnedAmount={invoiceReturnedAmount} invoiceSisa={invoiceSisa}
-            pInvoiceTotal={pInvoiceTotal} pInvoicePaidAmount={pInvoicePaidAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount} pInvoiceSisa={pInvoiceSisa}
-          />
-        )}
-        {tab === "reports" && (
-          <ReportsView products={products} suppliers={suppliers} customers={customers} pos={pos} sos={sos} findName={findName} />
-        )}
+
+        <div className="no-print">
+          {tab === "finance" && (
+            <FinanceView
+              {...{ pos, sos, suppliers, customers, batches, invoices, pInvoices, pReturns, returns, paymentsOut, paymentsIn, expenses, findName, notify }}
+              savePaymentsOut={persist.paymentsOut} savePaymentsIn={persist.paymentsIn} saveExpenses={persist.expenses}
+              arOutstanding={arOutstanding} apOutstanding={apOutstanding} cashInMonth={cashInMonth} cashOutMonth={cashOutMonth}
+              grossProfitMonth={grossProfitMonth} expensesMonth={expensesMonth}
+              invoiceTotal={invoiceTotal} soDPAmount={soDPAmount} invoicePaidAmount={invoicePaidAmount} invoiceReturnedAmount={invoiceReturnedAmount} invoiceSisa={invoiceSisa}
+              pInvoiceTotal={pInvoiceTotal} pInvoicePaidAmount={pInvoicePaidAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount} pInvoiceSisa={pInvoiceSisa}
+            />
+          )}
+          {tab === "reports" && (
+            <ReportsView products={products} suppliers={suppliers} customers={customers} pos={pos} sos={sos} findName={findName} />
+          )}
+        </div>
       </div>
 
       {toast && (
@@ -1756,7 +1763,7 @@ function SalesView({
         Alur: Sales Order → Surat Jalan (stok terpotong di sini) → konfirmasi terima → Faktur → Retur (bila ada).
       </p>
 
-      <div className="flex gap-1 mb-4 p-1 rounded-lg w-fit flex-wrap" style={{ background: COLOR.primarySoft }}>
+      <div className="flex gap-1 mb-4 p-1 rounded-lg w-fit flex-wrap no-print" style={{ background: COLOR.primarySoft }}>
         {SUBNAV.map((s) => (
           <button
             key={s.id}
@@ -1835,10 +1842,10 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
 
   return (
     <div>
-      <div className="flex justify-end mb-3">
+      <div className="flex justify-end mb-3 no-print">
         <Button onClick={openNew}><Plus size={15} /> Buat SO</Button>
       </div>
-      <Card className="!p-0 overflow-hidden">
+      <Card className="!p-0 overflow-hidden no-print">
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
@@ -2107,10 +2114,10 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
 
   return (
     <div>
-      <div className="flex justify-end mb-3">
+      <div className="flex justify-end mb-3 no-print">
         <Button onClick={openNew} disabled={eligibleSOs.length === 0}><Plus size={15} /> Buat Surat Jalan</Button>
       </div>
-      <Card className="!p-0 overflow-hidden">
+      <Card className="!p-0 overflow-hidden no-print">
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
@@ -2258,7 +2265,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   return (
     <div>
       {eligibleSOs.length > 0 && (
-        <Card className="mb-4">
+        <Card className="mb-4 no-print">
           <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>SO siap difaktur (barang sudah diterima penuh)</div>
           <div className="flex flex-col gap-2">
             {eligibleSOs.map((so) => (
@@ -2270,7 +2277,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
           </div>
         </Card>
       )}
-      <Card className="!p-0 overflow-hidden">
+      <Card className="!p-0 overflow-hidden no-print">
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
@@ -2327,7 +2334,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         </Modal>
       )}
 
-      {/* TEMPLATE INVOICE RESMI PT WIRYATAMA PUTERA MANDIRI */}
+      {/* MODAL TEMPLATE INVOICE DENGAN STRUKTUR DUKUNGAN CETAK LENGKAP */}
       {printInv && (
         <Modal title={`Faktur Penjualan — ${printInv.noFaktur}`} onClose={() => setPrintInv(null)} wide>
           <div className="flex justify-end gap-2 mb-4 no-print">
@@ -2557,10 +2564,10 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
 
   return (
     <div>
-      <div className="flex justify-end mb-3">
+      <div className="flex justify-end mb-3 no-print">
         <Button onClick={openNew} disabled={returnableInvoices.length === 0}><Plus size={15} /> Catat Retur dari Faktur</Button>
       </div>
-      <Card className="!p-0 overflow-hidden">
+      <Card className="!p-0 overflow-hidden no-print">
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
