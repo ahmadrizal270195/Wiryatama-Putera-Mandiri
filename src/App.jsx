@@ -138,7 +138,7 @@ function PublicLandingPage({ isLoggedIn }) {
     })();
   }, []);
 
-  const filtered = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase()));
+  const filtered = (products || []).filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="min-h-screen font-sans" style={{ background: COLOR.bg, color: COLOR.ink }}>
@@ -482,7 +482,7 @@ function urgencyOf(expiryDate) {
 }
 
 function ExpiryRibbon({ productBatches }) {
-  const total = productBatches.reduce((s, b) => s + b.qty, 0);
+  const total = (productBatches || []).reduce((s, b) => s + b.qty, 0);
   if (total === 0) return <div className="text-xs" style={{ color: COLOR.inkSoft }}>Tidak ada stok</div>;
   const sorted = [...productBatches].sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
   return (
@@ -552,10 +552,10 @@ function PharmaERP({ userEmail, onLogout }) {
         loadKey(KEYS.deliveryNotes), loadKey(KEYS.invoices), loadKey(KEYS.returns),
       ]);
       const swap = (setter) => (next) => setter((prev) => (JSON.stringify(prev) !== JSON.stringify(next) ? next : prev));
-      swap(setProducts)(p); swap(setSuppliers)(s); swap(setCustomers)(c); swap(setBatches)(b);
-      swap(setPOs)(po); swap(setPReceipts)(pr); swap(setPInvoices)(pi); swap(setPReturns)(pret); swap(setSOs)(so); 
-      swap(setPaymentsOut)(pout); swap(setPaymentsIn)(pin); swap(setExpenses)(exp);
-      swap(setDeliveryNotes)(dn); swap(setInvoices)(inv); swap(setReturns)(ret);
+      swap(setProducts)(p || []); swap(setSuppliers)(s || []); swap(setCustomers)(c || []); swap(setBatches)(b || []);
+      swap(setPOs)(po || []); swap(setPReceipts)(pr || []); swap(setPInvoices)(pi || []); swap(setPReturns)(pret || []); swap(setSOs)(so || []); 
+      swap(setPaymentsOut)(pout || []); swap(setPaymentsIn)(pin || []); swap(setExpenses)(exp || []);
+      swap(setDeliveryNotes)(dn || []); swap(setInvoices)(inv || []); swap(setReturns)(ret || []);
       setLastSync(Date.now());
       setSyncState("ok");
     } catch (e) {
@@ -601,8 +601,8 @@ function PharmaERP({ userEmail, onLogout }) {
 
   const stockByProduct = useMemo(() => {
     const map = {};
-    for (const p of products) map[p.id] = { product: p, qty: 0, value: 0, batches: [] };
-    for (const b of batches) {
+    for (const p of (products || [])) map[p.id] = { product: p, qty: 0, value: 0, batches: [] };
+    for (const b of (batches || [])) {
       if (!map[b.productId]) continue;
       map[b.productId].qty += b.qty;
       map[b.productId].value += b.qty * b.costPrice;
@@ -612,50 +612,49 @@ function PharmaERP({ userEmail, onLogout }) {
   }, [products, batches]);
 
   const lowStock = useMemo(() => Object.values(stockByProduct).filter((s) => s.qty < (s.product.minStock || 0)), [stockByProduct]);
-  const nearExpiry = useMemo(() => batches.filter((b) => b.qty > 0 && daysUntil(b.expiryDate) >= 0 && daysUntil(b.expiryDate) <= 90), [batches]);
-  const expired = useMemo(() => batches.filter((b) => b.qty > 0 && daysUntil(b.expiryDate) < 0), [batches]);
+  const nearExpiry = useMemo(() => (batches || []).filter((b) => b.qty > 0 && daysUntil(b.expiryDate) >= 0 && daysUntil(b.expiryDate) <= 90), [batches]);
+  const expired = useMemo(() => (batches || []).filter((b) => b.qty > 0 && daysUntil(b.expiryDate) < 0), [batches]);
   const totalStockValue = useMemo(() => Object.values(stockByProduct).reduce((s, x) => s + x.value, 0), [stockByProduct]);
 
   function findName(list, id) {
-    const item = list.find((x) => x.id === id);
+    const item = (list || []).find((x) => x.id === id);
     return item ? item.name : "-";
   }
 
-  function soTotal(so) { return so.items.reduce((s, it) => s + it.qty * it.unitPrice, 0); }
-  function poTotal(po) { return po.items.reduce((s, it) => s + it.qty * it.unitPrice, 0); }
-  function pInvoiceTotal(inv) { return inv.items.reduce((s, it) => s + it.qty * it.unitPrice, 0); }
-  function pInvoicePaidAmount(invId) { return paymentsOut.filter((p) => p.pInvoiceId === invId).reduce((s, p) => s + p.amount, 0); }
-  function pInvoiceReturnedAmount(invId) { return pReturns.filter((r) => r.pInvoiceId === invId).reduce((s, r) => s + r.items.reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
+  function soTotal(so) { return (so?.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0); }
+  function poTotal(po) { return (po?.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0); }
+  function pInvoiceTotal(inv) { return (inv?.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0); }
+  function pInvoicePaidAmount(invId) { return (paymentsOut || []).filter((p) => p.pInvoiceId === invId).reduce((s, p) => s + p.amount, 0); }
+  function pInvoiceReturnedAmount(invId) { return (pReturns || []).filter((r) => r.pInvoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
   function pInvoiceSisa(inv) { return Math.max(0, pInvoiceTotal(inv) - pInvoiceReturnedAmount(inv.id) - pInvoicePaidAmount(inv.id)); }
 
-  function invoiceTotal(inv) { return inv.items.reduce((s, it) => s + it.qty * it.unitPrice, 0); }
-  function soDPAmount(soId) { return paymentsIn.filter((p) => p.soId === soId && p.type === "DP").reduce((s, p) => s + p.amount, 0); }
-  function invoicePaidAmount(invId) { return paymentsIn.filter((p) => p.invoiceId === invId).reduce((s, p) => s + p.amount, 0); }
-  function invoiceReturnedAmount(invId) { return returns.filter((r) => r.invoiceId === invId).reduce((s, r) => s + r.items.reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
-  function poPaidAmount(poId) { return paymentsOut.filter((p) => p.poId === poId).reduce((s, p) => s + p.amount, 0); }
-  function batchCost(batchId) { const b = batches.find((x) => x.id === batchId); return b ? b.costPrice : 0; }
+  function invoiceTotal(inv) { return (inv?.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0); }
+  function soDPAmount(soId) { return (paymentsIn || []).filter((p) => p.soId === soId && p.type === "DP").reduce((s, p) => s + p.amount, 0); }
+  function invoicePaidAmount(invId) { return (paymentsIn || []).filter((p) => p.invoiceId === invId).reduce((s, p) => s + p.amount, 0); }
+  function invoiceReturnedAmount(invId) { return (returns || []).filter((r) => r.invoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
+  function batchCost(batchId) { const b = (batches || []).find((x) => x.id === batchId); return b ? b.costPrice : 0; }
   function soCOGS(soId) {
-    return deliveryNotes.filter((dn) => dn.soId === soId).reduce((s, dn) => s + dn.items.reduce((s2, it) => s2 + (it.allocations || []).reduce((s3, a) => s3 + a.qty * batchCost(a.batchId), 0), 0), 0);
+    return (deliveryNotes || []).filter((dn) => dn.soId === soId).reduce((s, dn) => s + (dn.items || []).reduce((s2, it) => s2 + (it.allocations || []).reduce((s3, a) => s3 + a.qty * batchCost(a.batchId), 0), 0), 0);
   }
   function invoiceSisa(inv) {
     return Math.max(0, invoiceTotal(inv) - invoiceReturnedAmount(inv.id) - soDPAmount(inv.soId) - invoicePaidAmount(inv.id));
   }
 
-  const arOutstanding = useMemo(() => invoices.reduce((s, inv) => s + invoiceSisa(inv), 0), [invoices, returns, paymentsIn]);
-  const apOutstanding = useMemo(() => pInvoices.reduce((s, inv) => s + pInvoiceSisa(inv), 0), [pInvoices, pReturns, paymentsOut]);
-  const cashInMonth = useMemo(() => paymentsIn.filter((p) => isThisMonth(p.date)).reduce((s, p) => s + p.amount, 0), [paymentsIn]);
+  const arOutstanding = useMemo(() => (invoices || []).reduce((s, inv) => s + invoiceSisa(inv), 0), [invoices, returns, paymentsIn]);
+  const apOutstanding = useMemo(() => (pInvoices || []).reduce((s, inv) => s + pInvoiceSisa(inv), 0), [pInvoices, pReturns, paymentsOut]);
+  const cashInMonth = useMemo(() => (paymentsIn || []).filter((p) => isThisMonth(p.date)).reduce((s, p) => s + p.amount, 0), [paymentsIn]);
   const cashOutMonth = useMemo(() => {
-    const out = paymentsOut.filter((p) => isThisMonth(p.date)).reduce((s, p) => s + p.amount, 0);
-    const exp = expenses.filter((e) => isThisMonth(e.date)).reduce((s, e) => s + e.amount, 0);
+    const out = (paymentsOut || []).filter((p) => isThisMonth(p.date)).reduce((s, p) => s + p.amount, 0);
+    const exp = (expenses || []).filter((e) => isThisMonth(e.date)).reduce((s, e) => s + e.amount, 0);
     return out + exp;
   }, [paymentsOut, expenses]);
   const grossProfitMonth = useMemo(() => {
-    return invoices.filter((inv) => isThisMonth(inv.date)).reduce((s, inv) => s + (invoiceTotal(inv) - invoiceReturnedAmount(inv.id) - soCOGS(inv.soId)), 0);
+    return (invoices || []).filter((inv) => isThisMonth(inv.date)).reduce((s, inv) => s + (invoiceTotal(inv) - invoiceReturnedAmount(inv.id) - soCOGS(inv.soId)), 0);
   }, [invoices, batches, deliveryNotes, returns]);
-  const expensesMonth = useMemo(() => expenses.filter((e) => isThisMonth(e.date)).reduce((s, e) => s + e.amount, 0), [expenses]);
+  const expensesMonth = useMemo(() => (expenses || []).filter((e) => isThisMonth(e.date)).reduce((s, e) => s + e.amount, 0), [expenses]);
 
   function allocateFEFO(productId, qty) {
-    const avail = batches.filter((b) => b.productId === productId && b.qty > 0).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+    const avail = (batches || []).filter((b) => b.productId === productId && b.qty > 0).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
     let remaining = qty;
     const allocations = [];
     for (const b of avail) {
@@ -851,10 +850,10 @@ function PharmaERP({ userEmail, onLogout }) {
   );
 }
 
-// ---------- Sub-komponen Modul ERP ----------
+// ---------- Sub-komponen Dashboard, Products, Stock, Purchases ----------
 function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, suppliers, customers, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth }) {
-  const recentPOs = [...pos].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
-  const recentSOs = [...sos].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+  const recentPOs = [...(pos || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+  const recentSOs = [...(sos || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
   const netCashMonth = cashInMonth - cashOutMonth;
   return (
     <div>
@@ -864,7 +863,7 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
       <div className="grid grid-cols-4 gap-3 mb-4">
         <Card>
           <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total SKU</div>
-          <div className="text-2xl font-mono font-semibold" style={{ color: COLOR.ink }}>{products.length}</div>
+          <div className="text-2xl font-mono font-semibold" style={{ color: COLOR.ink }}>{(products || []).length}</div>
         </Card>
         <Card>
           <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Nilai Stok</div>
@@ -917,7 +916,7 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
               </div>
             ))}
             {[...expired, ...nearExpiry].map((b) => {
-              const p = products.find((x) => x.id === b.productId);
+              const p = (products || []).find((x) => x.id === b.productId);
               return (
                 <div key={b.id} className="flex items-center justify-between text-sm py-1.5" style={{ borderBottom: `1px solid ${COLOR.border}` }}>
                   <span style={{ color: COLOR.ink }}>{p ? p.name : "-"} <span className="font-mono text-xs" style={{ color: COLOR.inkSoft }}>({b.batchNo})</span></span>
@@ -968,20 +967,20 @@ function ProductsView({ products, save, stockByProduct, notify }) {
     if (!form.name.trim()) return notify("Nama produk wajib diisi", "danger");
     const payload = { ...form, sellPrice: Number(form.sellPrice) || 0, minStock: Number(form.minStock) || 0 };
     if (modal === "new") {
-      await save([...products, { ...payload, id: uid() }]);
+      await save([...(products || []), { ...payload, id: uid() }]);
       notify("Produk ditambahkan");
     } else {
-      await save(products.map((p) => (p.id === modal ? { ...payload, id: p.id } : p)));
+      await save((products || []).map((p) => (p.id === modal ? { ...payload, id: p.id } : p)));
       notify("Produk diperbarui");
     }
     setModal(null);
   }
   async function remove(id) {
-    await save(products.filter((p) => p.id !== id));
+    await save((products || []).filter((p) => p.id !== id));
     notify("Produk dihapus");
   }
 
-  const filtered = products.filter((p) => p.name.toLowerCase().includes(q.toLowerCase()));
+  const filtered = (products || []).filter((p) => p.name.toLowerCase().includes(q.toLowerCase()));
 
   return (
     <div>
@@ -1004,7 +1003,7 @@ function ProductsView({ products, save, stockByProduct, notify }) {
           </thead>
           <tbody>
             {filtered.map((p) => {
-              const s = stockByProduct[p.id];
+              const s = stockByProduct[p.id] || { qty: 0 };
               return (
                 <tr key={p.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{p.name}</td>
@@ -1053,9 +1052,9 @@ function StockView({ products, batches, stockByProduct }) {
       <p className="text-sm mb-5" style={{ color: COLOR.inkSoft }}>Ribbon menunjukkan sebaran batch per produk berdasarkan urgensi expiry — hijau aman, kuning &lt;90 hari, merah &lt;30 hari / kedaluwarsa. Alokasi penjualan otomatis mengikuti FEFO (First-Expire-First-Out).</p>
 
       <div className="flex flex-col gap-3">
-        {products.map((p) => {
-          const s = stockByProduct[p.id];
-          const sortedBatches = [...s.batches].sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+        {(products || []).map((p) => {
+          const s = stockByProduct[p.id] || { qty: 0, value: 0, batches: [] };
+          const sortedBatches = [...(s.batches || [])].sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
           return (
             <Card key={p.id}>
               <div className="flex items-center justify-between mb-2">
@@ -1080,7 +1079,7 @@ function StockView({ products, batches, stockByProduct }) {
             </Card>
           );
         })}
-        {products.length === 0 && <div className="text-sm py-8 text-center" style={{ color: COLOR.inkSoft }}>Tambahkan produk terlebih dahulu.</div>}
+        {(products || []).length === 0 && <div className="text-sm py-8 text-center" style={{ color: COLOR.inkSoft }}>Tambahkan produk terlebih dahulu.</div>}
       </div>
     </div>
   );
@@ -1093,11 +1092,11 @@ function SuppliersView({ suppliers, save, notify }) {
   function openEdit(s) { setForm(s); setModal(s.id); }
   async function submit() {
     if (!form.name.trim()) return notify("Nama supplier wajib diisi", "danger");
-    if (modal === "new") { await save([...suppliers, { ...form, id: uid() }]); notify("Supplier ditambahkan"); }
-    else { await save(suppliers.map((s) => (s.id === modal ? { ...form, id: s.id } : s))); notify("Supplier diperbarui"); }
+    if (modal === "new") { await save([...(suppliers || []), { ...form, id: uid() }]); notify("Supplier ditambahkan"); }
+    else { await save((suppliers || []).map((s) => (s.id === modal ? { ...form, id: s.id } : s))); notify("Supplier diperbarui"); }
     setModal(null);
   }
-  async function remove(id) { await save(suppliers.filter((s) => s.id !== id)); notify("Supplier dihapus"); }
+  async function remove(id) { await save((suppliers || []).filter((s) => s.id !== id)); notify("Supplier dihapus"); }
 
   return (
     <div>
@@ -1106,7 +1105,7 @@ function SuppliersView({ suppliers, save, notify }) {
         <Button onClick={openNew}><Plus size={15} /> Tambah Supplier</Button>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        {suppliers.map((s) => (
+        {(suppliers || []).map((s) => (
           <Card key={s.id}>
             <div className="flex items-start justify-between">
               <div>
@@ -1121,7 +1120,7 @@ function SuppliersView({ suppliers, save, notify }) {
             </div>
           </Card>
         ))}
-        {suppliers.length === 0 && <div className="text-sm py-8 col-span-2 text-center" style={{ color: COLOR.inkSoft }}>Belum ada supplier.</div>}
+        {(suppliers || []).length === 0 && <div className="text-sm py-8 col-span-2 text-center" style={{ color: COLOR.inkSoft }}>Belum ada supplier.</div>}
       </div>
       {modal && (
         <Modal title={modal === "new" ? "Tambah Supplier" : "Edit Supplier"} onClose={() => setModal(null)}>
@@ -1142,11 +1141,11 @@ function CustomersView({ customers, save, notify }) {
   function openEdit(c) { setForm(c); setModal(c.id); }
   async function submit() {
     if (!form.name.trim()) return notify("Nama pelanggan wajib diisi", "danger");
-    if (modal === "new") { await save([...customers, { ...form, id: uid() }]); notify("Pelanggan ditambahkan"); }
-    else { await save(customers.map((c) => (c.id === modal ? { ...form, id: c.id } : c))); notify("Pelanggan diperbarui"); }
+    if (modal === "new") { await save([...(customers || []), { ...form, id: uid() }]); notify("Pelanggan ditambahkan"); }
+    else { await save((customers || []).map((c) => (c.id === modal ? { ...form, id: c.id } : c))); notify("Pelanggan diperbarui"); }
     setModal(null);
   }
-  async function remove(id) { await save(customers.filter((c) => c.id !== id)); notify("Pelanggan dihapus"); }
+  async function remove(id) { await save((customers || []).filter((c) => c.id !== id)); notify("Pelanggan dihapus"); }
 
   return (
     <div>
@@ -1155,7 +1154,7 @@ function CustomersView({ customers, save, notify }) {
         <Button onClick={openNew}><Plus size={15} /> Tambah Pelanggan</Button>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        {customers.map((c) => (
+        {(customers || []).map((c) => (
           <Card key={c.id}>
             <div className="flex items-start justify-between">
               <div>
@@ -1171,7 +1170,7 @@ function CustomersView({ customers, save, notify }) {
             </div>
           </Card>
         ))}
-        {customers.length === 0 && <div className="text-sm py-8 col-span-2 text-center" style={{ color: COLOR.inkSoft }}>Belum ada pelanggan.</div>}
+        {(customers || []).length === 0 && <div className="text-sm py-8 col-span-2 text-center" style={{ color: COLOR.inkSoft }}>Belum ada pelanggan.</div>}
       </div>
       {modal && (
         <Modal title={modal === "new" ? "Tambah Pelanggan" : "Edit Pelanggan"} onClose={() => setModal(null)}>
@@ -1198,16 +1197,16 @@ function PurchasesView({
   const [subTab, setSubTab] = useState("po");
 
   function receivedQty(poId, productId) {
-    return pReceipts.filter((pr) => pr.poId === poId).reduce((s, pr) => {
-      const it = pr.items.find((x) => x.productId === productId);
+    return (pReceipts || []).filter((pr) => pr.poId === poId).reduce((s, pr) => {
+      const it = (pr.items || []).find((x) => x.productId === productId);
       return s + (it ? it.qty : 0);
     }, 0);
   }
 
   function getPOStatus(po) {
-    if (pInvoices.some((inv) => inv.poId === po.id)) return "invoiced";
-    const prs = pReceipts.filter((pr) => pr.poId === po.id);
-    const fullyReceived = po.items.every((it) => receivedQty(po.id, it.productId) >= it.qty);
+    if ((pInvoices || []).some((inv) => inv.poId === po.id)) return "invoiced";
+    const prs = (pReceipts || []).filter((pr) => pr.poId === po.id);
+    const fullyReceived = (po.items || []).every((it) => receivedQty(po.id, it.productId) >= it.qty);
     if (prs.length === 0) return "ordered";
     if (!fullyReceived) return "partially_received";
     return "ready_to_invoice";
@@ -1221,10 +1220,10 @@ function PurchasesView({
   };
 
   const SUBNAV = [
-    { id: "po", label: `Purchase Order (${pos.length})` },
-    { id: "bpb", label: `Penerimaan Barang (${pReceipts.length})` },
-    { id: "faktur", label: `Faktur Pembelian (${pInvoices.length})` },
-    { id: "retur", label: `Retur Pembelian (${pReturns.length})` },
+    { id: "po", label: `Purchase Order (${(pos || []).length})` },
+    { id: "bpb", label: `Penerimaan Barang (${(pReceipts || []).length})` },
+    { id: "faktur", label: `Faktur Pembelian (${(pInvoices || []).length})` },
+    { id: "retur", label: `Retur Pembelian (${(pReturns || []).length})` },
   ];
 
   return (
@@ -1273,7 +1272,7 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify,
   const [searchProd, setSearchProd] = useState("");
 
   function openNew() {
-    setSupplierId(suppliers[0]?.id || "");
+    setSupplierId((suppliers || [])[0]?.id || "");
     setDate(todayISO());
     setItems([]);
     setSearchProd("");
@@ -1296,21 +1295,21 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify,
   async function submit() {
     if (!supplierId) return notify("Pilih supplier", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
-    const poNumber = `PO-${new Date(date).getFullYear()}-${String(pos.length + 1).padStart(4, "0")}`;
-    await savePOs([...pos, { id: uid(), poNumber, supplierId, date, items, status: "ordered" }]);
+    const poNumber = `PO-${new Date(date).getFullYear()}-${String((pos || []).length + 1).padStart(4, "0")}`;
+    await savePOs([...(pos || []), { id: uid(), poNumber, supplierId, date, items, status: "ordered" }]);
     notify(`${poNumber} dibuat`);
     setModal(null);
   }
 
   async function cancelPO(po) {
-    if (pReceipts.some((pr) => pr.poId === po.id)) {
+    if ((pReceipts || []).some((pr) => pr.poId === po.id)) {
       return notify("Gagal membatalkan: PO ini sudah memiliki riwayat Penerimaan Barang. Batalkan Penerimaan terlebih dahulu.", "danger");
     }
-    await savePOs(pos.filter((p) => p.id !== po.id));
+    await savePOs((pos || []).filter((p) => p.id !== po.id));
     notify(`${po.poNumber} berhasil dibatalkan`);
   }
 
-  const filteredProds = products.filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
+  const filteredProds = (products || []).filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
 
   return (
     <div>
@@ -1327,10 +1326,10 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify,
             </tr>
           </thead>
           <tbody>
-            {[...pos].sort((a, b) => new Date(b.date) - new Date(a.date)).map((po) => {
+            {[...(pos || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((po) => {
               const st = getPOStatus(po);
               const s = STATUS_LABEL[st];
-              const canCancel = !pReceipts.some((pr) => pr.poId === po.id);
+              const canCancel = !(pReceipts || []).some((pr) => pr.poId === po.id);
               return (
                 <tr key={po.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{po.poNumber}</td>
@@ -1347,7 +1346,7 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify,
                 </tr>
               );
             })}
-            {pos.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada PO.</td></tr>}
+            {(pos || []).length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada PO.</td></tr>}
           </tbody>
         </table>
       </Card>
@@ -1357,7 +1356,7 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify,
           <div className="grid grid-cols-2 gap-3 mb-4">
             <Field label="Supplier / PBF">
               <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {(suppliers || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Select>
             </Field>
             <Field label="Tanggal PO">
@@ -1373,12 +1372,12 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify,
             </div>
             <div className="max-h-36 overflow-y-auto flex flex-col gap-1 pr-1">
               {filteredProds.map((prod) => {
-                const s = stockByProduct[prod.id];
+                const s = stockByProduct[prod.id] || { qty: 0 };
                 return (
                   <div key={prod.id} className="flex items-center justify-between p-2 rounded-lg bg-white border text-xs" style={{ borderColor: COLOR.border }}>
                     <div>
                       <span className="font-semibold" style={{ color: COLOR.ink }}>{prod.name}</span>
-                      <span className="ml-2 text-[11px] font-mono" style={{ color: COLOR.inkSoft }}>({prod.category}) · Stok: {s?.qty || 0} {prod.unit}</span>
+                      <span className="ml-2 text-[11px] font-mono" style={{ color: COLOR.inkSoft }}>({prod.category}) · Stok: {s.qty} {prod.unit}</span>
                     </div>
                     <Button variant="ghost" onClick={() => addProductToPO(prod)} className="!py-0.5 !px-2 text-xs">
                       <Plus size={12} /> Tambah
@@ -1393,7 +1392,7 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify,
           <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Rincian Item Dipesan ({items.length})</div>
           <div className="flex flex-col gap-2 max-h-48 overflow-y-auto mb-4 pr-1">
             {items.map((it, i) => {
-              const p = products.find((x) => x.id === it.productId);
+              const p = (products || []).find((x) => x.id === it.productId);
               return (
                 <div key={i} className="flex gap-2 items-center p-2 rounded-lg bg-white border" style={{ borderColor: COLOR.border }}>
                   <div className="flex-1">
@@ -1428,8 +1427,8 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, findName, notify,
           <table className="w-full text-sm mb-3">
             <thead><tr style={{ background: COLOR.primarySoft }}>{["Produk", "Qty", "Harga Beli", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>{h}</th>)}</tr></thead>
             <tbody>
-              {detailPO.items.map((it, i) => {
-                const p = products.find((x) => x.id === it.productId);
+              {(detailPO.items || []).map((it, i) => {
+                const p = (products || []).find((x) => x.id === it.productId);
                 return (
                   <tr key={i} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                     <td className="px-3 py-2" style={{ color: COLOR.ink }}>{p?.name}</td>
@@ -1455,8 +1454,8 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
   const [date, setDate] = useState(todayISO());
   const [receiveForm, setReceiveForm] = useState({});
 
-  const eligiblePOs = pos.filter((po) => ["ordered", "partially_received"].includes(getPOStatus(po)));
-  const selectedPO = pos.find((x) => x.id === poId);
+  const eligiblePOs = (pos || []).filter((po) => ["ordered", "partially_received"].includes(getPOStatus(po)));
+  const selectedPO = (pos || []).find((x) => x.id === poId);
 
   function openNew() {
     const firstPO = eligiblePOs[0];
@@ -1464,7 +1463,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
     setDate(todayISO());
     if (firstPO) {
       const init = {};
-      firstPO.items.forEach((it, idx) => {
+      (firstPO.items || []).forEach((it, idx) => {
         init[idx] = { qty: Math.max(0, it.qty - receivedQty(firstPO.id, it.productId)), batchNo: "", expiryDate: todayISO() };
       });
       setReceiveForm(init);
@@ -1474,10 +1473,10 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
 
   function changePO(id) {
     setPoId(id);
-    const po = pos.find((x) => x.id === id);
+    const po = (pos || []).find((x) => x.id === id);
     const init = {};
     if (po) {
-      po.items.forEach((it, idx) => {
+      (po.items || []).forEach((it, idx) => {
         init[idx] = { qty: Math.max(0, it.qty - receivedQty(po.id, it.productId)), batchNo: "", expiryDate: todayISO() };
       });
     }
@@ -1486,7 +1485,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
 
   async function submitBPB() {
     if (!selectedPO) return notify("Pilih PO terlebih dahulu", "danger");
-    for (let i = 0; i < selectedPO.items.length; i++) {
+    for (let i = 0; i < (selectedPO.items || []).length; i++) {
       const rf = receiveForm[i];
       if (rf && Number(rf.qty) > 0) {
         if (!rf.batchNo || !rf.expiryDate) {
@@ -1498,7 +1497,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
     const newBatches = [];
     const receivedItems = [];
 
-    selectedPO.items.forEach((it, i) => {
+    (selectedPO.items || []).forEach((it, i) => {
       const rf = receiveForm[i];
       const qtyToRec = Number(rf?.qty) || 0;
       if (qtyToRec > 0) {
@@ -1526,22 +1525,22 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
 
     if (receivedItems.length === 0) return notify("Isi jumlah barang yang diterima", "danger");
 
-    const noBPB = `BPB-${new Date(date).getFullYear()}-${String(pReceipts.length + 1).padStart(4, "0")}`;
-    await saveBatches([...batches, ...newBatches]);
-    await savePReceipts([...pReceipts, { id: uid(), noBPB, poId: selectedPO.id, date, items: receivedItems }]);
+    const noBPB = `BPB-${new Date(date).getFullYear()}-${String((pReceipts || []).length + 1).padStart(4, "0")}`;
+    await saveBatches([...(batches || []), ...newBatches]);
+    await savePReceipts([...(pReceipts || []), { id: uid(), noBPB, poId: selectedPO.id, date, items: receivedItems }]);
     notify(`${noBPB} berhasil disimpan, stok batch bertambah`);
     setModal(null);
   }
 
   async function cancelBPB(pr) {
-    if (pInvoices.some((inv) => inv.poId === pr.poId)) {
+    if ((pInvoices || []).some((inv) => inv.poId === pr.poId)) {
       return notify("Gagal membatalkan: Faktur Pembelian untuk transaksi ini sudah ada. Batalkan Faktur Pembelian terlebih dahulu.", "danger");
     }
 
-    let working = batches.map((b) => ({ ...b }));
+    let working = (batches || []).map((b) => ({ ...b }));
     let shortage = false;
 
-    pr.items.forEach((it) => {
+    (pr.items || []).forEach((it) => {
       const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
       if (b) {
         if (b.qty < it.qty) shortage = true;
@@ -1554,7 +1553,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
     }
 
     await saveBatches(working);
-    await savePReceipts(pReceipts.filter((x) => x.id !== pr.id));
+    await savePReceipts((pReceipts || []).filter((x) => x.id !== pr.id));
     notify(`${pr.noBPB} berhasil dibatalkan & stok ditarik kembali`);
   }
 
@@ -1571,9 +1570,9 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
             </tr>
           </thead>
           <tbody>
-            {[...pReceipts].sort((a, b) => new Date(b.date) - new Date(a.date)).map((pr) => {
-              const po = pos.find((x) => x.id === pr.poId);
-              const canCancel = !pInvoices.some((inv) => inv.poId === pr.poId);
+            {[...(pReceipts || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((pr) => {
+              const po = (pos || []).find((x) => x.id === pr.poId);
+              const canCancel = !(pInvoices || []).some((inv) => inv.poId === pr.poId);
               return (
                 <tr key={pr.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{pr.noBPB}</td>
@@ -1581,7 +1580,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
                   <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{po ? findName(suppliers, po.supplierId) : "-"}</td>
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(pr.date)}</td>
                   <td className="px-4 py-2.5 text-xs font-mono" style={{ color: COLOR.inkSoft }}>
-                    {pr.items.map((it) => `${findName(products, it.productId)} (${it.qty} unit - ${it.batchNo})`).join(", ")}
+                    {(pr.items || []).map((it) => `${findName(products, it.productId)} (${it.qty} unit - ${it.batchNo})`).join(", ")}
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <button onClick={() => setDetailPR(pr)} className="text-xs mr-3" style={{ color: COLOR.accent }}>Detail</button>
@@ -1590,7 +1589,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
                 </tr>
               );
             })}
-            {pReceipts.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada riwayat Penerimaan Barang.</td></tr>}
+            {(pReceipts || []).length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada riwayat Penerimaan Barang.</td></tr>}
           </tbody>
         </table>
       </Card>
@@ -1615,8 +1614,8 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
               {selectedPO && (
                 <div>
                   <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Lengkapi Rincian Barang & Batch yang Diterima</div>
-                  {selectedPO.items.map((it, i) => {
-                    const p = products.find((x) => x.id === it.productId);
+                  {(selectedPO.items || []).map((it, i) => {
+                    const p = (products || []).find((x) => x.id === it.productId);
                     const remaining = Math.max(0, it.qty - receivedQty(selectedPO.id, it.productId));
                     if (remaining <= 0) return null;
                     return (
@@ -1652,8 +1651,8 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
           <table className="w-full text-sm mb-3">
             <thead><tr style={{ background: COLOR.primarySoft }}>{["Produk", "Qty Diterima", "No. Batch", "Exp Date"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>{h}</th>)}</tr></thead>
             <tbody>
-              {detailPR.items.map((it, i) => {
-                const p = products.find((x) => x.id === it.productId);
+              {(detailPR.items || []).map((it, i) => {
+                const p = (products || []).find((x) => x.id === it.productId);
                 return (
                   <tr key={i} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                     <td className="px-3 py-2" style={{ color: COLOR.ink }}>{p?.name}</td>
@@ -1679,10 +1678,10 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   const [items, setItems] = useState([]);
   const [searchProd, setSearchProd] = useState("");
 
-  const eligiblePOs = pos.filter((po) => getPOStatus(po) === "ready_to_invoice");
+  const eligiblePOs = (pos || []).filter((po) => getPOStatus(po) === "ready_to_invoice");
 
   function openDirectModal() {
-    setSupplierId(suppliers[0]?.id || "");
+    setSupplierId((suppliers || [])[0]?.id || "");
     setDate(todayISO());
     setItems([]);
     setSearchProd("");
@@ -1712,7 +1711,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     
     for (const it of items) {
       if (!it.batchNo || !it.expiryDate) {
-        const p = products.find((x) => x.id === it.productId);
+        const p = (products || []).find((x) => x.id === it.productId);
         return notify(`Lengkapi No. Batch & Exp Date untuk ${p?.name || "produk"}`, "danger");
       }
     }
@@ -1742,27 +1741,27 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       });
     });
 
-    const noFaktur = `VINV-${new Date(date).getFullYear()}-${String(pInvoices.length + 1).padStart(4, "0")}`;
-    await saveBatches([...batches, ...newBatches]);
-    await savePInvoices([...pInvoices, { id: uid(), noFaktur, poId: null, supplierId, date, items: invItems, isDirect: true }]);
+    const noFaktur = `VINV-${new Date(date).getFullYear()}-${String((pInvoices || []).length + 1).padStart(4, "0")}`;
+    await saveBatches([...(batches || []), ...newBatches]);
+    await savePInvoices([...(pInvoices || []), { id: uid(), noFaktur, poId: null, supplierId, date, items: invItems, isDirect: true }]);
     notify(`${noFaktur} berhasil dibuat langsung & stok bertambah`);
     setModalDirect(false);
   }
 
   async function createInvoice(po) {
-    const prs = pReceipts.filter((pr) => pr.poId === po.id);
+    const prs = (pReceipts || []).filter((pr) => pr.poId === po.id);
     const receivedByProduct = {};
-    prs.forEach((pr) => pr.items.forEach((it) => {
+    prs.forEach((pr) => (pr.items || []).forEach((it) => {
       receivedByProduct[it.productId] = (receivedByProduct[it.productId] || 0) + it.qty;
     }));
 
-    const items = po.items
+    const items = (po.items || [])
       .map((it) => ({ productId: it.productId, qty: receivedByProduct[it.productId] || 0, unitPrice: it.unitPrice }))
       .filter((it) => it.qty > 0);
 
     if (items.length === 0) return notify("Tidak ada barang yang diterima untuk difakturkan", "danger");
-    const noFaktur = `VINV-${new Date().getFullYear()}-${String(pInvoices.length + 1).padStart(4, "0")}`;
-    await savePInvoices([...pInvoices, { id: uid(), noFaktur, poId: po.id, supplierId: po.supplierId, date: todayISO(), items }]);
+    const noFaktur = `VINV-${new Date().getFullYear()}-${String((pInvoices || []).length + 1).padStart(4, "0")}`;
+    await savePInvoices([...(pInvoices || []), { id: uid(), noFaktur, poId: po.id, supplierId: po.supplierId, date: todayISO(), items }]);
     notify(`${noFaktur} berhasil diterbitkan`);
   }
 
@@ -1771,13 +1770,13 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     if (paid > 0) {
       return notify("Gagal membatalkan: Faktur ini sudah memiliki riwayat pembayaran ke supplier.", "danger");
     }
-    if (pReturns.some((r) => r.pInvoiceId === inv.id)) {
+    if ((pReturns || []).some((r) => r.pInvoiceId === inv.id)) {
       return notify("Gagal membatalkan: Faktur ini memiliki riwayat retur pembelian. Batalkan retur terlebih dahulu.", "danger");
     }
 
     if (inv.isDirect) {
-      let working = batches.map((b) => ({ ...b }));
-      inv.items.forEach((it) => {
+      let working = (batches || []).map((b) => ({ ...b }));
+      (inv.items || []).forEach((it) => {
         const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
         if (b) {
           b.qty = Math.max(0, b.qty - it.qty);
@@ -1786,11 +1785,11 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       await saveBatches(working);
     }
 
-    await savePInvoices(pInvoices.filter((x) => x.id !== inv.id));
+    await savePInvoices((pInvoices || []).filter((x) => x.id !== inv.id));
     notify(`${inv.noFaktur} berhasil dibatalkan`);
   }
 
-  const filteredProds = products.filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
+  const filteredProds = (products || []).filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
 
   return (
     <div>
@@ -1820,11 +1819,11 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
             </tr>
           </thead>
           <tbody>
-            {[...pInvoices].sort((a, b) => new Date(b.date) - new Date(a.date)).map((inv) => {
-              const po = pos.find((x) => x.id === inv.poId);
+            {[...(pInvoices || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((inv) => {
+              const po = (pos || []).find((x) => x.id === inv.poId);
               const total = pInvoiceTotal(inv);
               const sisa = pInvoiceSisa(inv);
-              const canCancel = pInvoicePaidAmount(inv.id) === 0 && !pReturns.some((r) => r.pInvoiceId === inv.id);
+              const canCancel = pInvoicePaidAmount(inv.id) === 0 && !(pReturns || []).some((r) => r.pInvoiceId === inv.id);
               return (
                 <tr key={inv.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{inv.noFaktur}</td>
@@ -1840,7 +1839,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
                 </tr>
               );
             })}
-            {pInvoices.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada Faktur Pembelian.</td></tr>}
+            {(pInvoices || []).length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada Faktur Pembelian.</td></tr>}
           </tbody>
         </table>
       </Card>
@@ -1851,7 +1850,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
           <div className="grid grid-cols-2 gap-3 mb-4">
             <Field label="Supplier / PBF">
               <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {(suppliers || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Select>
             </Field>
             <Field label="Tanggal Faktur">
@@ -1883,7 +1882,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
           <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Rincian Item, Batch & Exp Date ({items.length})</div>
           <div className="flex flex-col gap-2 max-h-56 overflow-y-auto mb-4 pr-1">
             {items.map((it, i) => {
-              const p = products.find((x) => x.id === it.productId);
+              const p = (products || []).find((x) => x.id === it.productId);
               return (
                 <div key={i} className="p-3 rounded-lg bg-white border flex flex-col gap-2" style={{ borderColor: COLOR.border }}>
                   <div className="flex justify-between items-center">
@@ -1926,8 +1925,8 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
           <table className="w-full text-sm mb-3">
             <thead><tr style={{ background: COLOR.primarySoft }}>{["Produk", "Qty", "Harga Beli", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>{h}</th>)}</tr></thead>
             <tbody>
-              {detailInv.items.map((it, i) => {
-                const p = products.find((x) => x.id === it.productId);
+              {(detailInv.items || []).map((it, i) => {
+                const p = (products || []).find((x) => x.id === it.productId);
                 return (
                   <tr key={i} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                     <td className="px-3 py-2" style={{ color: COLOR.ink }}>{p?.name}</td>
@@ -1950,12 +1949,12 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
   const [pInvoiceId, setPInvoiceId] = useState("");
   const [returnQty, setReturnQty] = useState({});
 
-  const returnableInvoices = pInvoices.filter((inv) => pInvoiceReturnedAmount(inv.id) < pInvoiceTotal(inv));
-  const selectedInvoice = pInvoices.find((x) => x.id === pInvoiceId);
+  const returnableInvoices = (pInvoices || []).filter((inv) => pInvoiceReturnedAmount(inv.id) < pInvoiceTotal(inv));
+  const selectedInvoice = (pInvoices || []).find((x) => x.id === pInvoiceId);
 
   function alreadyReturnedQty(invId, productId) {
-    return pReturns.filter((r) => r.pInvoiceId === invId).reduce((s, r) => {
-      const it = r.items.find((x) => x.productId === productId);
+    return (pReturns || []).filter((r) => r.pInvoiceId === invId).reduce((s, r) => {
+      const it = (r.items || []).find((x) => x.productId === productId);
       return s + (it ? it.qty : 0);
     }, 0);
   }
@@ -1968,18 +1967,18 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
 
   async function submitRetur() {
     if (!selectedInvoice) return notify("Pilih Faktur Pembelian terlebih dahulu", "danger");
-    const lines = selectedInvoice.items
+    const lines = (selectedInvoice.items || [])
       .map((it) => ({ ...it, qtyReturn: Number(returnQty[it.productId]) || 0, maxReturn: it.qty - alreadyReturnedQty(selectedInvoice.id, it.productId) }))
       .filter((l) => l.qtyReturn > 0);
 
     if (lines.length === 0) return notify("Isi jumlah yang ingin diretur", "danger");
 
-    let working = batches.map((b) => ({ ...b }));
+    let working = (batches || []).map((b) => ({ ...b }));
     const returnItems = [];
 
     for (const l of lines) {
       if (l.qtyReturn > l.maxReturn) {
-        const p = products.find((x) => x.id === l.productId);
+        const p = (products || []).find((x) => x.id === l.productId);
         return notify(`${p?.name}: melebihi sisa barang yang bisa diretur (${l.maxReturn})`, "danger");
       }
 
@@ -1989,11 +1988,11 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
           b.qty = Math.max(0, b.qty - l.qtyReturn);
         }
       } else {
-        const prs = pReceipts.filter((pr) => pr.poId === selectedInvoice.poId);
+        const prs = (pReceipts || []).filter((pr) => pr.poId === selectedInvoice.poId);
         let remainingToDeduct = l.qtyReturn;
 
         prs.forEach((pr) => {
-          pr.items.forEach((rit) => {
+          (pr.items || []).forEach((rit) => {
             if (rit.productId === l.productId && remainingToDeduct > 0) {
               const b = working.find((x) => x.id === rit.batchId || (x.batchNo === rit.batchNo && x.productId === l.productId));
               if (b && b.qty > 0) {
@@ -2010,30 +2009,30 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
     }
 
     await saveBatches(working);
-    const noRetur = `PRET-${new Date().getFullYear()}-${String(pReturns.length + 1).padStart(4, "0")}`;
-    await savePReturns([...pReturns, { id: uid(), noRetur, pInvoiceId: selectedInvoice.id, poId: selectedInvoice.poId, date: todayISO(), items: returnItems }]);
+    const noRetur = `PRET-${new Date().getFullYear()}-${String((pReturns || []).length + 1).padStart(4, "0")}`;
+    await savePReturns([...(pReturns || []), { id: uid(), noRetur, pInvoiceId: selectedInvoice.id, poId: selectedInvoice.poId, date: todayISO(), items: returnItems }]);
     notify(`${noRetur} berhasil disimpan, stok dikurangi & hutang berkurang`);
     setModal(null);
   }
 
   async function cancelReturn(ret) {
-    let working = batches.map((b) => ({ ...b }));
+    let working = (batches || []).map((b) => ({ ...b }));
 
-    const inv = pInvoices.find((x) => x.id === ret.pInvoiceId);
+    const inv = (pInvoices || []).find((x) => x.id === ret.pInvoiceId);
     if (inv && inv.isDirect) {
-      ret.items.forEach((it) => {
-        const itemInv = inv.items.find((x) => x.productId === it.productId);
+      (ret.items || []).forEach((it) => {
+        const itemInv = (inv.items || []).find((x) => x.productId === it.productId);
         if (itemInv) {
           const b = working.find((x) => x.id === itemInv.batchId || (x.batchNo === itemInv.batchNo && x.productId === it.productId));
           if (b) b.qty += it.qty;
         }
       });
     } else {
-      const prs = pReceipts.filter((pr) => pr.poId === ret.poId);
-      ret.items.forEach((it) => {
+      const prs = (pReceipts || []).filter((pr) => pr.poId === ret.poId);
+      (ret.items || []).forEach((it) => {
         let remainingToAdd = it.qty;
         prs.forEach((pr) => {
-          pr.items.forEach((rit) => {
+          (pr.items || []).forEach((rit) => {
             if (rit.productId === it.productId && remainingToAdd > 0) {
               const b = working.find((x) => x.id === rit.batchId || (x.batchNo === rit.batchNo && x.productId === it.productId));
               if (b) {
@@ -2047,7 +2046,7 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
     }
 
     await saveBatches(working);
-    await savePReturns(pReturns.filter((r) => r.id !== ret.id));
+    await savePReturns((pReturns || []).filter((r) => r.id !== ret.id));
     notify(`${ret.noRetur} berhasil dibatalkan`);
   }
 
@@ -2064,9 +2063,9 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
             </tr>
           </thead>
           <tbody>
-            {[...pReturns].sort((a, b) => new Date(b.date) - new Date(a.date)).map((r) => {
-              const inv = pInvoices.find((x) => x.id === r.pInvoiceId);
-              const value = r.items.reduce((s, it) => s + it.qty * it.unitPrice, 0);
+            {[...(pReturns || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((r) => {
+              const inv = (pInvoices || []).find((x) => x.id === r.pInvoiceId);
+              const value = (r.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0);
               return (
                 <tr key={r.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{r.noRetur}</td>
@@ -2079,7 +2078,7 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
                 </tr>
               );
             })}
-            {pReturns.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada Retur Pembelian.</td></tr>}
+            {(pReturns || []).length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada Retur Pembelian.</td></tr>}
           </tbody>
         </table>
       </Card>
@@ -2099,8 +2098,8 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
               {selectedInvoice && (
                 <div className="flex flex-col gap-2 mt-2">
                   <div className="text-xs font-medium" style={{ color: COLOR.inkSoft }}>Isi Qty Barang yang Dikembalikan Ke Supplier</div>
-                  {selectedInvoice.items.map((it) => {
-                    const p = products.find((x) => x.id === it.productId);
+                  {(selectedInvoice.items || []).map((it) => {
+                    const p = (products || []).find((x) => x.id === it.productId);
                     const maxReturn = it.qty - alreadyReturnedQty(selectedInvoice.id, it.productId);
                     if (maxReturn <= 0) return null;
                     return (
@@ -2129,20 +2128,22 @@ function SalesView({
   const [subTab, setSubTab] = useState("so");
 
   function shippedQty(soId, productId) {
-    return deliveryNotes.filter((dn) => dn.soId === soId).reduce((s, dn) => {
-      const it = dn.items.find((x) => x.productId === productId);
+    return (deliveryNotes || []).filter((dn) => dn.soId === soId).reduce((s, dn) => {
+      const it = (dn.items || []).find((x) => x.productId === productId);
       return s + (it ? it.qty : 0);
     }, 0);
   }
+
   function getSOStatus(so) {
-    if (invoices.some((inv) => inv.soId === so.id)) return "invoiced";
-    const dns = deliveryNotes.filter((dn) => dn.soId === so.id);
-    const fullyShipped = so.items.every((it) => shippedQty(so.id, it.productId) >= it.qty);
+    if ((invoices || []).some((inv) => inv.soId === so.id)) return "invoiced";
+    const dns = (deliveryNotes || []).filter((dn) => dn.soId === so.id);
+    const fullyShipped = (so.items || []).every((it) => shippedQty(so.id, it.productId) >= it.qty);
     if (dns.length === 0) return "open";
     if (!fullyShipped) return "partially_shipped";
     if (dns.some((dn) => dn.status !== "diterima")) return "shipped";
     return "ready_to_invoice";
   }
+
   const STATUS_LABEL = {
     open: { label: "Baru", tone: "neutral" },
     partially_shipped: { label: "Sebagian Dikirim", tone: "warn" },
@@ -2152,10 +2153,10 @@ function SalesView({
   };
 
   const SUBNAV = [
-    { id: "so", label: `Sales Order (${sos.length})` },
-    { id: "sj", label: `Surat Jalan (${deliveryNotes.length})` },
-    { id: "faktur", label: `Faktur (${invoices.length})` },
-    { id: "retur", label: `Retur (${returns.length})` },
+    { id: "so", label: `Sales Order (${(sos || []).length})` },
+    { id: "sj", label: `Surat Jalan (${(deliveryNotes || []).length})` },
+    { id: "faktur", label: `Faktur (${(invoices || []).length})` },
+    { id: "retur", label: `Retur (${(returns || []).length})` },
   ];
 
   return (
@@ -2188,7 +2189,7 @@ function SalesView({
         <SJTab {...{ products, customers, sos, batches, deliveryNotes, invoices, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty }} />
       )}
       {subTab === "faktur" && (
-        <FakturTab {...{ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, batches, saveBatches, saveInvoices, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount }} />
+        <FakturTab {...{ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, batches, saveBatches, saveInvoices, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount, stockByProduct, allocateFEFO }} />
       )}
       {subTab === "retur" && (
         <ReturTab {...{ products, customers, sos, invoices, returns, deliveryNotes, batches, saveBatches, saveReturns, findName, notify, invoiceTotal, invoiceReturnedAmount }} />
@@ -2206,7 +2207,7 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
   const [searchProd, setSearchProd] = useState("");
 
   function openNew() {
-    setCustomerId(customers[0]?.id || "");
+    setCustomerId((customers || [])[0]?.id || "");
     setDate(todayISO());
     setItems([]);
     setSearchProd("");
@@ -2229,21 +2230,21 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
   async function submit() {
     if (!customerId) return notify("Pilih pelanggan", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
-    const soNumber = `SO-${new Date(date).getFullYear()}-${String(sos.length + 1).padStart(4, "0")}`;
-    await saveSOs([...sos, { id: uid(), soNumber, customerId, date, items, status: "open" }]);
+    const soNumber = `SO-${new Date(date).getFullYear()}-${String((sos || []).length + 1).padStart(4, "0")}`;
+    await saveSOs([...(sos || []), { id: uid(), soNumber, customerId, date, items, status: "open" }]);
     notify(`${soNumber} dibuat`);
     setModal(null);
   }
 
   async function cancelSO(so) {
-    if (deliveryNotes.some((dn) => dn.soId === so.id)) {
+    if ((deliveryNotes || []).some((dn) => dn.soId === so.id)) {
       return notify("Gagal membatalkan: SO ini sudah memiliki Surat Jalan. Batalkan Surat Jalan terlebih dahulu.", "danger");
     }
-    await saveSOs(sos.filter((s) => s.id !== so.id));
+    await saveSOs((sos || []).filter((s) => s.id !== so.id));
     notify(`${so.soNumber} berhasil dibatalkan`);
   }
 
-  const filteredProds = products.filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
+  const filteredProds = (products || []).filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
 
   return (
     <div>
@@ -2260,10 +2261,10 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
             </tr>
           </thead>
           <tbody>
-            {[...sos].sort((a, b) => new Date(b.date) - new Date(a.date)).map((so) => {
+            {[...(sos || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((so) => {
               const st = getSOStatus(so);
               const s = STATUS_LABEL[st];
-              const canCancel = !deliveryNotes.some((dn) => dn.soId === so.id);
+              const canCancel = !(deliveryNotes || []).some((dn) => dn.soId === so.id);
               return (
                 <tr key={so.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{so.soNumber}</td>
@@ -2280,7 +2281,7 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
                 </tr>
               );
             })}
-            {sos.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada SO.</td></tr>}
+            {(sos || []).length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada SO.</td></tr>}
           </tbody>
         </table>
       </Card>
@@ -2290,7 +2291,7 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
           <div className="grid grid-cols-2 gap-3 mb-4">
             <Field label="Pelanggan">
               <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-                {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
             </Field>
             <Field label="Tanggal SO">
@@ -2306,12 +2307,12 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
             </div>
             <div className="max-h-36 overflow-y-auto flex flex-col gap-1 pr-1">
               {filteredProds.map((prod) => {
-                const s = stockByProduct[prod.id];
+                const s = stockByProduct[prod.id] || { qty: 0 };
                 return (
                   <div key={prod.id} className="flex items-center justify-between p-2 rounded-lg bg-white border text-xs" style={{ borderColor: COLOR.border }}>
                     <div>
                       <span className="font-semibold" style={{ color: COLOR.ink }}>{prod.name}</span>
-                      <span className="ml-2 text-[11px] font-mono" style={{ color: COLOR.inkSoft }}>({prod.category}) · Stok: {s?.qty || 0} {prod.unit}</span>
+                      <span className="ml-2 text-[11px] font-mono" style={{ color: COLOR.inkSoft }}>({prod.category}) · Stok: {s.qty} {prod.unit}</span>
                     </div>
                     <Button variant="ghost" onClick={() => addProductToSO(prod)} className="!py-0.5 !px-2 text-xs">
                       <Plus size={12} /> Tambah
@@ -2326,15 +2327,15 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
           <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Rincian Item Dipesan ({items.length})</div>
           <div className="flex flex-col gap-2 max-h-48 overflow-y-auto mb-4 pr-1">
             {items.map((it, i) => {
-              const p = products.find((x) => x.id === it.productId);
-              const s = stockByProduct[it.productId];
+              const p = (products || []).find((x) => x.id === it.productId);
+              const s = stockByProduct[it.productId] || { qty: 0 };
               const isStockShort = s && s.qty < it.qty;
               return (
                 <div key={i} className="flex gap-2 items-center p-2 rounded-lg bg-white border" style={{ borderColor: isStockShort ? COLOR.warn : COLOR.border }}>
                   <div className="flex-1">
                     <div className="text-sm font-medium" style={{ color: COLOR.ink }}>{p?.name}</div>
                     <div className="text-[11px] font-mono" style={{ color: isStockShort ? COLOR.danger : COLOR.inkSoft }}>
-                      Stok tersedia: {s?.qty || 0} {p?.unit} · Subtotal: {fmtIDR(it.qty * it.unitPrice)}
+                      Stok tersedia: {s.qty} {p?.unit} · Subtotal: {fmtIDR(it.qty * it.unitPrice)}
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -2365,8 +2366,8 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
           <table className="w-full text-sm mb-3">
             <thead><tr style={{ background: COLOR.primarySoft }}>{["Produk", "Qty", "Harga Jual", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>{h}</th>)}</tr></thead>
             <tbody>
-              {detailSO.items.map((it, i) => {
-                const p = products.find((x) => x.id === it.productId);
+              {(detailSO.items || []).map((it, i) => {
+                const p = (products || []).find((x) => x.id === it.productId);
                 return (
                   <tr key={i} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                     <td className="px-3 py-2" style={{ color: COLOR.ink }}>{p?.name}</td>
@@ -2393,8 +2394,8 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
   const [shipQty, setShipQty] = useState({});
   const [receiveForm, setReceiveForm] = useState({});
 
-  const eligibleSOs = sos.filter((so) => ["open", "partially_shipped"].includes(getSOStatus(so)));
-  const selectedSO = sos.find((x) => x.id === soId);
+  const eligibleSOs = (sos || []).filter((so) => ["open", "partially_shipped"].includes(getSOStatus(so)));
+  const selectedSO = (sos || []).find((x) => x.id === soId);
 
   function openNew() {
     const firstSO = eligibleSOs[0];
@@ -2402,32 +2403,33 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
     setDate(todayISO());
     if (firstSO) {
       const init = {};
-      firstSO.items.forEach((it) => { init[it.productId] = Math.max(0, it.qty - shippedQty(firstSO.id, it.productId)); });
+      (firstSO.items || []).forEach((it) => { init[it.productId] = Math.max(0, it.qty - shippedQty(firstSO.id, it.productId)); });
       setShipQty(init);
     } else setShipQty({});
     setModal("new");
   }
+
   function changeSO(id) {
     setSoId(id);
-    const so = sos.find((x) => x.id === id);
+    const so = (sos || []).find((x) => x.id === id);
     const init = {};
-    if (so) so.items.forEach((it) => { init[it.productId] = Math.max(0, it.qty - shippedQty(so.id, it.productId)); });
+    if (so) (so.items || []).forEach((it) => { init[it.productId] = Math.max(0, it.qty - shippedQty(so.id, it.productId)); });
     setShipQty(init);
   }
 
   async function submitSJ() {
     if (!selectedSO) return notify("Pilih SO terlebih dahulu", "danger");
-    const lines = selectedSO.items
+    const lines = (selectedSO.items || [])
       .map((it) => ({ productId: it.productId, qty: Number(shipQty[it.productId]) || 0, maxQty: Math.max(0, it.qty - shippedQty(selectedSO.id, it.productId)) }))
       .filter((l) => l.qty > 0);
     if (lines.length === 0) return notify("Isi jumlah yang mau dikirim", "danger");
     for (const l of lines) {
       if (l.qty > l.maxQty) {
-        const p = products.find((x) => x.id === l.productId);
+        const p = (products || []).find((x) => x.id === l.productId);
         return notify(`${p?.name}: melebihi sisa yang belum dikirim (${l.maxQty})`, "danger");
       }
     }
-    let working = batches.map((b) => ({ ...b }));
+    let working = (batches || []).map((b) => ({ ...b }));
     const shortages = [];
     const itemsWithAlloc = [];
     for (const l of lines) {
@@ -2442,54 +2444,54 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
         remaining -= take;
       }
       if (remaining > 0) {
-        const p = products.find((x) => x.id === l.productId);
+        const p = (products || []).find((x) => x.id === l.productId);
         shortages.push(`${p?.name}: kurang ${remaining} ${p?.unit}`);
       }
       itemsWithAlloc.push({ productId: l.productId, qty: l.qty, allocations });
     }
     if (shortages.length > 0) return notify("Stok tidak cukup — " + shortages.join(", "), "danger");
 
-    const noSJ = `SJ-${new Date(date).getFullYear()}-${String(deliveryNotes.length + 1).padStart(4, "0")}`;
+    const noSJ = `SJ-${new Date(date).getFullYear()}-${String((deliveryNotes || []).length + 1).padStart(4, "0")}`;
     await saveBatches(working);
-    await saveDeliveryNotes([...deliveryNotes, { id: uid(), noSJ, soId: selectedSO.id, date, items: itemsWithAlloc, status: "dikirim" }]);
+    await saveDeliveryNotes([...(deliveryNotes || []), { id: uid(), noSJ, soId: selectedSO.id, date, items: itemsWithAlloc, status: "dikirim" }]);
     notify(`${noSJ} dibuat, stok terpotong`);
     setModal(null);
   }
 
   function openReceive(dn) {
     const init = {};
-    dn.items.forEach((it, i) => { init[i] = it.qty; });
+    (dn.items || []).forEach((it, i) => { init[i] = it.qty; });
     setReceiveForm(init);
     setModal({ receive: dn });
   }
 
   async function submitReceive(dn) {
-    let working = batches.map((b) => ({ ...b }));
+    let working = (batches || []).map((b) => ({ ...b }));
     const newReturnItems = [];
-    const updatedItems = dn.items.map((it, i) => {
+    const updatedItems = (dn.items || []).map((it, i) => {
       const receivedQty = Math.max(0, Math.min(it.qty, Number(receiveForm[i]) || 0));
       const shortfall = it.qty - receivedQty;
       if (shortfall > 0) {
         let remaining = shortfall;
         const restocked = [];
-        for (let a = it.allocations.length - 1; a >= 0 && remaining > 0; a--) {
+        for (let a = (it.allocations || []).length - 1; a >= 0 && remaining > 0; a--) {
           const alloc = it.allocations[a];
           const take = Math.min(alloc.qty, remaining);
           const b = working.find((x) => x.id === alloc.batchId);
           if (b) { b.qty += take; restocked.push({ batchId: alloc.batchId, batchNo: alloc.batchNo, qty: take }); }
           remaining -= take;
         }
-        const so = sos.find((s) => s.id === dn.soId);
-        const unitPrice = so?.items.find((x) => x.productId === it.productId)?.unitPrice || 0;
+        const so = (sos || []).find((s) => s.id === dn.soId);
+        const unitPrice = (so?.items || []).find((x) => x.productId === it.productId)?.unitPrice || 0;
         newReturnItems.push({ productId: it.productId, qty: shortfall, unitPrice, restockedBatches: restocked });
       }
       return { ...it, receivedQty };
     });
     await saveBatches(working);
-    await saveDeliveryNotes(deliveryNotes.map((x) => (x.id === dn.id ? { ...x, items: updatedItems, status: "diterima", receivedDate: todayISO() } : x)));
+    await saveDeliveryNotes((deliveryNotes || []).map((x) => (x.id === dn.id ? { ...x, items: updatedItems, status: "diterima", receivedDate: todayISO() } : x)));
     if (newReturnItems.length > 0) {
-      const noRetur = `RET-${new Date().getFullYear()}-${String(returns.length + 1).padStart(4, "0")}`;
-      await saveReturns([...returns, { id: uid(), noRetur, source: "sj", sjId: dn.id, soId: dn.soId, date: todayISO(), items: newReturnItems }]);
+      const noRetur = `RET-${new Date().getFullYear()}-${String((returns || []).length + 1).padStart(4, "0")}`;
+      await saveReturns([...(returns || []), { id: uid(), noRetur, source: "sj", sjId: dn.id, soId: dn.soId, date: todayISO(), items: newReturnItems }]);
       notify(`${dn.noSJ} diterima sebagian — retur ${noRetur} tercatat`, "warn");
     } else {
       notify(`${dn.noSJ} dikonfirmasi diterima lengkap`);
@@ -2498,12 +2500,12 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
   }
 
   async function cancelSJ(dn) {
-    if (invoices.some((inv) => inv.soId === dn.soId)) {
+    if ((invoices || []).some((inv) => inv.soId === dn.soId)) {
       return notify("Gagal membatalkan: Faktur Penjualan untuk transaksi ini sudah terbit. Batalkan Faktur terlebih dahulu.", "danger");
     }
 
-    let working = batches.map((b) => ({ ...b }));
-    dn.items.forEach((it) => {
+    let working = (batches || []).map((b) => ({ ...b }));
+    (dn.items || []).forEach((it) => {
       (it.allocations || []).forEach((alloc) => {
         const b = working.find((x) => x.id === alloc.batchId);
         if (b) {
@@ -2513,7 +2515,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
     });
 
     await saveBatches(working);
-    await saveDeliveryNotes(deliveryNotes.filter((x) => x.id !== dn.id));
+    await saveDeliveryNotes((deliveryNotes || []).filter((x) => x.id !== dn.id));
     notify(`${dn.noSJ} dibatalkan & stok dikembalikan ke gudang`);
   }
 
@@ -2530,9 +2532,9 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
             </tr>
           </thead>
           <tbody>
-            {[...deliveryNotes].sort((a, b) => new Date(b.date) - new Date(a.date)).map((dn) => {
-              const so = sos.find((x) => x.id === dn.soId);
-              const canCancel = !invoices.some((inv) => inv.soId === dn.soId);
+            {[...(deliveryNotes || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((dn) => {
+              const so = (sos || []).find((x) => x.id === dn.soId);
+              const canCancel = !(invoices || []).some((inv) => inv.soId === dn.soId);
               return (
                 <tr key={dn.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{dn.noSJ}</td>
@@ -2548,7 +2550,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
                 </tr>
               );
             })}
-            {deliveryNotes.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada Surat Jalan.</td></tr>}
+            {(deliveryNotes || []).length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada Surat Jalan.</td></tr>}
           </tbody>
         </table>
       </Card>
@@ -2572,8 +2574,8 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
               {selectedSO && (
                 <div className="flex flex-col gap-2 mt-2">
                   <div className="text-xs font-medium" style={{ color: COLOR.inkSoft }}>Jumlah yang dikirim sekarang</div>
-                  {selectedSO.items.map((it) => {
-                    const p = products.find((x) => x.id === it.productId);
+                  {(selectedSO.items || []).map((it) => {
+                    const p = (products || []).find((x) => x.id === it.productId);
                     const remaining = Math.max(0, it.qty - shippedQty(selectedSO.id, it.productId));
                     if (remaining <= 0) return null;
                     return (
@@ -2596,8 +2598,8 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
           <p className="text-xs mb-3" style={{ color: COLOR.inkSoft }}>
             Isi jumlah yang benar-benar diterima customer. Kalau kurang dari yang dikirim, sisanya otomatis tercatat sebagai retur & stok dikembalikan.
           </p>
-          {modal.receive.items.map((it, i) => {
-            const p = products.find((x) => x.id === it.productId);
+          {(modal.receive.items || []).map((it, i) => {
+            const p = (products || []).find((x) => x.id === it.productId);
             return (
               <div key={i} className="flex items-center gap-2 mb-2">
                 <div className="flex-1 text-sm" style={{ color: COLOR.ink }}>{p?.name} <span className="text-xs font-mono" style={{ color: COLOR.inkSoft }}>(dikirim {it.qty} {p?.unit})</span></div>
@@ -2614,8 +2616,8 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
           <table className="w-full text-sm mb-3">
             <thead><tr style={{ background: COLOR.primarySoft }}>{["Produk", "Qty Dikirim", "Qty Diterima", "Batch"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>{h}</th>)}</tr></thead>
             <tbody>
-              {detailDN.items.map((it, i) => {
-                const p = products.find((x) => x.id === it.productId);
+              {(detailDN.items || []).map((it, i) => {
+                const p = (products || []).find((x) => x.id === it.productId);
                 return (
                   <tr key={i} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                     <td className="px-3 py-2" style={{ color: COLOR.ink }}>{p?.name}</td>
@@ -2633,7 +2635,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
   );
 }
 
-function FakturTab({ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, batches, saveBatches, saveInvoices, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount }) {
+function FakturTab({ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, batches, saveBatches, saveInvoices, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount, stockByProduct, allocateFEFO }) {
   const [detailInv, setDetailInv] = useState(null);
   const [printInv, setPrintInv] = useState(null);
   const [modalDirect, setModalDirect] = useState(false);
@@ -2642,10 +2644,10 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   const [items, setItems] = useState([]);
   const [searchProd, setSearchProd] = useState("");
 
-  const eligibleSOs = sos.filter((so) => getSOStatus(so) === "ready_to_invoice");
+  const eligibleSOs = (sos || []).filter((so) => getSOStatus(so) === "ready_to_invoice");
 
   function openDirectModal() {
-    setCustomerId(customers[0]?.id || "");
+    setCustomerId((customers || [])[0]?.id || "");
     setDate(todayISO());
     setItems([]);
     setSearchProd("");
@@ -2673,7 +2675,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     if (!customerId) return notify("Pilih pelanggan terlebih dahulu", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
 
-    let working = batches.map((b) => ({ ...b }));
+    let working = (batches || []).map((b) => ({ ...b }));
     const shortages = [];
     const itemsWithAlloc = [];
 
@@ -2691,8 +2693,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       }
 
       if (remaining > 0) {
-        const p = products.find((x) => x.id === it.productId);
-        shortages.push(`${p?.name}: kurang ${remaining} ${p?.unit}`);
+        const p = (products || []).find((x) => x.id === it.productId);
+        shortages.push(`${p?.name || "Obat"}: kurang ${remaining} ${p?.unit || "unit"}`);
       }
 
       itemsWithAlloc.push({ productId: it.productId, qty: it.qty, unitPrice: it.unitPrice, allocations });
@@ -2700,26 +2702,26 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
 
     if (shortages.length > 0) return notify("Stok tidak cukup — " + shortages.join(", "), "danger");
 
-    const noFaktur = `INV-${new Date(date).getFullYear()}-${String(invoices.length + 1).padStart(4, "0")}`;
+    const noFaktur = `INV-${new Date(date).getFullYear()}-${String((invoices || []).length + 1).padStart(4, "0")}`;
     await saveBatches(working);
-    await saveInvoices([...invoices, { id: uid(), noFaktur, soId: null, customerId, date, items: itemsWithAlloc, isDirect: true }]);
+    await saveInvoices([...(invoices || []), { id: uid(), noFaktur, soId: null, customerId, date, items: itemsWithAlloc, isDirect: true }]);
     notify(`${noFaktur} dibuat langsung & stok FEFO terpotong`);
     setModalDirect(false);
   }
 
   async function createInvoice(so) {
-    const dns = deliveryNotes.filter((dn) => dn.soId === so.id && dn.status === "diterima");
+    const dns = (deliveryNotes || []).filter((dn) => dn.soId === so.id && dn.status === "diterima");
     const receivedByProduct = {};
-    dns.forEach((dn) => dn.items.forEach((it) => {
+    dns.forEach((dn) => (dn.items || []).forEach((it) => {
       const q = it.receivedQty ?? it.qty;
       receivedByProduct[it.productId] = (receivedByProduct[it.productId] || 0) + q;
     }));
-    const items = so.items
+    const items = (so.items || [])
       .map((it) => ({ productId: it.productId, qty: receivedByProduct[it.productId] || 0, unitPrice: it.unitPrice }))
       .filter((it) => it.qty > 0);
     if (items.length === 0) return notify("Tidak ada barang yang diterima untuk difakturkan", "danger");
-    const noFaktur = `INV-${new Date().getFullYear()}-${String(invoices.length + 1).padStart(4, "0")}`;
-    await saveInvoices([...invoices, { id: uid(), noFaktur, soId: so.id, date: todayISO(), items }]);
+    const noFaktur = `INV-${new Date().getFullYear()}-${String((invoices || []).length + 1).padStart(4, "0")}`;
+    await saveInvoices([...(invoices || []), { id: uid(), noFaktur, soId: so.id, date: todayISO(), items }]);
     notify(`${noFaktur} dibuat`);
   }
 
@@ -2728,13 +2730,13 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     if (paid > 0) {
       return notify("Gagal membatalkan: Faktur ini sudah memiliki riwayat pembayaran pelunasan.", "danger");
     }
-    if (returns.some((r) => r.invoiceId === inv.id)) {
+    if ((returns || []).some((r) => r.invoiceId === inv.id)) {
       return notify("Gagal membatalkan: Faktur ini memiliki transaksi retur. Batalkan retur terlebih dahulu.", "danger");
     }
 
     if (inv.isDirect) {
-      let working = batches.map((b) => ({ ...b }));
-      inv.items.forEach((it) => {
+      let working = (batches || []).map((b) => ({ ...b }));
+      (inv.items || []).forEach((it) => {
         (it.allocations || []).forEach((alloc) => {
           const b = working.find((x) => x.id === alloc.batchId);
           if (b) b.qty += alloc.qty;
@@ -2743,11 +2745,11 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       await saveBatches(working);
     }
 
-    await saveInvoices(invoices.filter((x) => x.id !== inv.id));
+    await saveInvoices((invoices || []).filter((x) => x.id !== inv.id));
     notify(`${inv.noFaktur} berhasil dibatalkan`);
   }
 
-  const filteredProds = products.filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
+  const filteredProds = (products || []).filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
 
   return (
     <div>
@@ -2777,12 +2779,12 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
             </tr>
           </thead>
           <tbody>
-            {[...invoices].sort((a, b) => new Date(b.date) - new Date(a.date)).map((inv) => {
-              const so = sos.find((x) => x.id === inv.soId);
+            {[...(invoices || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((inv) => {
+              const so = (sos || []).find((x) => x.id === inv.soId);
               const custName = inv.isDirect ? findName(customers, inv.customerId) : (so ? findName(customers, so.customerId) : "-");
               const total = invoiceTotal(inv);
               const sisa = Math.max(0, total - invoiceReturnedAmount(inv.id) - soDPAmount(inv.soId) - invoicePaidAmount(inv.id));
-              const canCancel = invoicePaidAmount(inv.id) === 0 && !returns.some((r) => r.invoiceId === inv.id);
+              const canCancel = invoicePaidAmount(inv.id) === 0 && !(returns || []).some((r) => r.invoiceId === inv.id);
               return (
                 <tr key={inv.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{inv.noFaktur}</td>
@@ -2801,7 +2803,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                 </tr>
               );
             })}
-            {invoices.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada Faktur.</td></tr>}
+            {(invoices || []).length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada Faktur.</td></tr>}
           </tbody>
         </table>
       </Card>
@@ -2812,7 +2814,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
           <div className="grid grid-cols-2 gap-3 mb-4">
             <Field label="Pelanggan">
               <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-                {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
             </Field>
             <Field label="Tanggal Faktur">
@@ -2828,12 +2830,12 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
             </div>
             <div className="max-h-36 overflow-y-auto flex flex-col gap-1 pr-1">
               {filteredProds.map((prod) => {
-                const s = stockByProduct[prod.id];
+                const s = stockByProduct[prod.id] || { qty: 0 };
                 return (
                   <div key={prod.id} className="flex items-center justify-between p-2 rounded-lg bg-white border text-xs" style={{ borderColor: COLOR.border }}>
                     <div>
                       <span className="font-semibold" style={{ color: COLOR.ink }}>{prod.name}</span>
-                      <span className="ml-2 text-[11px] font-mono" style={{ color: COLOR.inkSoft }}>({prod.category}) · Stok: {s?.qty || 0} {prod.unit}</span>
+                      <span className="ml-2 text-[11px] font-mono" style={{ color: COLOR.inkSoft }}>({prod.category}) · Stok: {s.qty} {prod.unit}</span>
                     </div>
                     <Button variant="ghost" onClick={() => addProductToDirect(prod)} className="!py-0.5 !px-2 text-xs">
                       <Plus size={12} /> Tambah
@@ -2847,15 +2849,15 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
           <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Rincian Item Dijual ({items.length})</div>
           <div className="flex flex-col gap-2 max-h-48 overflow-y-auto mb-4 pr-1">
             {items.map((it, i) => {
-              const p = products.find((x) => x.id === it.productId);
-              const s = stockByProduct[it.productId];
+              const p = (products || []).find((x) => x.id === it.productId);
+              const s = stockByProduct[it.productId] || { qty: 0 };
               const isStockShort = s && s.qty < it.qty;
               return (
                 <div key={i} className="flex gap-2 items-center p-2 rounded-lg bg-white border" style={{ borderColor: isStockShort ? COLOR.warn : COLOR.border }}>
                   <div className="flex-1">
                     <div className="text-sm font-medium" style={{ color: COLOR.ink }}>{p?.name}</div>
                     <div className="text-[11px] font-mono" style={{ color: isStockShort ? COLOR.danger : COLOR.inkSoft }}>
-                      Stok tersedia: {s?.qty || 0} {p?.unit} · Subtotal: {fmtIDR(it.qty * it.unitPrice)}
+                      Stok tersedia: {s.qty} {p?.unit} · Subtotal: {fmtIDR(it.qty * it.unitPrice)}
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -2883,8 +2885,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
           <table className="w-full text-sm mb-3">
             <thead><tr style={{ background: COLOR.primarySoft }}>{["Produk", "Qty", "Harga", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>{h}</th>)}</tr></thead>
             <tbody>
-              {detailInv.items.map((it, i) => {
-                const p = products.find((x) => x.id === it.productId);
+              {(detailInv.items || []).map((it, i) => {
+                const p = (products || []).find((x) => x.id === it.productId);
                 return (
                   <tr key={i} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                     <td className="px-3 py-2" style={{ color: COLOR.ink }}>{p?.name}</td>
@@ -2944,8 +2946,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
             </div>
 
             {(() => {
-              const so = sos.find((s) => s.id === printInv.soId);
-              const cust = printInv.isDirect ? customers.find((c) => c.id === printInv.customerId) : customers.find((c) => c.id === so?.customerId);
+              const so = (sos || []).find((s) => s.id === printInv.soId);
+              const cust = printInv.isDirect ? (customers || []).find((c) => c.id === printInv.customerId) : (customers || []).find((c) => c.id === so?.customerId);
               const dp = printInv.soId ? soDPAmount(printInv.soId) : 0;
               const paid = invoicePaidAmount(printInv.id);
               const ret = invoiceReturnedAmount(printInv.id);
@@ -2980,8 +2982,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                       </tr>
                     </thead>
                     <tbody>
-                      {printInv.items.map((it, idx) => {
-                        const p = products.find((x) => x.id === it.productId);
+                      {(printInv.items || []).map((it, idx) => {
+                        const p = (products || []).find((x) => x.id === it.productId);
                         return (
                           <tr key={idx} className="border-b">
                             <td className="py-2 px-2 font-mono text-gray-500">{idx + 1}</td>
@@ -3060,26 +3062,26 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
   const [invoiceId, setInvoiceId] = useState("");
   const [returnQty, setReturnQty] = useState({});
 
-  const returnableInvoices = invoices.filter((inv) => invoiceReturnedAmount(inv.id) < invoiceTotal(inv));
-  const selectedInvoice = invoices.find((x) => x.id === invoiceId);
+  const returnableInvoices = (invoices || []).filter((inv) => invoiceReturnedAmount(inv.id) < invoiceTotal(inv));
+  const selectedInvoice = (invoices || []).find((x) => x.id === invoiceId);
 
   function alreadyReturnedQty(invId, productId) {
-    return returns.filter((r) => r.invoiceId === invId).reduce((s, r) => {
-      const it = r.items.find((x) => x.productId === productId);
+    return (returns || []).filter((r) => r.invoiceId === invId).reduce((s, r) => {
+      const it = (r.items || []).find((x) => x.productId === productId);
       return s + (it ? it.qty : 0);
     }, 0);
   }
 
   function openNew() {
-    setInvoiceId(returnableInvoices[0]?.id || "");
+    setPInvoiceId(returnableInvoices[0]?.id || "");
     setReturnQty({});
     setModal("new");
   }
 
   function restockFromSO(soId, productId, qty, working) {
-    const dns = deliveryNotes.filter((dn) => dn.soId === soId && dn.status === "diterima").sort((a, b) => new Date(a.date) - new Date(b.date));
+    const dns = (deliveryNotes || []).filter((dn) => dn.soId === soId && dn.status === "diterima").sort((a, b) => new Date(a.date) - new Date(b.date));
     const allocs = [];
-    dns.forEach((dn) => dn.items.forEach((it) => { if (it.productId === productId) allocs.push(...(it.allocations || [])); }));
+    dns.forEach((dn) => (dn.items || []).forEach((it) => { if (it.productId === productId) allocs.push(...(it.allocations || [])); }));
     let remaining = qty;
     const restocked = [];
     for (let i = allocs.length - 1; i >= 0 && remaining > 0; i--) {
@@ -3093,17 +3095,17 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
 
   async function submitRetur() {
     if (!selectedInvoice) return notify("Pilih Faktur", "danger");
-    const lines = selectedInvoice.items
+    const lines = (selectedInvoice.items || [])
       .map((it) => ({ ...it, qtyReturn: Number(returnQty[it.productId]) || 0, maxReturn: it.qty - alreadyReturnedQty(selectedInvoice.id, it.productId) }))
       .filter((l) => l.qtyReturn > 0);
     if (lines.length === 0) return notify("Isi jumlah yang mau diretur", "danger");
     for (const l of lines) {
       if (l.qtyReturn > l.maxReturn) {
-        const p = products.find((x) => x.id === l.productId);
+        const p = (products || []).find((x) => x.id === l.productId);
         return notify(`${p?.name}: melebihi sisa yang bisa diretur (${l.maxReturn})`, "danger");
       }
     }
-    let working = batches.map((b) => ({ ...b }));
+    let working = (batches || []).map((b) => ({ ...b }));
     const items = lines.map((l) => {
       let restocked = [];
       if (selectedInvoice.isDirect) {
@@ -3121,17 +3123,17 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
       return { productId: l.productId, qty: l.qtyReturn, unitPrice: l.unitPrice, restockedBatches: restocked };
     });
     await saveBatches(working);
-    const noRetur = `RET-${new Date().getFullYear()}-${String(returns.length + 1).padStart(4, "0")}`;
-    await saveReturns([...returns, { id: uid(), noRetur, source: "faktur", invoiceId: selectedInvoice.id, soId: selectedInvoice.soId, date: todayISO(), items }]);
+    const noRetur = `RET-${new Date().getFullYear()}-${String((returns || []).length + 1).padStart(4, "0")}`;
+    await saveReturns([...(returns || []), { id: uid(), noRetur, source: "faktur", invoiceId: selectedInvoice.id, soId: selectedInvoice.soId, date: todayISO(), items }]);
     notify(`${noRetur} dicatat, stok dikembalikan`);
     setModal(null);
   }
 
   async function cancelReturn(ret) {
-    let working = batches.map((b) => ({ ...b }));
+    let working = (batches || []).map((b) => ({ ...b }));
     let shortage = false;
 
-    ret.items.forEach((it) => {
+    (ret.items || []).forEach((it) => {
       (it.restockedBatches || []).forEach((r) => {
         const b = working.find((x) => x.id === r.batchId);
         if (b) {
@@ -3146,7 +3148,7 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
     }
 
     await saveBatches(working);
-    await saveReturns(returns.filter((r) => r.id !== ret.id));
+    await saveReturns((returns || []).filter((r) => r.id !== ret.id));
     notify(`${ret.noRetur} berhasil dibatalkan`);
   }
 
@@ -3163,10 +3165,10 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
             </tr>
           </thead>
           <tbody>
-            {[...returns].sort((a, b) => new Date(b.date) - new Date(a.date)).map((r) => {
-              const so = sos.find((x) => x.id === r.soId);
-              const inv = invoices.find((x) => x.id === r.invoiceId);
-              const value = r.items.reduce((s, it) => s + it.qty * it.unitPrice, 0);
+            {[...(returns || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((r) => {
+              const so = (sos || []).find((x) => x.id === r.soId);
+              const inv = (invoices || []).find((x) => x.id === r.invoiceId);
+              const value = (r.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0);
               return (
                 <tr key={r.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{r.noRetur}</td>
@@ -3180,7 +3182,7 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
                 </tr>
               );
             })}
-            {returns.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada retur.</td></tr>}
+            {(returns || []).length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada retur.</td></tr>}
           </tbody>
         </table>
       </Card>
@@ -3198,8 +3200,8 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
               </Field>
               {selectedInvoice && (
                 <div className="flex flex-col gap-2 mt-2">
-                  {selectedInvoice.items.map((it) => {
-                    const p = products.find((x) => x.id === it.productId);
+                  {(selectedInvoice.items || []).map((it) => {
+                    const p = (products || []).find((x) => x.id === it.productId);
                     const maxReturn = it.qty - alreadyReturnedQty(selectedInvoice.id, it.productId);
                     if (maxReturn <= 0) return null;
                     return (
@@ -3254,7 +3256,7 @@ function FinanceView(props) {
     if (amt <= 0) return notify("Jumlah pembayaran harus lebih dari 0", "danger");
 
     if (payModal.kind === "edit-in") {
-      const updated = paymentsIn.map((p) => (p.id === payModal.pay.id ? { ...p, amount: amt, date: payForm.date, method: payForm.method, note: payForm.note } : p));
+      const updated = (paymentsIn || []).map((p) => (p.id === payModal.pay.id ? { ...p, amount: amt, date: payForm.date, method: payForm.method, note: payForm.note } : p));
       await savePaymentsIn(updated);
       notify("Pembayaran masuk diperbarui");
       setPayModal(null);
@@ -3262,7 +3264,7 @@ function FinanceView(props) {
     }
 
     if (payModal.kind === "edit-out") {
-      const updated = paymentsOut.map((p) => (p.id === payModal.pay.id ? { ...p, amount: amt, date: payForm.date, method: payForm.method, note: payForm.note } : p));
+      const updated = (paymentsOut || []).map((p) => (p.id === payModal.pay.id ? { ...p, amount: amt, date: payForm.date, method: payForm.method, note: payForm.note } : p));
       await savePaymentsOut(updated);
       notify("Pembayaran keluar diperbarui");
       setPayModal(null);
@@ -3271,48 +3273,49 @@ function FinanceView(props) {
 
     const entry = { id: uid(), amount: amt, date: payForm.date, method: payForm.method, note: payForm.note };
     if (payModal.kind === "invoice") {
-      await savePaymentsIn([...paymentsIn, { ...entry, invoiceId: payModal.doc.id, type: "Pelunasan" }]);
+      await savePaymentsIn([...(paymentsIn || []), { ...entry, invoiceId: payModal.doc.id, type: "Pelunasan" }]);
       notify(`Pembayaran untuk ${payModal.doc.noFaktur} dicatat`);
     } else if (payModal.kind === "dp") {
-      await savePaymentsIn([...paymentsIn, { ...entry, soId: payModal.doc.id, type: "DP" }]);
+      await savePaymentsIn([...(paymentsIn || []), { ...entry, soId: payModal.doc.id, type: "DP" }]);
       notify(`DP untuk ${payModal.doc.soNumber} dicatat`);
     } else if (payModal.kind === "pInvoice") {
-      await savePaymentsOut([...paymentsOut, { ...entry, pInvoiceId: payModal.doc.id }]);
+      await savePaymentsOut([...(paymentsOut || []), { ...entry, pInvoiceId: payModal.doc.id }]);
       notify(`Pembayaran Faktur Supplier ${payModal.doc.noFaktur} dicatat`);
     }
     setPayModal(null);
   }
 
   async function deletePaymentIn(id) {
-    await savePaymentsIn(paymentsIn.filter((p) => p.id !== id));
+    await savePaymentsIn((paymentsIn || []).filter((p) => p.id !== id));
     notify("Pembayaran masuk dihapus");
   }
 
   async function deletePaymentOut(id) {
-    await savePaymentsOut(paymentsOut.filter((p) => p.id !== id));
+    await savePaymentsOut((paymentsOut || []).filter((p) => p.id !== id));
     notify("Pembayaran keluar dihapus");
   }
 
   async function submitExpense() {
     if (!expForm.amount || Number(expForm.amount) <= 0) return notify("Jumlah biaya harus lebih dari 0", "danger");
-    await saveExpenses([...expenses, { id: uid(), ...expForm, amount: Number(expForm.amount) }]);
+    await saveExpenses([...(expenses || []), { id: uid(), ...expForm, amount: Number(expForm.amount) }]);
     notify("Biaya operasional dicatat");
     setExpModal(false);
     setExpForm({ category: EXPENSE_CATEGORIES[0], amount: "", date: todayISO(), note: "" });
   }
+
   async function removeExpense(id) {
-    await saveExpenses(expenses.filter((e) => e.id !== id));
+    await saveExpenses((expenses || []).filter((e) => e.id !== id));
     notify("Biaya dihapus");
   }
 
-  const invoiceARList = invoices.map((inv) => ({ inv, total: invoiceTotal(inv), sisa: invoiceSisa(inv) })).filter((x) => x.sisa > 0);
-  const dpOnlySOList = sos.filter((so) => !invoices.some((inv) => inv.soId === so.id) && soDPAmount(so.id) > 0);
-  const pInvoiceAPList = pInvoices.map((inv) => ({ inv, total: pInvoiceTotal(inv), sisa: pInvoiceSisa(inv) })).filter((x) => x.sisa > 0);
+  const invoiceARList = (invoices || []).map((inv) => ({ inv, total: invoiceTotal(inv), sisa: invoiceSisa(inv) })).filter((x) => x.sisa > 0);
+  const dpOnlySOList = (sos || []).filter((so) => !(invoices || []).some((inv) => inv.soId === so.id) && soDPAmount(so.id) > 0);
+  const pInvoiceAPList = (pInvoices || []).map((inv) => ({ inv, total: pInvoiceTotal(inv), sisa: pInvoiceSisa(inv) })).filter((x) => x.sisa > 0);
 
   const SUBNAV = [
     { id: "ar", label: `Piutang (${invoiceARList.length})` },
     { id: "ap", label: `Hutang (${pInvoiceAPList.length})` },
-    { id: "history", label: `Riwayat Pembayaran (${paymentsIn.length + paymentsOut.length})` },
+    { id: "history", label: `Riwayat Pembayaran (${(paymentsIn || []).length + (paymentsOut || []).length})` },
     { id: "expenses", label: "Biaya Operasional" },
   ];
 
@@ -3366,7 +3369,7 @@ function FinanceView(props) {
               </thead>
               <tbody>
                 {invoiceARList.map(({ inv, total, sisa }) => {
-                  const so = sos.find((x) => x.id === inv.soId);
+                  const so = (sos || []).find((x) => x.id === inv.soId);
                   const custName = inv.isDirect ? findName(customers, inv.customerId) : (so ? findName(customers, so.customerId) : "-");
                   return (
                     <tr key={inv.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
@@ -3400,7 +3403,7 @@ function FinanceView(props) {
                   <tr key={so.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                     <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{so.soNumber}</td>
                     <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(customers, so.customerId)}</td>
-                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.inkSoft }}>{fmtIDR(so.items.reduce((s, it) => s + it.qty * it.unitPrice, 0))}</td>
+                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.inkSoft }}>{fmtIDR((so.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0))}</td>
                     <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.good }}>{fmtIDR(soDPAmount(so.id))}</td>
                     <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(so.date)}</td>
                     <td className="px-4 py-2.5 text-right"><button onClick={() => openPay("dp", so)} className="text-xs" style={{ color: COLOR.accent }}>Tambah DP</button></td>
@@ -3419,9 +3422,9 @@ function FinanceView(props) {
       {payModal?.kind === "dp-pick" && (
         <Modal title="Catat DP" onClose={() => setPayModal(null)}>
           <Field label="Pilih Sales Order">
-            <Select onChange={(e) => { const so = sos.find((x) => x.id === e.target.value); if (so) openPay("dp", so); }} defaultValue="">
+            <Select onChange={(e) => { const so = (sos || []).find((x) => x.id === e.target.value); if (so) openPay("dp", so); }} defaultValue="">
               <option value="" disabled>— pilih SO —</option>
-              {sos.filter((so) => !invoices.some((inv) => inv.soId === so.id)).map((so) => (
+              {(sos || []).filter((so) => !(invoices || []).some((inv) => inv.soId === so.id)).map((so) => (
                 <option key={so.id} value={so.id}>{so.soNumber} · {findName(customers, so.customerId)}</option>
               ))}
             </Select>
@@ -3470,9 +3473,9 @@ function FinanceView(props) {
                 </tr>
               </thead>
               <tbody>
-                {[...paymentsIn].sort((a, b) => new Date(b.date) - new Date(a.date)).map((p) => {
-                  const inv = invoices.find((x) => x.id === p.invoiceId);
-                  const so = sos.find((x) => x.id === p.soId);
+                {[...(paymentsIn || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((p) => {
+                  const inv = (invoices || []).find((x) => x.id === p.invoiceId);
+                  const so = (sos || []).find((x) => x.id === p.soId);
                   const ref = inv ? inv.noFaktur : so ? so.soNumber : "-";
                   return (
                     <tr key={p.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
@@ -3489,7 +3492,7 @@ function FinanceView(props) {
                     </tr>
                   );
                 })}
-                {paymentsIn.length === 0 && <tr><td colSpan={7} className="text-center py-6 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada pembayaran masuk.</td></tr>}
+                {(paymentsIn || []).length === 0 && <tr><td colSpan={7} className="text-center py-6 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada pembayaran masuk.</td></tr>}
               </tbody>
             </table>
           </Card>
@@ -3505,9 +3508,9 @@ function FinanceView(props) {
                 </tr>
               </thead>
               <tbody>
-                {[...paymentsOut].sort((a, b) => new Date(b.date) - new Date(a.date)).map((p) => {
-                  const inv = pInvoices.find((x) => x.id === p.pInvoiceId);
-                  const po = pos.find((x) => x.id === p.poId);
+                {[...(paymentsOut || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((p) => {
+                  const inv = (pInvoices || []).find((x) => x.id === p.pInvoiceId);
+                  const po = (pos || []).find((x) => x.id === p.poId);
                   const ref = inv ? inv.noFaktur : po ? po.poNumber : "-";
                   return (
                     <tr key={p.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
@@ -3523,7 +3526,7 @@ function FinanceView(props) {
                     </tr>
                   );
                 })}
-                {paymentsOut.length === 0 && <tr><td colSpan={6} className="text-center py-6 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada pembayaran keluar.</td></tr>}
+                {(paymentsOut || []).length === 0 && <tr><td colSpan={6} className="text-center py-6 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada pembayaran keluar.</td></tr>}
               </tbody>
             </table>
           </Card>
@@ -3545,7 +3548,7 @@ function FinanceView(props) {
                 </tr>
               </thead>
               <tbody>
-                {[...expenses].sort((a, b) => new Date(b.date) - new Date(a.date)).map((e) => (
+                {[...(expenses || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((e) => (
                   <tr key={e.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                     <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(e.date)}</td>
                     <td className="px-4 py-2.5"><Badge tone="neutral">{e.category}</Badge></td>
@@ -3554,7 +3557,7 @@ function FinanceView(props) {
                     <td className="px-4 py-2.5 text-right"><button onClick={() => removeExpense(e.id)} className="text-xs" style={{ color: COLOR.danger }}>Hapus</button></td>
                   </tr>
                 ))}
-                {expenses.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada biaya operasional tercatat.</td></tr>}
+                {(expenses || []).length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada biaya operasional tercatat.</td></tr>}
               </tbody>
             </table>
           </Card>
@@ -3612,13 +3615,13 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
   const [end, setEnd] = useState(todayISO());
 
   function inRange(dateStr) { return dateStr >= start && dateStr <= end; }
-  const filteredPOs = useMemo(() => pos.filter((po) => inRange(po.date)), [pos, start, end]);
-  const filteredSOs = useMemo(() => sos.filter((so) => inRange(so.date)), [sos, start, end]);
+  const filteredPOs = useMemo(() => (pos || []).filter((po) => inRange(po.date)), [pos, start, end]);
+  const filteredSOs = useMemo(() => (sos || []).filter((so) => inRange(so.date)), [sos, start, end]);
 
   function aggregateByProduct(docs) {
     const map = {};
     docs.forEach((doc) => {
-      doc.items.forEach((it) => {
+      (doc.items || []).forEach((it) => {
         if (!map[it.productId]) map[it.productId] = { qty: 0, value: 0 };
         map[it.productId].qty += it.qty;
         map[it.productId].value += it.qty * it.unitPrice;
@@ -3677,7 +3680,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
               </thead>
               <tbody>
                 {Object.entries(purchaseAgg).sort((a, b) => b[1].value - a[1].value).map(([pid, agg]) => {
-                  const p = products.find((x) => x.id === pid);
+                  const p = (products || []).find((x) => x.id === pid);
                   return (
                     <tr key={pid} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                       <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{p?.name || "-"}</td>
@@ -3706,7 +3709,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
                     <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{po.poNumber}</td>
                     <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(suppliers, po.supplierId)}</td>
                     <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(po.date)}</td>
-                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(po.items.reduce((s, it) => s + it.qty * it.unitPrice, 0))}</td>
+                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR((po.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0))}</td>
                   </tr>
                 ))}
                 {filteredPOs.length === 0 && <tr><td colSpan={4} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada PO di periode ini.</td></tr>}
@@ -3734,7 +3737,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
               </thead>
               <tbody>
                 {Object.entries(salesAgg).sort((a, b) => b[1].value - a[1].value).map(([pid, agg]) => {
-                  const p = products.find((x) => x.id === pid);
+                  const p = (products || []).find((x) => x.id === pid);
                   return (
                     <tr key={pid} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                       <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{p?.name || "-"}</td>
@@ -3763,7 +3766,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
                     <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{so.soNumber}</td>
                     <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(customers, so.customerId)}</td>
                     <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(so.date)}</td>
-                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(so.items.reduce((s, it) => s + it.qty * it.unitPrice, 0))}</td>
+                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR((so.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0))}</td>
                   </tr>
                 ))}
                 {filteredSOs.length === 0 && <tr><td colSpan={4} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada SO di periode ini.</td></tr>}
