@@ -1794,7 +1794,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   return (
     <div>
       <div className="flex justify-end mb-4">
-        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Pembelian Langsung (Tanpa PO)</Button>
+        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Pembelian Langsung</Button>
       </div>
 
       {eligiblePOs.length > 0 && (
@@ -2754,7 +2754,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   return (
     <div>
       <div className="flex justify-end mb-4 no-print">
-        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Penjualan Langsung (Tanpa SO)</Button>
+        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Penjualan Langsung</Button>
       </div>
 
       {eligibleSOs.length > 0 && (
