@@ -19,8 +19,8 @@ const COMPANY_PROFILE = {
   name: "PT WIRYATAMA PUTERA MANDIRI",
   tagline: "Distributor Penyalur Farmasi & Alat Kesehatan (Alkes) Terpercaya",
   address: "Ruko New Aruna Residence, Jl. Serua Raya No.9, Bojongsari, Depok, Jawa Barat 16517",
-  contact: "Email: finance@wiryatamaputera.co.id | Telp: (021) 7437964 / WA: 0817-773-791",
-  whatsapp: "62817773791",
+  contact: "Email: finance@wiryatamaputera.co.id | Telp: (021) 7437964 / WA: 0817",
+  whatsapp: "0817",
   logoUrl: "https://i.imgur.com/EfI1R4p.jpeg", 
   bankDetails: {
     bankName: "Bank Central Asia (BCA)",
@@ -283,7 +283,7 @@ function PublicLandingPage({ isLoggedIn }) {
             <div className="font-bold text-sm mb-1 text-gray-900">Alamat Kantor & Gudang</div>
             <div className="flex items-center gap-2"><MapPin size={14} /> {COMPANY_PROFILE.address}</div>
             <div className="flex items-center gap-2"><Mail size={14} /> finance@wiryatamaputera.co.id</div>
-            <div className="flex items-center gap-2"><Phone size={14} /> (021) 7437964 / WhatsApp: 0817-773-791</div>
+            <div className="flex items-center gap-2"><Phone size={14} /> (021) 7437964 / WhatsApp: 0817</div>
           </div>
         </div>
         <div className="max-w-6xl mx-auto px-4 mt-8 pt-4 border-t text-center text-[11px]" style={{ borderColor: COLOR.border, color: COLOR.inkSoft }}>
