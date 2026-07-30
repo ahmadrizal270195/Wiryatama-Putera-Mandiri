@@ -13,7 +13,7 @@ import { auth } from "./firebase";
 // ---------- CONSTANTS & COMPANY PROFILE CONFIG ----------
 const CATEGORIES = ["Obat Generik", "Obat Paten", "Alat Kesehatan", "Vitamin & Suplemen", "Consumables"];
 const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Toko Obat", "Distributor Lain"];
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // Auto-Logout setelah 30 Menit Tidak Aktif
+const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // Auto-Logout setelah 30 Menit Tidak Aktif
 
 const COMPANY_PROFILE = {
   name: "PT WIRYATAMA PUTERA MANDIRI",
