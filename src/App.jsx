@@ -13,14 +13,14 @@ import { auth } from "./firebase";
 // ---------- CONSTANTS & COMPANY PROFILE CONFIG ----------
 const CATEGORIES = ["Obat Generik", "Obat Paten", "Alat Kesehatan", "Vitamin & Suplemen", "Consumables"];
 const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Toko Obat", "Distributor Lain"];
-const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // Auto-Logout setelah 30 Menit Tidak Aktif
+const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // Auto-Logout setelah 60 Menit Tidak Aktif
 
 const COMPANY_PROFILE = {
   name: "PT WIRYATAMA PUTERA MANDIRI",
   tagline: "Distributor Penyalur Farmasi & Alat Kesehatan (Alkes) Terpercaya",
   address: "Ruko New Aruna Residence, Jl. Serua Raya No.9, Bojongsari, Depok, Jawa Barat 16517",
-  contact: "Email: finance@wiryatamaputera.co.id | Telp: (021) 7437964 / WA: 0817",
-  whatsapp: "0817",
+  contact: "Email: finance@wiryatamaputera.co.id | Telp: (021) 7437964 / WA: 0817-773-791",
+  whatsapp: "62817773791",
   logoUrl: "https://i.imgur.com/EfI1R4p.jpeg", 
   bankDetails: {
     bankName: "Bank Central Asia (BCA)",
@@ -283,7 +283,7 @@ function PublicLandingPage({ isLoggedIn }) {
             <div className="font-bold text-sm mb-1 text-gray-900">Alamat Kantor & Gudang</div>
             <div className="flex items-center gap-2"><MapPin size={14} /> {COMPANY_PROFILE.address}</div>
             <div className="flex items-center gap-2"><Mail size={14} /> finance@wiryatamaputera.co.id</div>
-            <div className="flex items-center gap-2"><Phone size={14} /> (021) 7437964 / WhatsApp: 0817</div>
+            <div className="flex items-center gap-2"><Phone size={14} /> (021) 7437964 / WhatsApp: 0817-773-791</div>
           </div>
         </div>
         <div className="max-w-6xl mx-auto px-4 mt-8 pt-4 border-t text-center text-[11px]" style={{ borderColor: COLOR.border, color: COLOR.inkSoft }}>
@@ -496,7 +496,7 @@ function ExpiryRibbon({ productBatches }) {
   );
 }
 
-// ---------- 3. INTERNAL PHARMA ERP SYSTEM (DENGAN IDLE TIMEOUT) ----------
+// ---------- 3. INTERNAL PHARMA ERP SYSTEM ----------
 function PharmaERP({ userEmail, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("dashboard");
@@ -520,24 +520,20 @@ function PharmaERP({ userEmail, onLogout }) {
   const [syncState, setSyncState] = useState("ok");
   const navigate = useNavigate();
 
-  // TIMER REF UNTUK IDLE TIMEOUT
   const idleTimerRef = useRef(null);
 
-  // LOGIKA IDLE TIMEOUT (30 MENIT TIDAK AKTIF = AUTO LOGOUT)
+  // IDLE TIMEOUT 60 MENIT
   useEffect(() => {
     const resetIdleTimer = () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       idleTimerRef.current = setTimeout(() => {
         onLogout();
-        alert("Sesi Anda telah berakhir secara otomatis karena tidak ada aktivitas selama 30 menit demi keamanan.");
+        alert("Sesi Anda telah berakhir secara otomatis karena tidak ada aktivitas selama 60 menit demi keamanan.");
       }, IDLE_TIMEOUT_MS);
     };
 
-    // Events pemicu pergerakan user
     const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
     events.forEach((evt) => window.addEventListener(evt, resetIdleTimer));
-
-    // Jalankan timer pertama kali
     resetIdleTimer();
 
     return () => {
@@ -855,7 +851,7 @@ function PharmaERP({ userEmail, onLogout }) {
   );
 }
 
-// ---------- Sub-komponen Dashboard, Products, Stock, Purchases, Sales, Finance, Reports ----------
+// ---------- Sub-komponen Modul ERP ----------
 function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, suppliers, customers, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth }) {
   const recentPOs = [...pos].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
   const recentSOs = [...sos].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
@@ -1259,7 +1255,7 @@ function PurchasesView({
         <BPBTab {...{ products, suppliers, pos, batches, pReceipts, pInvoices, saveBatches, savePOs, savePReceipts, findName, notify, getPOStatus, receivedQty }} />
       )}
       {subTab === "faktur" && (
-        <FakturPembelianTab {...{ products, suppliers, pos, pReceipts, pInvoices, paymentsOut, pReturns, savePInvoices, findName, notify, getPOStatus, pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa }} />
+        <FakturPembelianTab {...{ products, suppliers, pos, batches, pReceipts, pInvoices, paymentsOut, pReturns, saveBatches, savePInvoices, findName, notify, getPOStatus, pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa }} />
       )}
       {subTab === "retur" && (
         <ReturPembelianTab {...{ products, suppliers, pos, pInvoices, pReturns, pReceipts, batches, saveBatches, savePReturns, findName, notify, pInvoiceTotal, pInvoiceReturnedAmount }} />
@@ -1675,9 +1671,83 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
   );
 }
 
-function FakturPembelianTab({ products, suppliers, pos, pReceipts, pInvoices, paymentsOut, pReturns, savePInvoices, findName, notify, getPOStatus, pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa }) {
+function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInvoices, paymentsOut, pReturns, saveBatches, savePInvoices, findName, notify, getPOStatus, pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa }) {
   const [detailInv, setDetailInv] = useState(null);
+  const [modalDirect, setModalDirect] = useState(false);
+  const [supplierId, setSupplierId] = useState("");
+  const [date, setDate] = useState(todayISO());
+  const [items, setItems] = useState([]);
+  const [searchProd, setSearchProd] = useState("");
+
   const eligiblePOs = pos.filter((po) => getPOStatus(po) === "ready_to_invoice");
+
+  function openDirectModal() {
+    setSupplierId(suppliers[0]?.id || "");
+    setDate(todayISO());
+    setItems([]);
+    setSearchProd("");
+    setModalDirect(true);
+  }
+
+  function addProductToDirect(prod) {
+    const existing = items.find((x) => x.productId === prod.id);
+    if (existing) {
+      setItems(items.map((x) => x.productId === prod.id ? { ...x, qty: x.qty + 1 } : x));
+    } else {
+      setItems([...items, { productId: prod.id, qty: 1, unitPrice: prod.sellPrice * 0.7, batchNo: "", expiryDate: todayISO() }]);
+    }
+  }
+
+  function updateDirectItem(i, patch) {
+    setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+  }
+
+  function removeDirectItem(i) {
+    setItems(items.filter((_, idx) => idx !== i));
+  }
+
+  async function submitDirectPInvoice() {
+    if (!supplierId) return notify("Pilih supplier terlebih dahulu", "danger");
+    if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
+    
+    for (const it of items) {
+      if (!it.batchNo || !it.expiryDate) {
+        const p = products.find((x) => x.id === it.productId);
+        return notify(`Lengkapi No. Batch & Exp Date untuk ${p?.name || "produk"}`, "danger");
+      }
+    }
+
+    const newBatches = [];
+    const invItems = [];
+
+    items.forEach((it) => {
+      const batchId = uid();
+      newBatches.push({
+        id: batchId,
+        productId: it.productId,
+        batchNo: it.batchNo,
+        expiryDate: it.expiryDate,
+        qty: it.qty,
+        costPrice: it.unitPrice,
+        receivedDate: date,
+        poId: null,
+      });
+      invItems.push({
+        productId: it.productId,
+        qty: it.qty,
+        unitPrice: it.unitPrice,
+        batchId: batchId,
+        batchNo: it.batchNo,
+        expiryDate: it.expiryDate
+      });
+    });
+
+    const noFaktur = `VINV-${new Date(date).getFullYear()}-${String(pInvoices.length + 1).padStart(4, "0")}`;
+    await saveBatches([...batches, ...newBatches]);
+    await savePInvoices([...pInvoices, { id: uid(), noFaktur, poId: null, supplierId, date, items: invItems, isDirect: true }]);
+    notify(`${noFaktur} berhasil dibuat langsung & stok bertambah`);
+    setModalDirect(false);
+  }
 
   async function createInvoice(po) {
     const prs = pReceipts.filter((pr) => pr.poId === po.id);
@@ -1705,12 +1775,29 @@ function FakturPembelianTab({ products, suppliers, pos, pReceipts, pInvoices, pa
       return notify("Gagal membatalkan: Faktur ini memiliki riwayat retur pembelian. Batalkan retur terlebih dahulu.", "danger");
     }
 
+    if (inv.isDirect) {
+      let working = batches.map((b) => ({ ...b }));
+      inv.items.forEach((it) => {
+        const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
+        if (b) {
+          b.qty = Math.max(0, b.qty - it.qty);
+        }
+      });
+      await saveBatches(working);
+    }
+
     await savePInvoices(pInvoices.filter((x) => x.id !== inv.id));
     notify(`${inv.noFaktur} berhasil dibatalkan`);
   }
 
+  const filteredProds = products.filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
+
   return (
     <div>
+      <div className="flex justify-end mb-4">
+        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Pembelian Langsung (Tanpa PO)</Button>
+      </div>
+
       {eligiblePOs.length > 0 && (
         <Card className="mb-4">
           <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>PO Siap Difakturkan Supplier (Barang sudah diterima)</div>
@@ -1729,7 +1816,7 @@ function FakturPembelianTab({ products, suppliers, pos, pReceipts, pInvoices, pa
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. Faktur Vendor", "PO", "Supplier", "Tanggal", "Total Tagihan", "Sisa Hutang", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+              {["No. Faktur Vendor", "Tipe", "Supplier", "Tanggal", "Total Tagihan", "Sisa Hutang", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -1741,7 +1828,7 @@ function FakturPembelianTab({ products, suppliers, pos, pReceipts, pInvoices, pa
               return (
                 <tr key={inv.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{inv.noFaktur}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{po?.poNumber}</td>
+                  <td className="px-4 py-2.5"><Badge tone={inv.isDirect ? "warn" : "neutral"}>{inv.isDirect ? "Langsung" : po?.poNumber || "PO"}</Badge></td>
                   <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(suppliers, inv.supplierId)}</td>
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(inv.date)}</td>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(total)}</td>
@@ -1757,6 +1844,82 @@ function FakturPembelianTab({ products, suppliers, pos, pReceipts, pInvoices, pa
           </tbody>
         </table>
       </Card>
+
+      {/* MODAL FAKTUR PEMBELIAN LANGSUNG */}
+      {modalDirect && (
+        <Modal title="Buat Faktur Pembelian Langsung (Tanpa PO)" onClose={() => setModalDirect(false)} wide>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <Field label="Supplier / PBF">
+              <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </Select>
+            </Field>
+            <Field label="Tanggal Faktur">
+              <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </Field>
+          </div>
+
+          <div className="mb-4 p-3 rounded-xl border" style={{ background: COLOR.bg, borderColor: COLOR.border }}>
+            <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Pilih / Tambah Barang Pembelian</div>
+            <div className="relative mb-2">
+              <Search size={14} className="absolute left-3 top-2.5" color={COLOR.inkSoft} />
+              <TextInput placeholder="Cari nama produk / kategori..." value={searchProd} onChange={(e) => setSearchProd(e.target.value)} className="pl-8" />
+            </div>
+            <div className="max-h-36 overflow-y-auto flex flex-col gap-1 pr-1">
+              {filteredProds.map((prod) => (
+                <div key={prod.id} className="flex items-center justify-between p-2 rounded-lg bg-white border text-xs" style={{ borderColor: COLOR.border }}>
+                  <div>
+                    <span className="font-semibold" style={{ color: COLOR.ink }}>{prod.name}</span>
+                    <span className="ml-2 text-[11px] font-mono" style={{ color: COLOR.inkSoft }}>({prod.category})</span>
+                  </div>
+                  <Button variant="ghost" onClick={() => addProductToDirect(prod)} className="!py-0.5 !px-2 text-xs">
+                    <Plus size={12} /> Tambah
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Rincian Item, Batch & Exp Date ({items.length})</div>
+          <div className="flex flex-col gap-2 max-h-56 overflow-y-auto mb-4 pr-1">
+            {items.map((it, i) => {
+              const p = products.find((x) => x.id === it.productId);
+              return (
+                <div key={i} className="p-3 rounded-lg bg-white border flex flex-col gap-2" style={{ borderColor: COLOR.border }}>
+                  <div className="flex justify-between items-center">
+                    <div className="text-sm font-semibold" style={{ color: COLOR.ink }}>{p?.name}</div>
+                    <button onClick={() => removeDirectItem(i)} className="text-red-500 hover:opacity-70"><Trash2 size={15} /></button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    <div>
+                      <label className="text-[10px] block text-gray-500 font-mono">Qty</label>
+                      <TextInput type="number" value={it.qty} onChange={(e) => updateDirectItem(i, { qty: Math.max(1, Number(e.target.value)) })} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] block text-gray-500 font-mono">Harga Beli</label>
+                      <TextInput type="number" value={it.unitPrice} onChange={(e) => updateDirectItem(i, { unitPrice: Number(e.target.value) })} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] block text-gray-500 font-mono">No. Batch</label>
+                      <TextInput placeholder="Batch" value={it.batchNo} onChange={(e) => updateDirectItem(i, { batchNo: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] block text-gray-500 font-mono">Exp Date</label>
+                      <TextInput type="date" value={it.expiryDate} onChange={(e) => updateDirectItem(i, { expiryDate: e.target.value })} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {items.length === 0 && <div className="text-xs py-6 text-center rounded-lg border border-dashed" style={{ color: COLOR.inkSoft, borderColor: COLOR.border }}>Belum ada item terpilih.</div>}
+          </div>
+
+          <div className="flex justify-between items-center mt-4 pt-3" style={{ borderTop: `1px solid ${COLOR.border}` }}>
+            <div className="font-mono font-bold text-base" style={{ color: COLOR.ink }}>Total Tagihan: {fmtIDR(items.reduce((s, it) => s + it.qty * it.unitPrice, 0))}</div>
+            <Button onClick={submitDirectPInvoice}>Simpan Faktur Pembelian & Tambah Stok</Button>
+          </div>
+        </Modal>
+      )}
 
       {detailInv && (
         <Modal title={`Detail ${detailInv.noFaktur}`} onClose={() => setDetailInv(null)} wide>
@@ -1820,21 +1983,28 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
         return notify(`${p?.name}: melebihi sisa barang yang bisa diretur (${l.maxReturn})`, "danger");
       }
 
-      const prs = pReceipts.filter((pr) => pr.poId === selectedInvoice.poId);
-      let remainingToDeduct = l.qtyReturn;
+      if (selectedInvoice.isDirect) {
+        const b = working.find((x) => x.id === l.batchId || (x.batchNo === l.batchNo && x.productId === l.productId));
+        if (b && b.qty > 0) {
+          b.qty = Math.max(0, b.qty - l.qtyReturn);
+        }
+      } else {
+        const prs = pReceipts.filter((pr) => pr.poId === selectedInvoice.poId);
+        let remainingToDeduct = l.qtyReturn;
 
-      prs.forEach((pr) => {
-        pr.items.forEach((rit) => {
-          if (rit.productId === l.productId && remainingToDeduct > 0) {
-            const b = working.find((x) => x.id === rit.batchId || (x.batchNo === rit.batchNo && x.productId === l.productId));
-            if (b && b.qty > 0) {
-              const take = Math.min(b.qty, remainingToDeduct);
-              b.qty -= take;
-              remainingToDeduct -= take;
+        prs.forEach((pr) => {
+          pr.items.forEach((rit) => {
+            if (rit.productId === l.productId && remainingToDeduct > 0) {
+              const b = working.find((x) => x.id === rit.batchId || (x.batchNo === rit.batchNo && x.productId === l.productId));
+              if (b && b.qty > 0) {
+                const take = Math.min(b.qty, remainingToDeduct);
+                b.qty -= take;
+                remainingToDeduct -= take;
+              }
             }
-          }
+          });
         });
-      });
+      }
 
       returnItems.push({ productId: l.productId, qty: l.qtyReturn, unitPrice: l.unitPrice });
     }
@@ -1849,21 +2019,32 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
   async function cancelReturn(ret) {
     let working = batches.map((b) => ({ ...b }));
 
-    const prs = pReceipts.filter((pr) => pr.poId === ret.poId);
-    ret.items.forEach((it) => {
-      let remainingToAdd = it.qty;
-      prs.forEach((pr) => {
-        pr.items.forEach((rit) => {
-          if (rit.productId === it.productId && remainingToAdd > 0) {
-            const b = working.find((x) => x.id === rit.batchId || (x.batchNo === rit.batchNo && x.productId === it.productId));
-            if (b) {
-              b.qty += remainingToAdd;
-              remainingToAdd = 0;
+    const inv = pInvoices.find((x) => x.id === ret.pInvoiceId);
+    if (inv && inv.isDirect) {
+      ret.items.forEach((it) => {
+        const itemInv = inv.items.find((x) => x.productId === it.productId);
+        if (itemInv) {
+          const b = working.find((x) => x.id === itemInv.batchId || (x.batchNo === itemInv.batchNo && x.productId === it.productId));
+          if (b) b.qty += it.qty;
+        }
+      });
+    } else {
+      const prs = pReceipts.filter((pr) => pr.poId === ret.poId);
+      ret.items.forEach((it) => {
+        let remainingToAdd = it.qty;
+        prs.forEach((pr) => {
+          pr.items.forEach((rit) => {
+            if (rit.productId === it.productId && remainingToAdd > 0) {
+              const b = working.find((x) => x.id === rit.batchId || (x.batchNo === rit.batchNo && x.productId === it.productId));
+              if (b) {
+                b.qty += remainingToAdd;
+                remainingToAdd = 0;
+              }
             }
-          }
+          });
         });
       });
-    });
+    }
 
     await saveBatches(working);
     await savePReturns(pReturns.filter((r) => r.id !== ret.id));
@@ -2007,7 +2188,7 @@ function SalesView({
         <SJTab {...{ products, customers, sos, batches, deliveryNotes, invoices, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty }} />
       )}
       {subTab === "faktur" && (
-        <FakturTab {...{ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, saveInvoices, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount }} />
+        <FakturTab {...{ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, batches, saveBatches, saveInvoices, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount }} />
       )}
       {subTab === "retur" && (
         <ReturTab {...{ products, customers, sos, invoices, returns, deliveryNotes, batches, saveBatches, saveReturns, findName, notify, invoiceTotal, invoiceReturnedAmount }} />
@@ -2452,10 +2633,79 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
   );
 }
 
-function FakturTab({ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, saveInvoices, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount }) {
+function FakturTab({ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, batches, saveBatches, saveInvoices, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount }) {
   const [detailInv, setDetailInv] = useState(null);
   const [printInv, setPrintInv] = useState(null);
+  const [modalDirect, setModalDirect] = useState(false);
+  const [customerId, setCustomerId] = useState("");
+  const [date, setDate] = useState(todayISO());
+  const [items, setItems] = useState([]);
+  const [searchProd, setSearchProd] = useState("");
+
   const eligibleSOs = sos.filter((so) => getSOStatus(so) === "ready_to_invoice");
+
+  function openDirectModal() {
+    setCustomerId(customers[0]?.id || "");
+    setDate(todayISO());
+    setItems([]);
+    setSearchProd("");
+    setModalDirect(true);
+  }
+
+  function addProductToDirect(prod) {
+    const existing = items.find((x) => x.productId === prod.id);
+    if (existing) {
+      setItems(items.map((x) => x.productId === prod.id ? { ...x, qty: x.qty + 1 } : x));
+    } else {
+      setItems([...items, { productId: prod.id, qty: 1, unitPrice: prod.sellPrice }]);
+    }
+  }
+
+  function updateDirectItem(i, patch) {
+    setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+  }
+
+  function removeDirectItem(i) {
+    setItems(items.filter((_, idx) => idx !== i));
+  }
+
+  async function submitDirectInvoice() {
+    if (!customerId) return notify("Pilih pelanggan terlebih dahulu", "danger");
+    if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
+
+    let working = batches.map((b) => ({ ...b }));
+    const shortages = [];
+    const itemsWithAlloc = [];
+
+    for (const it of items) {
+      const avail = working.filter((b) => b.productId === it.productId && b.qty > 0).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+      let remaining = it.qty;
+      const allocations = [];
+
+      for (const b of avail) {
+        if (remaining <= 0) break;
+        const take = Math.min(b.qty, remaining);
+        allocations.push({ batchId: b.id, batchNo: b.batchNo, qty: take });
+        b.qty -= take;
+        remaining -= take;
+      }
+
+      if (remaining > 0) {
+        const p = products.find((x) => x.id === it.productId);
+        shortages.push(`${p?.name}: kurang ${remaining} ${p?.unit}`);
+      }
+
+      itemsWithAlloc.push({ productId: it.productId, qty: it.qty, unitPrice: it.unitPrice, allocations });
+    }
+
+    if (shortages.length > 0) return notify("Stok tidak cukup — " + shortages.join(", "), "danger");
+
+    const noFaktur = `INV-${new Date(date).getFullYear()}-${String(invoices.length + 1).padStart(4, "0")}`;
+    await saveBatches(working);
+    await saveInvoices([...invoices, { id: uid(), noFaktur, soId: null, customerId, date, items: itemsWithAlloc, isDirect: true }]);
+    notify(`${noFaktur} dibuat langsung & stok FEFO terpotong`);
+    setModalDirect(false);
+  }
 
   async function createInvoice(so) {
     const dns = deliveryNotes.filter((dn) => dn.soId === so.id && dn.status === "diterima");
@@ -2482,12 +2732,29 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       return notify("Gagal membatalkan: Faktur ini memiliki transaksi retur. Batalkan retur terlebih dahulu.", "danger");
     }
 
+    if (inv.isDirect) {
+      let working = batches.map((b) => ({ ...b }));
+      inv.items.forEach((it) => {
+        (it.allocations || []).forEach((alloc) => {
+          const b = working.find((x) => x.id === alloc.batchId);
+          if (b) b.qty += alloc.qty;
+        });
+      });
+      await saveBatches(working);
+    }
+
     await saveInvoices(invoices.filter((x) => x.id !== inv.id));
     notify(`${inv.noFaktur} berhasil dibatalkan`);
   }
 
+  const filteredProds = products.filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
+
   return (
     <div>
+      <div className="flex justify-end mb-4 no-print">
+        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Penjualan Langsung (Tanpa SO)</Button>
+      </div>
+
       {eligibleSOs.length > 0 && (
         <Card className="mb-4 no-print">
           <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>SO siap difaktur (barang sudah diterima penuh)</div>
@@ -2501,24 +2768,26 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
           </div>
         </Card>
       )}
+
       <Card className="!p-0 overflow-hidden no-print">
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
-              {["No. Faktur", "SO", "Pelanggan", "Tanggal", "Total", "Sisa", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
+              {["No. Faktur", "Tipe", "Pelanggan", "Tanggal", "Total", "Sisa", ""].map((h) => <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
             {[...invoices].sort((a, b) => new Date(b.date) - new Date(a.date)).map((inv) => {
               const so = sos.find((x) => x.id === inv.soId);
+              const custName = inv.isDirect ? findName(customers, inv.customerId) : (so ? findName(customers, so.customerId) : "-");
               const total = invoiceTotal(inv);
               const sisa = Math.max(0, total - invoiceReturnedAmount(inv.id) - soDPAmount(inv.soId) - invoicePaidAmount(inv.id));
               const canCancel = invoicePaidAmount(inv.id) === 0 && !returns.some((r) => r.invoiceId === inv.id);
               return (
                 <tr key={inv.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{inv.noFaktur}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{so?.soNumber}</td>
-                  <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{so ? findName(customers, so.customerId) : "-"}</td>
+                  <td className="px-4 py-2.5"><Badge tone={inv.isDirect ? "warn" : "neutral"}>{inv.isDirect ? "Langsung" : so?.soNumber || "SO"}</Badge></td>
+                  <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{custName}</td>
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(inv.date)}</td>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(total)}</td>
                   <td className="px-4 py-2.5"><Badge tone={sisa > 0 ? "warn" : "good"}>{sisa > 0 ? fmtIDR(sisa) : "Lunas"}</Badge></td>
@@ -2536,6 +2805,78 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
           </tbody>
         </table>
       </Card>
+
+      {/* MODAL FAKTUR PENJUALAN LANGSUNG */}
+      {modalDirect && (
+        <Modal title="Buat Faktur Penjualan Langsung (Tanpa SO)" onClose={() => setModalDirect(false)} wide>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <Field label="Pelanggan">
+              <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+                {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+            </Field>
+            <Field label="Tanggal Faktur">
+              <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </Field>
+          </div>
+
+          <div className="mb-4 p-3 rounded-xl border" style={{ background: COLOR.bg, borderColor: COLOR.border }}>
+            <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Pilih / Tambah Produk Penjualan</div>
+            <div className="relative mb-2">
+              <Search size={14} className="absolute left-3 top-2.5" color={COLOR.inkSoft} />
+              <TextInput placeholder="Cari nama produk / kategori..." value={searchProd} onChange={(e) => setSearchProd(e.target.value)} className="pl-8" />
+            </div>
+            <div className="max-h-36 overflow-y-auto flex flex-col gap-1 pr-1">
+              {filteredProds.map((prod) => {
+                const s = stockByProduct[prod.id];
+                return (
+                  <div key={prod.id} className="flex items-center justify-between p-2 rounded-lg bg-white border text-xs" style={{ borderColor: COLOR.border }}>
+                    <div>
+                      <span className="font-semibold" style={{ color: COLOR.ink }}>{prod.name}</span>
+                      <span className="ml-2 text-[11px] font-mono" style={{ color: COLOR.inkSoft }}>({prod.category}) · Stok: {s?.qty || 0} {prod.unit}</span>
+                    </div>
+                    <Button variant="ghost" onClick={() => addProductToDirect(prod)} className="!py-0.5 !px-2 text-xs">
+                      <Plus size={12} /> Tambah
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: COLOR.primary }}>Rincian Item Dijual ({items.length})</div>
+          <div className="flex flex-col gap-2 max-h-48 overflow-y-auto mb-4 pr-1">
+            {items.map((it, i) => {
+              const p = products.find((x) => x.id === it.productId);
+              const s = stockByProduct[it.productId];
+              const isStockShort = s && s.qty < it.qty;
+              return (
+                <div key={i} className="flex gap-2 items-center p-2 rounded-lg bg-white border" style={{ borderColor: isStockShort ? COLOR.warn : COLOR.border }}>
+                  <div className="flex-1">
+                    <div className="text-sm font-medium" style={{ color: COLOR.ink }}>{p?.name}</div>
+                    <div className="text-[11px] font-mono" style={{ color: isStockShort ? COLOR.danger : COLOR.inkSoft }}>
+                      Stok tersedia: {s?.qty || 0} {p?.unit} · Subtotal: {fmtIDR(it.qty * it.unitPrice)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-mono" style={{ color: COLOR.inkSoft }}>Qty:</span>
+                    <TextInput type="number" value={it.qty} onChange={(e) => updateDirectItem(i, { qty: Math.max(1, Number(e.target.value)) })} className="w-16 text-center" />
+                    <span className="text-xs font-mono ml-1" style={{ color: COLOR.inkSoft }}>Harga Jual:</span>
+                    <TextInput type="number" value={it.unitPrice} onChange={(e) => updateDirectItem(i, { unitPrice: Number(e.target.value) })} className="w-28" />
+                    <button onClick={() => removeDirectItem(i)} className="p-1.5 text-red-500 hover:opacity-70"><Trash2 size={16} color={COLOR.danger} /></button>
+                  </div>
+                </div>
+              );
+            })}
+            {items.length === 0 && <div className="text-xs py-6 text-center rounded-lg border border-dashed" style={{ color: COLOR.inkSoft, borderColor: COLOR.border }}>Belum ada item terpilih.</div>}
+          </div>
+
+          <div className="flex justify-between items-center mt-4 pt-3" style={{ borderTop: `1px solid ${COLOR.border}` }}>
+            <div className="font-mono font-bold text-base" style={{ color: COLOR.ink }}>Total Faktur: {fmtIDR(items.reduce((s, it) => s + it.qty * it.unitPrice, 0))}</div>
+            <Button onClick={submitDirectInvoice}>Simpan Faktur & Potong Stok FEFO</Button>
+          </div>
+        </Modal>
+      )}
 
       {detailInv && (
         <Modal title={`Detail ${detailInv.noFaktur}`} onClose={() => setDetailInv(null)} wide>
@@ -2604,8 +2945,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
 
             {(() => {
               const so = sos.find((s) => s.id === printInv.soId);
-              const cust = customers.find((c) => c.id === so?.customerId);
-              const dp = soDPAmount(printInv.soId);
+              const cust = printInv.isDirect ? customers.find((c) => c.id === printInv.customerId) : customers.find((c) => c.id === so?.customerId);
+              const dp = printInv.soId ? soDPAmount(printInv.soId) : 0;
               const paid = invoicePaidAmount(printInv.id);
               const ret = invoiceReturnedAmount(printInv.id);
               const subtotal = invoiceTotal(printInv);
@@ -2623,8 +2964,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                     <div className="text-right">
                       <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Detail Dokumen</div>
                       <div><span className="text-gray-500">Tanggal Faktur:</span> <span className="font-mono">{fmtDate(printInv.date)}</span></div>
-                      <div><span className="text-gray-500">No. Sales Order:</span> <span className="font-mono">{so?.soNumber || "-"}</span></div>
-                      <div><span className="text-gray-500">Tanggal SO:</span> <span className="font-mono">{fmtDate(so?.date)}</span></div>
+                      <div><span className="text-gray-500">No. Sales Order:</span> <span className="font-mono">{so?.soNumber || (printInv.isDirect ? "Penjualan Langsung" : "-")}</span></div>
+                      {so && <div><span className="text-gray-500">Tanggal SO:</span> <span className="font-mono">{fmtDate(so?.date)}</span></div>}
                     </div>
                   </div>
 
@@ -2764,7 +3105,19 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
     }
     let working = batches.map((b) => ({ ...b }));
     const items = lines.map((l) => {
-      const restocked = restockFromSO(selectedInvoice.soId, l.productId, l.qtyReturn, working);
+      let restocked = [];
+      if (selectedInvoice.isDirect) {
+        (l.allocations || []).forEach((a) => {
+          const b = working.find((x) => x.id === a.batchId);
+          if (b) {
+            const take = Math.min(a.qty, l.qtyReturn);
+            b.qty += take;
+            restocked.push({ batchId: a.batchId, batchNo: a.batchNo, qty: take });
+          }
+        });
+      } else {
+        restocked = restockFromSO(selectedInvoice.soId, l.productId, l.qtyReturn, working);
+      }
       return { productId: l.productId, qty: l.qtyReturn, unitPrice: l.unitPrice, restockedBatches: restocked };
     });
     await saveBatches(working);
@@ -3014,10 +3367,11 @@ function FinanceView(props) {
               <tbody>
                 {invoiceARList.map(({ inv, total, sisa }) => {
                   const so = sos.find((x) => x.id === inv.soId);
+                  const custName = inv.isDirect ? findName(customers, inv.customerId) : (so ? findName(customers, so.customerId) : "-");
                   return (
                     <tr key={inv.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                       <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{inv.noFaktur}</td>
-                      <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{so ? findName(customers, so.customerId) : "-"}</td>
+                      <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{custName}</td>
                       <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.inkSoft }}>{fmtIDR(total)}</td>
                       <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.good }}>{fmtIDR(total - sisa)}</td>
                       <td className="px-4 py-2.5 font-mono font-medium" style={{ color: COLOR.warn }}>{fmtIDR(sisa)}</td>
