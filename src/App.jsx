@@ -14,6 +14,7 @@ import { auth } from "./firebase";
 const CATEGORIES = ["Obat Generik", "Obat Paten", "Alat Kesehatan", "Vitamin & Suplemen", "Consumables"];
 const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Toko Obat", "Distributor Lain"];
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // Auto-Logout setelah 60 Menit Tidak Aktif
+const ACTIVE_TAB_KEY = "erp-last-active-tab"; // Penyimpanan tab terakhir
 
 const COMPANY_PROFILE = {
   name: "PT WIRYATAMA PUTERA MANDIRI",
@@ -116,7 +117,7 @@ export default function App() {
         <Route
           path="/app/*"
           element={
-            user ? <PharmaERP userEmail={user.email} onLogout={() => signOut(auth)} /> : <Navigate to="/login" replace />
+            user ? <PharmaERP userEmail={user.email} onLogout={() => { localStorage.removeItem(ACTIVE_TAB_KEY); signOut(auth); }} /> : <Navigate to="/login" replace />
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -499,7 +500,17 @@ function ExpiryRibbon({ productBatches }) {
 // ---------- 3. INTERNAL PHARMA ERP SYSTEM ----------
 function PharmaERP({ userEmail, onLogout }) {
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("dashboard");
+  
+  // MENGAMBIL TAB TERAKHIR DARI LOCALSTORAGE AGAR TIDAK KEMBALI KE DASHBOARD SAAT REFRESH
+  const [tab, setTabState] = useState(() => {
+    return localStorage.getItem(ACTIVE_TAB_KEY) || "dashboard";
+  });
+
+  const setTab = (newTab) => {
+    setTabState(newTab);
+    localStorage.setItem(ACTIVE_TAB_KEY, newTab);
+  };
+
   const [products, setProducts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -527,6 +538,7 @@ function PharmaERP({ userEmail, onLogout }) {
     const resetIdleTimer = () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       idleTimerRef.current = setTimeout(() => {
+        localStorage.removeItem(ACTIVE_TAB_KEY);
         onLogout();
         alert("Sesi Anda telah berakhir secara otomatis karena tidak ada aktivitas selama 60 menit demi keamanan.");
       }, IDLE_TIMEOUT_MS);
@@ -1794,7 +1806,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   return (
     <div>
       <div className="flex justify-end mb-4">
-        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Pembelian Langsung</Button>
+        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Pembelian Langsung (Tanpa PO)</Button>
       </div>
 
       {eligiblePOs.length > 0 && (
@@ -2754,7 +2766,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   return (
     <div>
       <div className="flex justify-end mb-4 no-print">
-        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Penjualan Langsung</Button>
+        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Penjualan Langsung (Tanpa SO)</Button>
       </div>
 
       {eligibleSOs.length > 0 && (
