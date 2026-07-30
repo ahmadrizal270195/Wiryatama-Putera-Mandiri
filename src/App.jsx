@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { loadKey, saveKey } from "./storage";
 import {
@@ -13,6 +13,7 @@ import { auth } from "./firebase";
 // ---------- CONSTANTS & COMPANY PROFILE CONFIG ----------
 const CATEGORIES = ["Obat Generik", "Obat Paten", "Alat Kesehatan", "Vitamin & Suplemen", "Consumables"];
 const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Toko Obat", "Distributor Lain"];
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // Auto-Logout setelah 30 Menit Tidak Aktif
 
 const COMPANY_PROFILE = {
   name: "PT WIRYATAMA PUTERA MANDIRI",
@@ -110,28 +111,21 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* URL Path: / (Landing Page Publik) */}
         <Route path="/" element={<PublicLandingPage isLoggedIn={!!user} />} />
-
-        {/* URL Path: /login (Portal Login Staff) */}
         <Route path="/login" element={user ? <Navigate to="/app" replace /> : <LoginScreen />} />
-
-        {/* URL Path: /app (Dashboard Internal ERP - Dikunci Autentikasi) */}
         <Route
           path="/app/*"
           element={
             user ? <PharmaERP userEmail={user.email} onLogout={() => signOut(auth)} /> : <Navigate to="/login" replace />
           }
         />
-
-        {/* Wildcard Route - Alihkan URL salah ke halaman utama */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
 }
 
-// ---------- 1. LANDING PAGE PUBLIK (URL: /) ----------
+// ---------- 1. LANDING PAGE PUBLIK ----------
 function PublicLandingPage({ isLoggedIn }) {
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState("");
@@ -148,7 +142,6 @@ function PublicLandingPage({ isLoggedIn }) {
 
   return (
     <div className="min-h-screen font-sans" style={{ background: COLOR.bg, color: COLOR.ink }}>
-      {/* NAVBAR */}
       <nav className="bg-white border-b sticky top-0 z-40" style={{ borderColor: COLOR.border }}>
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -173,7 +166,6 @@ function PublicLandingPage({ isLoggedIn }) {
         </div>
       </nav>
 
-      {/* HERO BANNER */}
       <header className="py-16 px-4 text-center bg-white border-b" style={{ borderColor: COLOR.border }}>
         <div className="max-w-3xl mx-auto">
           <span className="inline-block px-3 py-1 rounded-full text-xs font-mono font-medium mb-3" style={{ background: COLOR.primarySoft, color: COLOR.primary }}>
@@ -202,7 +194,6 @@ function PublicLandingPage({ isLoggedIn }) {
         </div>
       </header>
 
-      {/* KEUNGGULAN */}
       <section id="layanan" className="py-12 max-w-6xl mx-auto px-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
           <Card className="flex items-start gap-3">
@@ -234,7 +225,6 @@ function PublicLandingPage({ isLoggedIn }) {
           </Card>
         </div>
 
-        {/* KATALOG PRODUK PUBLIK */}
         <div id="katalog" className="pt-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
             <div>
@@ -278,7 +268,6 @@ function PublicLandingPage({ isLoggedIn }) {
         </div>
       </section>
 
-      {/* FOOTER */}
       <footer id="kontak" className="bg-white border-t mt-16 py-12" style={{ borderColor: COLOR.border }}>
         <div className="max-w-6xl mx-auto px-4 grid grid-cols-1 md:grid-cols-2 gap-8">
           <div>
@@ -305,7 +294,7 @@ function PublicLandingPage({ isLoggedIn }) {
   );
 }
 
-// ---------- 2. LOGIN SCREEN (URL: /login) ----------
+// ---------- 2. LOGIN SCREEN ----------
 function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -357,7 +346,7 @@ function LoginScreen() {
   );
 }
 
-// ---------- UI COMPONENTS HELPER ----------
+// ---------- UI HELPER COMPONENTS ----------
 function Eyebrow({ children }) {
   return <div style={{ color: COLOR.inkSoft, letterSpacing: "0.08em" }} className="text-[11px] font-mono uppercase mb-1">{children}</div>;
 }
@@ -507,7 +496,7 @@ function ExpiryRibbon({ productBatches }) {
   );
 }
 
-// ---------- 3. INTERNAL PHARMA ERP SYSTEM (URL: /app) ----------
+// ---------- 3. INTERNAL PHARMA ERP SYSTEM (DENGAN IDLE TIMEOUT) ----------
 function PharmaERP({ userEmail, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("dashboard");
@@ -530,6 +519,32 @@ function PharmaERP({ userEmail, onLogout }) {
   const [lastSync, setLastSync] = useState(Date.now());
   const [syncState, setSyncState] = useState("ok");
   const navigate = useNavigate();
+
+  // TIMER REF UNTUK IDLE TIMEOUT
+  const idleTimerRef = useRef(null);
+
+  // LOGIKA IDLE TIMEOUT (30 MENIT TIDAK AKTIF = AUTO LOGOUT)
+  useEffect(() => {
+    const resetIdleTimer = () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = setTimeout(() => {
+        onLogout();
+        alert("Sesi Anda telah berakhir secara otomatis karena tidak ada aktivitas selama 30 menit demi keamanan.");
+      }, IDLE_TIMEOUT_MS);
+    };
+
+    // Events pemicu pergerakan user
+    const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    events.forEach((evt) => window.addEventListener(evt, resetIdleTimer));
+
+    // Jalankan timer pertama kali
+    resetIdleTimer();
+
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      events.forEach((evt) => window.removeEventListener(evt, resetIdleTimer));
+    };
+  }, [onLogout]);
 
   async function refreshAll() {
     setSyncState("syncing");
@@ -840,7 +855,7 @@ function PharmaERP({ userEmail, onLogout }) {
   );
 }
 
-// ---------- Sub-komponen Modul ERP tetap utuh ----------
+// ---------- Sub-komponen Dashboard, Products, Stock, Purchases, Sales, Finance, Reports ----------
 function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, suppliers, customers, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth }) {
   const recentPOs = [...pos].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
   const recentSOs = [...sos].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
@@ -2543,7 +2558,6 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         </Modal>
       )}
 
-      {/* MODAL TEMPLATE INVOICE DENGAN STRUKTUR WEIGHT RAPI */}
       {printInv && (
         <Modal title={`Faktur Penjualan — ${printInv.noFaktur}`} onClose={() => setPrintInv(null)} wide>
           <div className="flex justify-end gap-2 mb-4 no-print">
@@ -2570,7 +2584,6 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
             id="printable-invoice" 
             className="p-6 bg-white border rounded-xl text-xs text-gray-800" 
           >
-            {/* KOP SURAT */}
             <div className="flex items-start justify-between border-b-2 pb-4 mb-4" style={{ borderColor: COLOR.primary }}>
               <div className="flex items-start gap-3">
                 {COMPANY_PROFILE.logoUrl && (
@@ -2589,7 +2602,6 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
               </div>
             </div>
 
-            {/* INFORMASI TRANSAKSI */}
             {(() => {
               const so = sos.find((s) => s.id === printInv.soId);
               const cust = customers.find((c) => c.id === so?.customerId);
@@ -2616,7 +2628,6 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                     </div>
                   </div>
 
-                  {/* TABEL ITEM */}
                   <table className="w-full text-xs border-collapse mb-6">
                     <thead>
                       <tr className="border-b-2" style={{ background: COLOR.primarySoft, borderColor: COLOR.primary }}>
@@ -2643,7 +2654,6 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                     </tbody>
                   </table>
 
-                  {/* PERHITUNGAN TOTAL */}
                   <div className="flex justify-between items-start mb-8">
                     <div className="w-1/2 p-3 rounded-lg border bg-gray-50 text-[11px]">
                       <div className="text-gray-700 mb-1 font-bold">Catatan Pembayaran:</div>
@@ -2684,7 +2694,6 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                     </div>
                   </div>
 
-                  {/* TANDA TANGAN */}
                   <div className="grid grid-cols-2 gap-8 text-center text-xs mt-12 pt-4">
                     <div>
                       <p className="text-gray-500 mb-12">Tanda Tangan Penerima / Pelanggan,</p>
@@ -2858,7 +2867,6 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
   );
 }
 
-// ---------- Finance ----------
 function FinanceView(props) {
   const {
     pos, sos, suppliers, customers, batches, invoices, pInvoices, pReturns, returns, paymentsOut, paymentsIn, expenses,
@@ -3240,7 +3248,6 @@ function FinanceView(props) {
   );
 }
 
-// ---------- Reports ----------
 function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
   const [subTab, setSubTab] = useState("purchases");
   const [start, setStart] = useState(() => {
