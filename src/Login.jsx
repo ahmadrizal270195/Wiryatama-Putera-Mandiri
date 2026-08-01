@@ -54,7 +54,7 @@ export default function Login() {
         }}
       >
         <div style={{ fontWeight: 600, fontSize: "18px", color: "#15302D", marginBottom: "4px" }}>
-          Mini ERP — Farmasi & Alkes
+          Mini ERP — PT. Wiryatama Putera Mandiri
         </div>
         <div style={{ fontSize: "12px", color: "#5C7873", marginBottom: "20px" }}>Masuk sebagai admin</div>
 
