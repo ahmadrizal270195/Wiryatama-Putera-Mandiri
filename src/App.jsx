@@ -1240,7 +1240,8 @@ function StockView({ products, batches, saveBatches, suppliers, stockByProduct, 
                 <div className="mt-3 flex flex-wrap gap-2">
                   {sortedBatches.map((b) => {
                     const u = urgencyOf(b.expiryDate);
-                    const isOpname = b.sourceType === "opname_awal" || !b.poId;
+                    const isOpname = b.sourceType === "opname_awal";
+                    const isPembelian = b.sourceType === "pembelian" || b.poId || b.supplierId;
                     return (
                       <span key={b.id} className="text-[11px] font-mono px-2 py-1 rounded-md flex items-center gap-1.5" style={{ background: COLOR.bg, color: COLOR.inkSoft, border: `1px solid ${COLOR.border}` }}>
                         <span className="font-bold" style={{ color: COLOR.ink }}>{b.batchNo}</span>
@@ -1249,7 +1250,8 @@ function StockView({ products, batches, saveBatches, suppliers, stockByProduct, 
                         <span>· <span style={{ color: u.color }}>{u.label}</span></span>
                         
                         <Badge tone={isOpname ? "warn" : "good"}>
-                          {isOpname ? "Stok Opname Awal" : `Pembelian (${findName(suppliers, b.supplierId)})`}
+                          {isOpname ? "Stok Opname Awal" : `Pembelian (${b.supplierId ? findName(suppliers, b.supplierId) : "Vendor"})`
+                          }
                         </Badge>
                       </span>
                     );
