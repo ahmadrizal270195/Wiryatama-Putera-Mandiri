@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, Truck, Users, ShoppingCart, ClipboardList,
   AlertTriangle, Plus, X, Trash2, Search, Boxes, ArrowUpRight, ArrowDownRight,
   Loader2, Calendar, Printer, Wallet, Receipt, CreditCard, PiggyBank, BarChart3,
-  FileText, LogOut, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare, ShieldAlert, Download, Upload, RefreshCw, History, FileSpreadsheet
+  FileText, LogOut, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare, ShieldAlert, Download
 } from "lucide-react";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./firebase";
@@ -84,7 +84,6 @@ const KEYS = {
   deliveryNotes: "erp-delivery-notes",
   invoices: "erp-invoices",
   returns: "erp-returns",
-  stockAudits: "erp-stock-audits", // Key baru untuk log riwayat Stok Opname / Perubahan Manual
 };
 
 const EXPENSE_CATEGORIES = ["Sewa Gudang", "Transportasi & Logistik", "Gaji Karyawan", "Utilitas", "Perizinan & Legalitas", "Lainnya"];
@@ -548,7 +547,6 @@ function PharmaERP({ userEmail, onLogout }) {
   const [deliveryNotes, setDeliveryNotes] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [returns, setReturns] = useState([]);
-  const [stockAudits, setStockAudits] = useState([]); // State untuk audit trail stok opname
   const [toast, setToast] = useState(null);
   const [lastSync, setLastSync] = useState(Date.now());
   const [syncState, setSyncState] = useState("ok");
@@ -579,18 +577,17 @@ function PharmaERP({ userEmail, onLogout }) {
   async function refreshAll() {
     setSyncState("syncing");
     try {
-      const [p, s, c, b, po, pr, pi, pret, so, pout, pin, exp, dn, inv, ret, sa] = await Promise.all([
+      const [p, s, c, b, po, pr, pi, pret, so, pout, pin, exp, dn, inv, ret] = await Promise.all([
         loadKey(KEYS.products), loadKey(KEYS.suppliers), loadKey(KEYS.customers),
         loadKey(KEYS.batches), loadKey(KEYS.pos), loadKey(KEYS.pReceipts), loadKey(KEYS.pInvoices), loadKey(KEYS.pReturns), loadKey(KEYS.sos),
         loadKey(KEYS.paymentsOut), loadKey(KEYS.paymentsIn), loadKey(KEYS.expenses),
-        loadKey(KEYS.deliveryNotes), loadKey(KEYS.invoices), loadKey(KEYS.returns), loadKey(KEYS.stockAudits)
+        loadKey(KEYS.deliveryNotes), loadKey(KEYS.invoices), loadKey(KEYS.returns),
       ]);
       const swap = (setter) => (next) => setter((prev) => (JSON.stringify(prev) !== JSON.stringify(next) ? next : prev));
       swap(setProducts)(p || []); swap(setSuppliers)(s || []); swap(setCustomers)(c || []); swap(setBatches)(b || []);
       swap(setPOs)(po || []); swap(setPReceipts)(pr || []); swap(setPInvoices)(pi || []); swap(setPReturns)(pret || []); swap(setSOs)(so || []); 
       swap(setPaymentsOut)(pout || []); swap(setPaymentsIn)(pin || []); swap(setExpenses)(exp || []);
       swap(setDeliveryNotes)(dn || []); swap(setInvoices)(inv || []); swap(setReturns)(ret || []);
-      swap(setStockAudits)(sa || []);
       setLastSync(Date.now());
       setSyncState("ok");
     } catch (e) {
@@ -632,7 +629,6 @@ function PharmaERP({ userEmail, onLogout }) {
     deliveryNotes: async (list) => { setDeliveryNotes(list); await saveKey(KEYS.deliveryNotes, list); },
     invoices: async (list) => { setInvoices(list); await saveKey(KEYS.invoices, list); },
     returns: async (list) => { setReturns(list); await saveKey(KEYS.returns, list); },
-    stockAudits: async (list) => { setStockAudits(list); await saveKey(KEYS.stockAudits, list); },
   };
 
   const stockByProduct = useMemo(() => {
@@ -677,6 +673,7 @@ function PharmaERP({ userEmail, onLogout }) {
   function invoiceReturnedAmount(invId) { return (returns || []).filter((r) => r.invoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
   function batchCost(batchId) { const b = (batches || []).find((x) => x.id === batchId); return b ? b.costPrice : 0; }
   
+  // PERBAIKAN FORMULA HPP (COGS): Menghitung modal barang dari alokasi batch Faktur Penjualan
   function invoiceCOGS(inv) {
     if (inv.isDirect) {
       return (inv.items || []).reduce((s, it) => s + (it.allocations || []).reduce((s2, a) => s2 + a.qty * batchCost(a.batchId), 0), 0);
@@ -697,10 +694,11 @@ function PharmaERP({ userEmail, onLogout }) {
     return out + exp;
   }, [paymentsOut, expenses]);
   
+  // PERBAIKAN LABA KOTOR (MARGIN): Penjualan Bersih (DPP) dikurangi Modal HPP & Retur
   const grossProfitMonth = useMemo(() => {
     return (invoices || []).filter((inv) => isThisMonth(inv.date)).reduce((s, inv) => {
-      const dppSales = invoiceRawTotal(inv); 
-      const cogs = invoiceCOGS(inv);        
+      const dppSales = invoiceRawTotal(inv); // Penjualan Bersih sebelum PPN
+      const cogs = invoiceCOGS(inv);        // HPP Modal Beli Barang
       const retur = invoiceReturnedAmount(inv.id);
       return s + (dppSales - cogs - retur);
     }, 0);
@@ -851,24 +849,7 @@ function PharmaERP({ userEmail, onLogout }) {
             <ProductsView products={products} save={persist.products} stockByProduct={stockByProduct} notify={notify} />
           )}
           {tab === "stock" && (
-            <StockView 
-              products={products} 
-              batches={batches} 
-              stockByProduct={stockByProduct} 
-              saveBatches={persist.batches} 
-              saveProducts={persist.products}
-              saveStockAudits={persist.stockAudits}
-              stockAudits={stockAudits}
-              pReceipts={pReceipts}
-              deliveryNotes={deliveryNotes}
-              pInvoices={pInvoices}
-              invoices={invoices}
-              returns={returns}
-              pReturns={pReturns}
-              findName={findName}
-              notify={notify} 
-              userEmail={userEmail}
-            />
+            <StockView products={products} batches={batches} stockByProduct={stockByProduct} />
           )}
           {tab === "suppliers" && (
             <SuppliersView suppliers={suppliers} save={persist.suppliers} notify={notify} />
@@ -940,6 +921,7 @@ function PharmaERP({ userEmail, onLogout }) {
 function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, suppliers, customers, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth, isFinanceOrAdmin }) {
   const recentPOs = [...(pos || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
   const recentSOs = [...(sos || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+  const netCashMonth = cashInMonth - cashOutMonth;
   return (
     <div>
       <Eyebrow>Ringkasan bisnis</Eyebrow>
@@ -1133,499 +1115,43 @@ function ProductsView({ products, save, stockByProduct, notify }) {
   );
 }
 
-// ---------- STOK & BATCH VIEW WITH AUDIT TRAIL & EXCEL IMPORT ----------
-function StockView({ 
-  products, batches, stockByProduct, saveBatches, saveProducts, saveStockAudits, 
-  stockAudits, pReceipts, deliveryNotes, pInvoices, invoices, returns, pReturns, findName, notify, userEmail 
-}) {
-  const [subTab, setSubTab] = useState("overview"); // "overview" | "history"
-  const [importModal, setImportModal] = useState(false);
-  const [opnameModal, setOpnameModal] = useState(false);
-  const [csvText, setCsvText] = useState("");
-  
-  // State Stok Opname
-  const [opnameForm, setOpnameForm] = useState({
-    productId: "",
-    batchId: "",
-    batchNo: "",
-    expiryDate: todayISO(),
-    costPrice: "",
-    actualQty: "",
-    note: "Stok Opname Rutin"
-  });
-
-  // Kumpulan Seluruh Riwayat Pergerakan Stok (Audit Trail)
-  const stockMovements = useMemo(() => {
-    const list = [];
-
-    // 1. Dari Penerimaan Pembelian (BPB)
-    (pReceipts || []).forEach((pr) => {
-      (pr.items || []).forEach((it) => {
-        list.push({
-          id: `bpb-${pr.id}-${it.productId}-${it.batchNo}`,
-          date: pr.date,
-          productId: it.productId,
-          batchNo: it.batchNo,
-          type: "Penerimaan BPB",
-          ref: pr.noBPB,
-          change: `+${it.qty}`,
-          qtyNum: Number(it.qty),
-          user: "Sistem Pembelian",
-          note: "Stok masuk dari supplier"
-        });
-      });
-    });
-
-    // 2. Dari Faktur Pembelian Langsung
-    (pInvoices || []).filter(pi => pi.isDirect).forEach((pi) => {
-      (pi.items || []).forEach((it) => {
-        list.push({
-          id: `pinv-${pi.id}-${it.productId}-${it.batchNo}`,
-          date: pi.date,
-          productId: it.productId,
-          batchNo: it.batchNo || "-",
-          type: "Faktur Pembelian Langsung",
-          ref: pi.noFaktur,
-          change: `+${it.qty}`,
-          qtyNum: Number(it.qty),
-          user: "Sistem Pembelian",
-          note: "Pembelian Langsung tanpa PO"
-        });
-      });
-    });
-
-    // 3. Dari Penjualan (Surat Jalan)
-    (deliveryNotes || []).forEach((dn) => {
-      (dn.items || []).forEach((it) => {
-        (it.allocations || []).forEach((alloc) => {
-          list.push({
-            id: `dn-${dn.id}-${it.productId}-${alloc.batchNo}`,
-            date: dn.date,
-            productId: it.productId,
-            batchNo: alloc.batchNo,
-            type: "Pengiriman Penjualan (SJ)",
-            ref: dn.noSJ,
-            change: `-${alloc.qty}`,
-            qtyNum: -Number(alloc.qty),
-            user: "Sistem Penjualan",
-            note: `Dikirim ke pelanggan (${dn.status})`
-          });
-        });
-      });
-    });
-
-    // 4. Dari Faktur Penjualan Langsung
-    (invoices || []).filter(inv => inv.isDirect).forEach((inv) => {
-      (inv.items || []).forEach((it) => {
-        (it.allocations || []).forEach((alloc) => {
-          list.push({
-            id: `inv-${inv.id}-${it.productId}-${alloc.batchNo}`,
-            date: inv.date,
-            productId: it.productId,
-            batchNo: alloc.batchNo,
-            type: "Faktur Penjualan Langsung",
-            ref: inv.noFaktur,
-            change: `-${alloc.qty}`,
-            qtyNum: -Number(alloc.qty),
-            user: "Sistem Penjualan",
-            note: "Penjualan Langsung tanpa SO"
-          });
-        });
-      });
-    });
-
-    // 5. Dari Stok Opname / Adjustment Manual
-    (stockAudits || []).forEach((sa) => {
-      list.push({
-        id: sa.id,
-        date: sa.date,
-        productId: sa.productId,
-        batchNo: sa.batchNo,
-        type: "Stok Opname / Adjustment",
-        ref: "OPNAME",
-        change: sa.diff >= 0 ? `+${sa.diff}` : `${sa.diff}`,
-        qtyNum: sa.diff,
-        user: sa.user || "Admin",
-        note: sa.note || "Penyesuaian Fisik Gudang"
-      });
-    });
-
-    return list.sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [pReceipts, pInvoices, deliveryNotes, invoices, stockAudits]);
-
-  // Handler Download Template CSV Import
-  function downloadImportTemplate() {
-    const headers = ["Nama_Produk", "Kategori", "Satuan", "Harga_Jual", "Min_Stok", "No_Batch", "Tanggal_Expiry_YYYY_MM_DD", "Harga_Beli", "Qty_Stok_Awal"];
-    const sampleRow = ["Paracetamol 500mg Box", "Obat Generik", "box", "50000", "10", "BATCH-2026-001", todayISO(), "35000", "50"];
-    
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), sampleRow.join(",")].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Template_Import_Stok_PT_WPM.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }
-
-  // Handler Proses Import CSV
-  async function processCSVImport() {
-    if (!csvText.trim()) return notify("Pilih file CSV atau tempelkan data teks CSV", "danger");
-
-    try {
-      const lines = csvText.trim().split("\n");
-      if (lines.length < 2) return notify("Format CSV tidak valid. Harus memiliki header dan minimal 1 baris data.", "danger");
-
-      const newProducts = [...(products || [])];
-      const newBatches = [...(batches || [])];
-      const newAudits = [...(stockAudits || [])];
-
-      let addedProdCount = 0;
-      let addedBatchCount = 0;
-
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        
-        // Split dengan koma (memperhitungkan string dalam quote)
-        const cols = line.split(",").map(c => c.replace(/^"(.*)"$/, '$1').trim());
-        if (cols.length < 9) continue;
-
-        const [prodName, category, unit, sellPriceStr, minStockStr, batchNo, expiryDate, costPriceStr, qtyStr] = cols;
-
-        if (!prodName || !batchNo || !expiryDate) continue;
-
-        // 1. Cek atau Buat Produk
-        let prod = newProducts.find(p => p.name.toLowerCase() === prodName.toLowerCase());
-        if (!prod) {
-          prod = {
-            id: uid(),
-            name: prodName,
-            category: CATEGORIES.includes(category) ? category : CATEGORIES[0],
-            unit: unit || "box",
-            sellPrice: Number(sellPriceStr) || 0,
-            minStock: Number(minStockStr) || 0
-          };
-          newProducts.push(prod);
-          addedProdCount++;
-        }
-
-        // 2. Tambah Batch Stok
-        const qty = Number(qtyStr) || 0;
-        const costPrice = Number(costPriceStr) || 0;
-
-        const batchId = uid();
-        newBatches.push({
-          id: batchId,
-          productId: prod.id,
-          batchNo: batchNo,
-          expiryDate: expiryDate,
-          qty: qty,
-          costPrice: costPrice,
-          receivedDate: todayISO(),
-          poId: null
-        });
-        addedBatchCount++;
-
-        // 3. Catat Log Audit Import
-        newAudits.push({
-          id: uid(),
-          date: todayISO(),
-          productId: prod.id,
-          batchNo: batchNo,
-          oldQty: 0,
-          newQty: qty,
-          diff: qty,
-          user: userEmail || "Staff Import",
-          note: "Import Data Stok Awal Excel/CSV"
-        });
-      }
-
-      await saveProducts(newProducts);
-      await saveBatches(newBatches);
-      await saveStockAudits(newAudits);
-
-      notify(`Import Berhasil: ${addedProdCount} produk baru & ${addedBatchCount} batch stok dimasukkan.`);
-      setImportModal(false);
-      setCsvText("");
-    } catch (e) {
-      console.error(e);
-      notify("Gagal memproses file CSV. Periksa kembali format tanda koma/kolom.", "danger");
-    }
-  }
-
-  // Handler Simpan Stok Opname Penyesuaian
-  async function submitOpname() {
-    if (!opnameForm.productId) return notify("Pilih produk terlebih dahulu", "danger");
-    if (!opnameForm.batchNo) return notify("Isi nomor batch", "danger");
-
-    const actualQtyNum = Number(opnameForm.actualQty);
-    if (isNaN(actualQtyNum) || actualQtyNum < 0) return notify("Isi jumlah stok fisik yang valid", "danger");
-
-    let workingBatches = [...(batches || [])];
-    let existingBatch = workingBatches.find(b => b.productId === opnameForm.productId && b.batchNo.toLowerCase() === opnameForm.batchNo.toLowerCase());
-
-    let oldQty = existingBatch ? existingBatch.qty : 0;
-    let diff = actualQtyNum - oldQty;
-
-    if (existingBatch) {
-      existingBatch.qty = actualQtyNum;
-      existingBatch.expiryDate = opnameForm.expiryDate || existingBatch.expiryDate;
-      if (opnameForm.costPrice) existingBatch.costPrice = Number(opnameForm.costPrice);
-    } else {
-      const newBatchId = uid();
-      existingBatch = {
-        id: newBatchId,
-        productId: opnameForm.productId,
-        batchNo: opnameForm.batchNo,
-        expiryDate: opnameForm.expiryDate,
-        qty: actualQtyNum,
-        costPrice: Number(opnameForm.costPrice) || 0,
-        receivedDate: todayISO()
-      };
-      workingBatches.push(existingBatch);
-    }
-
-    // Rekam Audit Trail Opname
-    const auditRecord = {
-      id: uid(),
-      date: todayISO(),
-      productId: opnameForm.productId,
-      batchNo: opnameForm.batchNo,
-      oldQty,
-      newQty: actualQtyNum,
-      diff,
-      user: userEmail || "Admin Stok",
-      note: opnameForm.note || "Stok Opname / Penyesuaian Manual"
-    };
-
-    await saveBatches(workingBatches);
-    await saveStockAudits([...(stockAudits || []), auditRecord]);
-
-    notify(`Stok Opname ${opnameForm.batchNo} berhasil disimpan. Selisih: ${diff >= 0 ? '+' : ''}${diff}`);
-    setOpnameModal(false);
-  }
-
+function StockView({ products, batches, stockByProduct }) {
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-        <div>
-          <Eyebrow>Traceability & Inventaris</Eyebrow>
-          <h2 className="text-xl font-semibold" style={{ color: COLOR.ink }}>Stok, Batch & Audit Trail</h2>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button onClick={() => setOpnameModal(true)} variant="secondary" className="!bg-amber-50 !text-amber-800 !border-amber-200 hover:!bg-amber-100">
-            <RefreshCw size={15} /> Stok Opname / Adjust
-          </Button>
-          <Button onClick={() => setImportModal(true)} variant="secondary" className="!bg-teal-50 !text-teal-800 !border-teal-200 hover:!bg-teal-100">
-            <Upload size={15} /> Import Batch Excel
-          </Button>
-        </div>
-      </div>
+      <Eyebrow>Traceability</Eyebrow>
+      <h2 className="text-xl font-semibold mb-1" style={{ color: COLOR.ink }}>Stok & Batch</h2>
+      <p className="text-sm mb-5" style={{ color: COLOR.inkSoft }}>Ribbon menunjukkan sebaran batch per produk berdasarkan urgensi expiry — hijau aman, kuning &lt;90 hari, merah &lt;30 hari / kedaluwarsa. Alokasi penjualan otomatis mengikuti FEFO (First-Expire-First-Out).</p>
 
-      {/* Sub Sub-Nav */}
-      <div className="flex gap-1 mb-4 p-1 rounded-lg w-fit" style={{ background: COLOR.primarySoft }}>
-        <button
-          onClick={() => setSubTab("overview")}
-          className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
-          style={{ background: subTab === "overview" ? COLOR.primary : "transparent", color: subTab === "overview" ? "#fff" : COLOR.primary }}
-        >
-          Ribbon & Batch Overview
-        </button>
-        <button
-          onClick={() => setSubTab("history")}
-          className="px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors"
-          style={{ background: subTab === "history" ? COLOR.primary : "transparent", color: subTab === "history" ? "#fff" : COLOR.primary }}
-        >
-          <History size={14} /> Detail Riwayat / Audit Pergerakan Stok ({stockMovements.length})
-        </button>
-      </div>
-
-      {subTab === "overview" && (
-        <>
-          <p className="text-xs mb-4" style={{ color: COLOR.inkSoft }}>
-            Ribbon menunjukkan sebaran batch per produk berdasarkan urgensi expiry — hijau aman, kuning &lt;90 hari, merah &lt;30 hari / kedaluwarsa. Alokasi penjualan otomatis mengikuti FEFO (First-Expire-First-Out).
-          </p>
-
-          <div className="flex flex-col gap-3">
-            {(products || []).map((p) => {
-              const s = stockByProduct[p.id] || { qty: 0, value: 0, batches: [] };
-              const sortedBatches = [...(s.batches || [])].sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
-              return (
-                <Card key={p.id}>
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <div className="font-medium text-sm" style={{ color: COLOR.ink }}>{p.name}</div>
-                      <div className="text-xs font-mono" style={{ color: COLOR.inkSoft }}>{s.qty} {p.unit} · nilai {fmtIDR(s.value)}</div>
-                    </div>
-                  </div>
-                  <ExpiryRibbon productBatches={s.batches} />
-                  {sortedBatches.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {sortedBatches.map((b) => {
-                        const u = urgencyOf(b.expiryDate);
-                        return (
-                          <span key={b.id} className="text-[11px] font-mono px-2 py-1 rounded-md" style={{ background: COLOR.bg, color: COLOR.inkSoft, border: `1px solid ${COLOR.border}` }}>
-                            {b.batchNo} · {b.qty}{p.unit} · exp {fmtDate(b.expiryDate)} · <span style={{ color: u.color }}>{u.label}</span>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-            {(products || []).length === 0 && <div className="text-sm py-8 text-center" style={{ color: COLOR.inkSoft }}>Tambahkan produk terlebih dahulu.</div>}
-          </div>
-        </>
-      )}
-
-      {subTab === "history" && (
-        <Card className="!p-0 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: COLOR.primarySoft }}>
-                {["Tanggal", "Produk / Item", "No. Batch", "Jenis Pergerakan", "Ref Transaksi", "Perubahan Qty", "Petugas/Sumber", "Catatan"].map((h) => (
-                  <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {stockMovements.map((m) => {
-                const prod = (products || []).find(p => p.id === m.productId);
-                const isPlus = m.qtyNum > 0;
-                return (
-                  <tr key={m.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(m.date)}</td>
-                    <td className="px-4 py-2.5 font-medium" style={{ color: COLOR.ink }}>{prod ? prod.name : "-"}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{m.batchNo}</td>
-                    <td className="px-4 py-2.5"><Badge tone={m.type.includes("Opname") ? "warn" : isPlus ? "good" : "neutral"}>{m.type}</Badge></td>
-                    <td className="px-4 py-2.5 font-mono text-xs font-semibold" style={{ color: COLOR.primary }}>{m.ref}</td>
-                    <td className="px-4 py-2.5 font-mono font-bold" style={{ color: isPlus ? COLOR.good : COLOR.danger }}>
-                      {m.change} {prod?.unit || ""}
-                    </td>
-                    <td className="px-4 py-2.5 text-xs font-mono" style={{ color: COLOR.inkSoft }}>{m.user}</td>
-                    <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{m.note}</td>
-                  </tr>
-                );
-              })}
-              {stockMovements.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada riwayat pergerakan stok.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </Card>
-      )}
-
-      {/* MODAL IMPORT EXCEL / CSV */}
-      {importModal && (
-        <Modal title="Import Batch Stok dari File Excel / CSV" onClose={() => setImportModal(false)} wide>
-          <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl mb-4 text-xs text-teal-900">
-            <div className="font-bold mb-1 flex items-center gap-1"><FileSpreadsheet size={15} /> Petunjuk Import Data Stok Batch:</div>
-            <p className="leading-relaxed">
-              Anda dapat mengunggah file CSV atau menempelkan teks format CSV untuk menambahkan stok produk dan batch sekaligus. Jika nama produk belum ada, sistem akan otomatis mendaftarkannya sebagai SKU baru.
-            </p>
-            <div className="mt-3">
-              <Button onClick={downloadImportTemplate} variant="secondary" className="!bg-white !text-teal-800 !py-1 text-xs">
-                <Download size={13} /> Download Format Template CSV
-              </Button>
-            </div>
-          </div>
-
-          <Field label="Unggah File CSV">
-            <input 
-              type="file" 
-              accept=".csv, .txt" 
-              onChange={(e) => {
-                const file = e.target.files[0];
-                if (file) {
-                  const reader = new FileReader();
-                  reader.onload = (evt) => setCsvText(evt.target.result);
-                  reader.readAsText(file);
-                }
-              }}
-              className="block w-full text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"
-            />
-          </Field>
-
-          <Field label="Atau Tempelkan / Edit Teks Format CSV Di Bawah Ini">
-            <textarea
-              rows={6}
-              value={csvText}
-              onChange={(e) => setCsvText(e.target.value)}
-              placeholder={`Nama_Produk,Kategori,Satuan,Harga_Jual,Min_Stok,No_Batch,Tanggal_Expiry_YYYY_MM_DD,Harga_Beli,Qty_Stok_Awal\nParacetamol 500mg Box,Obat Generik,box,50000,10,BATCH-2026-001,2028-12-31,35000,50`}
-              className="w-full p-3 font-mono text-xs rounded-lg border outline-none bg-white"
-              style={{ borderColor: COLOR.border, color: COLOR.ink }}
-            />
-          </Field>
-
-          <div className="flex justify-end gap-2 mt-4 pt-3 border-t" style={{ borderColor: COLOR.border }}>
-            <Button onClick={() => setImportModal(false)} variant="secondary">Batal</Button>
-            <Button onClick={processCSVImport}>Proses & Gabungkan Ke Stok ERP</Button>
-          </div>
-        </Modal>
-      )}
-
-      {/* MODAL STOK OPNAME / ADJUSTMENT */}
-      {opnameModal && (
-        <Modal title="Stok Opname / Adjustment Penyesuaian Fisik" onClose={() => setOpnameModal(false)}>
-          <Field label="Pilih Produk">
-            <Select 
-              value={opnameForm.productId} 
-              onChange={(e) => {
-                const pId = e.target.value;
-                setOpnameForm({ ...opnameForm, productId: pId, batchNo: "", actualQty: "" });
-              }}
-            >
-              <option value="" disabled>— Pilih Produk —</option>
-              {(products || []).map(p => <option key={p.id} value={p.id}>{p.name} ({p.category})</option>)}
-            </Select>
-          </Field>
-
-          {opnameForm.productId && (
-            <>
-              <Field label="Pilih Batch Terdaftar atau Ketik Batch Baru">
-                <TextInput 
-                  placeholder="Nomor Batch (mis: BATCH-001)" 
-                  value={opnameForm.batchNo} 
-                  onChange={(e) => {
-                    const bNo = e.target.value;
-                    const bExist = (batches || []).find(b => b.productId === opnameForm.productId && b.batchNo.toLowerCase() === bNo.toLowerCase());
-                    setOpnameForm({
-                      ...opnameForm,
-                      batchNo: bNo,
-                      actualQty: bExist ? bExist.qty : opnameForm.actualQty,
-                      expiryDate: bExist ? bExist.expiryDate : opnameForm.expiryDate,
-                      costPrice: bExist ? bExist.costPrice : opnameForm.costPrice
-                    });
-                  }}
-                />
-              </Field>
-
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Tgl Expiry (Exp Date)">
-                  <TextInput type="date" value={opnameForm.expiryDate} onChange={(e) => setOpnameForm({ ...opnameForm, expiryDate: e.target.value })} />
-                </Field>
-                <Field label="Harga Modal Beli">
-                  <TextInput type="number" placeholder="Modal per unit" value={opnameForm.costPrice} onChange={(e) => setOpnameForm({ ...opnameForm, costPrice: e.target.value })} />
-                </Field>
+      <div className="flex flex-col gap-3">
+        {(products || []).map((p) => {
+          const s = stockByProduct[p.id] || { qty: 0, value: 0, batches: [] };
+          const sortedBatches = [...(s.batches || [])].sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+          return (
+            <Card key={p.id}>
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <div className="font-medium text-sm" style={{ color: COLOR.ink }}>{p.name}</div>
+                  <div className="text-xs font-mono" style={{ color: COLOR.inkSoft }}>{s.qty} {p.unit} · nilai {fmtIDR(s.value)}</div>
+                </div>
               </div>
-
-              <Field label="Jumlah Stok Fisik Sebenarnya (Hasil Opname)">
-                <TextInput type="number" placeholder="Hasil hitung riil gudang" value={opnameForm.actualQty} onChange={(e) => setOpnameForm({ ...opnameForm, actualQty: e.target.value })} />
-              </Field>
-
-              <Field label="Alasan / Catatan Penyesuaian">
-                <TextInput placeholder="Misal: Barang rusak, selisih hitung, dll." value={opnameForm.note} onChange={(e) => setOpnameForm({ ...opnameForm, note: e.target.value })} />
-              </Field>
-
-              <Button onClick={submitOpname} className="w-full justify-center mt-3">Simpan Stok Opname & Catat Audit</Button>
-            </>
-          )}
-        </Modal>
-      )}
+              <ExpiryRibbon productBatches={s.batches} />
+              {sortedBatches.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {sortedBatches.map((b) => {
+                    const u = urgencyOf(b.expiryDate);
+                    return (
+                      <span key={b.id} className="text-[11px] font-mono px-2 py-1 rounded-md" style={{ background: COLOR.bg, color: COLOR.inkSoft, border: `1px solid ${COLOR.border}` }}>
+                        {b.batchNo} · {b.qty}{p.unit} · exp {fmtDate(b.expiryDate)} · <span style={{ color: u.color }}>{u.label}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+          );
+        })}
+        {(products || []).length === 0 && <div className="text-sm py-8 text-center" style={{ color: COLOR.inkSoft }}>Tambahkan produk terlebih dahulu.</div>}
+      </div>
     </div>
   );
 }
@@ -3913,6 +3439,7 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
   const [invoiceId, setInvoiceId] = useState("");
   const [returnQty, setReturnQty] = useState({});
 
+  // Hanya faktur dengan nilai > 0 dan sisa retur > 0 yang masuk daftar
   const returnableInvoices = (invoices || []).filter((inv) => invoiceTotal(inv) > 0 && invoiceReturnedAmount(inv.id) < invoiceTotal(inv));
   const selectedInvoice = (invoices || []).find((x) => x.id === invoiceId);
 
@@ -4368,4 +3895,313 @@ function FinanceView(props) {
                   const po = (pos || []).find((x) => x.id === p.poId);
                   const ref = inv ? inv.noFaktur : po ? po.poNumber : "-";
                   return (
-                    <tr key={p.id} styleI seem to be encountering an error. Can I try something else for you?
+                    <tr key={p.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(p.date)}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.ink }}>{ref}</td>
+                      <td className="px-4 py-2.5 font-mono font-medium" style={{ color: COLOR.danger }}>{fmtIDR(p.amount)}</td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.method}</td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.note || "-"}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <button onClick={() => openEditPay("edit-out", p)} className="text-xs mr-3" style={{ color: COLOR.accent }}>Edit</button>
+                        <button onClick={() => deletePaymentOut(p.id)} className="text-xs" style={{ color: COLOR.danger }}>Hapus</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {(paymentsOut || []).length === 0 && <tr><td colSpan={6} className="text-center py-6 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada pembayaran keluar.</td></tr>}
+              </tbody>
+            </table>
+          </Card>
+        </div>
+      )}
+
+      {subTab === "expenses" && (
+        <div>
+          <div className="flex justify-end mb-3">
+            <Button onClick={() => setExpModal(true)}><Plus size={15} /> Catat Biaya</Button>
+          </div>
+          <Card className="!p-0 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: COLOR.primarySoft }}>
+                  {["Tanggal", "Kategori", "Jumlah", "Catatan", ""].map((h) => (
+                    <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...(expenses || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((e) => (
+                  <tr key={e.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(e.date)}</td>
+                    <td className="px-4 py-2.5"><Badge tone="neutral">{e.category}</Badge></td>
+                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(e.amount)}</td>
+                    <td className="px-4 py-2.5" style={{ color: COLOR.inkSoft }}>{e.note}</td>
+                    <td className="px-4 py-2.5 text-right"><button onClick={() => removeExpense(e.id)} className="text-xs" style={{ color: COLOR.danger }}>Hapus</button></td>
+                  </tr>
+                ))}
+                {(expenses || []).length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada biaya operasional tercatat.</td></tr>}
+              </tbody>
+            </table>
+          </Card>
+        </div>
+      )}
+
+      {payModal && payModal.kind !== "dp-pick" && (
+        <Modal
+          title={
+            payModal.kind === "invoice" ? `Catat Pembayaran — ${payModal.doc.noFaktur}`
+            : payModal.kind === "dp" ? `Catat DP — ${payModal.doc.soNumber}`
+            : payModal.kind === "pInvoice" ? `Bayar Hutang Supplier — ${payModal.doc.noFaktur}`
+            : payModal.kind === "edit-in" ? `Edit Pembayaran Masuk`
+            : payModal.kind === "edit-out" ? `Edit Pembayaran Keluar`
+            : `Catat Pembayaran Keluar`
+          }
+          onClose={() => setPayModal(null)}
+        >
+          <Field label="Jumlah dibayar"><TextInput type="number" value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} /></Field>
+          <Field label="Tanggal"><TextInput type="date" value={payForm.date} onChange={(e) => setPayForm({ ...payForm, date: e.target.value })} /></Field>
+          <Field label="Metode">
+            <Select value={payForm.method} onChange={(e) => setPayForm({ ...payForm, method: e.target.value })}>
+              {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+            </Select>
+          </Field>
+          <Field label="Catatan (opsional)"><TextInput value={payForm.note} onChange={(e) => setPayForm({ ...payForm, note: e.target.value })} /></Field>
+          <Button onClick={submitPayment} className="w-full justify-center mt-2">Simpan Pembayaran</Button>
+        </Modal>
+      )}
+
+      {expModal && (
+        <Modal title="Catat Biaya Operasional" onClose={() => setExpModal(false)}>
+          <Field label="Kategori">
+            <Select value={expForm.category} onChange={(e) => setExpForm({ ...expForm, category: e.target.value })}>
+              {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </Select>
+          </Field>
+          <Field label="Jumlah"><TextInput type="number" value={expForm.amount} onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })} /></Field>
+          <Field label="Tanggal"><TextInput type="date" value={expForm.date} onChange={(e) => setDate(e.target.value)} /></Field>
+          <Field label="Catatan (opsional)"><TextInput value={expForm.note} onChange={(e) => setExpForm({ ...expForm, note: e.target.value })} /></Field>
+          <Button onClick={submitExpense} className="w-full justify-center mt-2">Simpan Biaya</Button>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ---------- LAPORAN BERBASIS FAKTUR ----------
+function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvoices, findName, pInvoiceTotal, invoiceTotal }) {
+  const [subTab, setSubTab] = useState("purchases");
+  const [start, setStart] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().slice(0, 10);
+  });
+  const [end, setEnd] = useState(todayISO());
+
+  function inRange(dateStr) { return dateStr >= start && dateStr <= end; }
+
+  // 1. FILTER PEMBELIAN (Murni Berdasarkan Faktur Pembelian)
+  const filteredPInvoices = useMemo(() => (pInvoices || []).filter((inv) => inRange(inv.date)), [pInvoices, start, end]);
+
+  const allPurchaseDocs = useMemo(() => {
+    return filteredPInvoices.map(inv => {
+      const po = (pos || []).find(p => p.id === inv.poId);
+      return {
+        id: inv.id,
+        docNumber: inv.noFaktur,
+        partyName: findName(suppliers, inv.supplierId),
+        date: inv.date,
+        type: inv.isDirect ? "Langsung" : `PO (${po?.poNumber || "-"})`,
+        items: inv.items || [],
+        total: pInvoiceTotal(inv)
+      };
+    }).sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [filteredPInvoices, pos, suppliers, pInvoiceTotal]);
+
+  // 2. FILTER PENJUALAN (Murni Berdasarkan Faktur Penjualan)
+  const filteredInvoices = useMemo(() => (invoices || []).filter((inv) => inRange(inv.date)), [invoices, start, end]);
+
+  const allSalesDocs = useMemo(() => {
+    return filteredInvoices.map(inv => {
+      const so = (sos || []).find(s => s.id === inv.soId);
+      const custName = inv.isDirect ? findName(customers, inv.customerId) : (so ? findName(customers, so.customerId) : "-");
+      return {
+        id: inv.id,
+        docNumber: inv.noFaktur,
+        partyName: custName,
+        date: inv.date,
+        type: inv.isDirect ? "Langsung" : `SO (${so?.soNumber || "-"})`,
+        items: inv.items || [],
+        total: invoiceTotal(inv)
+      };
+    }).sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [filteredInvoices, sos, customers, invoiceTotal]);
+
+  // Agregasi Produk
+  function aggregateByProduct(docs) {
+    const map = {};
+    docs.forEach((doc) => {
+      (doc.items || []).forEach((it) => {
+        if (!map[it.productId]) map[it.productId] = { qty: 0, value: 0 };
+        map[it.productId].qty += Number(it.qty) || 0;
+        map[it.productId].value += (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
+      });
+    });
+    return map;
+  }
+
+  const purchaseAgg = useMemo(() => aggregateByProduct(allPurchaseDocs), [allPurchaseDocs]);
+  const salesAgg = useMemo(() => aggregateByProduct(allSalesDocs), [allSalesDocs]);
+
+  const purchaseTotal = allPurchaseDocs.reduce((s, x) => s + x.total, 0);
+  const salesTotal = allSalesDocs.reduce((s, x) => s + x.total, 0);
+
+  const SUBNAV = [
+    { id: "purchases", label: "Pembelian (Faktur)" },
+    { id: "sales", label: "Penjualan (Faktur)" },
+  ];
+
+  return (
+    <div>
+      <Eyebrow>Laporan</Eyebrow>
+      <h2 className="text-xl font-semibold mb-5" style={{ color: COLOR.ink }}>Laporan Pembelian & Penjualan</h2>
+
+      <div className="flex items-end gap-3 mb-4">
+        <Field label="Dari tanggal"><TextInput type="date" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
+        <Field label="Sampai tanggal"><TextInput type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
+      </div>
+
+      <div className="flex gap-1 mb-4 p-1 rounded-lg w-fit" style={{ background: COLOR.primarySoft }}>
+        {SUBNAV.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => setSubTab(s.id)}
+            className="px-3 py-1.5 rounded-md text-sm font-medium"
+            style={{ background: subTab === s.id ? COLOR.primary : "transparent", color: subTab === s.id ? "#fff" : COLOR.primary }}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "purchases" && (
+        <div>
+          <Card className="mb-4">
+            <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total Pembelian Berdasarkan Faktur Vendor ({fmtDate(start)} – {fmtDate(end)})</div>
+            <div className="text-xl font-mono font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(purchaseTotal)}</div>
+          </Card>
+
+          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Rekap Produk Difakturkan</div>
+          <Card className="!p-0 overflow-hidden mb-5">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: COLOR.primarySoft }}>
+                  {["Produk", "Qty Dibeli", "Nilai Beli (Subtotal)"].map((h) => (
+                    <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(purchaseAgg).sort((a, b) => b[1].value - a[1].value).map(([pid, agg]) => {
+                  const p = (products || []).find((x) => x.id === pid);
+                  return (
+                    <tr key={pid} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                      <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{p?.name || "-"}</td>
+                      <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.inkSoft }}>{agg.qty} {p?.unit}</td>
+                      <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(agg.value)}</td>
+                    </tr>
+                  );
+                })}
+                {Object.keys(purchaseAgg).length === 0 && <tr><td colSpan={3} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian di periode ini.</td></tr>}
+              </tbody>
+            </table>
+          </Card>
+
+          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Daftar Faktur Pembelian</div>
+          <Card className="!p-0 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: COLOR.primarySoft }}>
+                  {["No. Faktur Vendor", "Tipe", "Supplier", "Tanggal", "Total Tagihan"].map((h) => (
+                    <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {allPurchaseDocs.map((doc) => (
+                  <tr key={doc.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                    <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
+                    <td className="px-4 py-2.5"><Badge tone={doc.type === "Langsung" ? "warn" : "neutral"}>{doc.type}</Badge></td>
+                    <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{doc.partyName}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
+                    <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
+                  </tr>
+                ))}
+                {allPurchaseDocs.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian di periode ini.</td></tr>}
+              </tbody>
+            </table>
+          </Card>
+        </div>
+      )}
+
+      {subTab === "sales" && (
+        <div>
+          <Card className="mb-4">
+            <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total Penjualan Berdasarkan Faktur ({fmtDate(start)} – {fmtDate(end)})</div>
+            <div className="text-xl font-mono font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(salesTotal)}</div>
+          </Card>
+
+          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Rekap Produk Difakturkan</div>
+          <Card className="!p-0 overflow-hidden mb-5">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: COLOR.primarySoft }}>
+                  {["Produk", "Qty Terjual", "Nilai Penjualan (Subtotal)"].map((h) => (
+                    <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(salesAgg).sort((a, b) => b[1].value - a[1].value).map(([pid, agg]) => {
+                  const p = (products || []).find((x) => x.id === pid);
+                  return (
+                    <tr key={pid} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                      <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{p?.name || "-"}</td>
+                      <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.inkSoft }}>{agg.qty} {p?.unit}</td>
+                      <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(agg.value)}</td>
+                    </tr>
+                  );
+                })}
+                {Object.keys(salesAgg).length === 0 && <tr><td colSpan={3} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Penjualan di periode ini.</td></tr>}
+              </tbody>
+            </table>
+          </Card>
+
+          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Daftar Faktur Penjualan</div>
+          <Card className="!p-0 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: COLOR.primarySoft }}>
+                  {["No. Faktur", "Tipe", "Pelanggan", "Tanggal", "Total Tagihan"].map((h) => (
+                    <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {allSalesDocs.map((doc) => (
+                  <tr key={doc.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                    <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
+                    <td className="px-4 py-2.5"><Badge tone={doc.type === "Langsung" ? "warn" : "neutral"}>{doc.type}</Badge></td>
+                    <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{doc.partyName}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
+                    <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
+                  </tr>
+                ))}
+                {allSalesDocs.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Penjualan di periode ini.</td></tr>}
+              </tbody>
+            </table>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
