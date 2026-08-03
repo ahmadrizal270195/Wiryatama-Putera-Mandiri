@@ -889,7 +889,7 @@ function PharmaERP({ userEmail, onLogout }) {
             )
           )}
           {tab === "reports" && (
-            <ReportsView products={products} suppliers={suppliers} customers={customers} pos={pos} sos={sos} findName={findName} />
+            <ReportsView products={products} suppliers={suppliers} customers={customers} pos={pos} sos={sos} invoices={invoices} pInvoices={pInvoices} findName={findName} />
           )}
         </div>
       </div>
@@ -3973,7 +3973,7 @@ function FinanceView(props) {
   );
 }
 
-function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
+function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvoices, findName }) {
   const [subTab, setSubTab] = useState("purchases");
   const [start, setStart] = useState(() => {
     const d = new Date();
@@ -3983,24 +3983,80 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
   const [end, setEnd] = useState(todayISO());
 
   function inRange(dateStr) { return dateStr >= start && dateStr <= end; }
+
+  // 1. FILTER PEMBELIAN (PO + Faktur Pembelian Langsung)
   const filteredPOs = useMemo(() => (pos || []).filter((po) => inRange(po.date)), [pos, start, end]);
+  const directPInvoices = useMemo(() => (pInvoices || []).filter((inv) => inv.isDirect && inRange(inv.date)), [pInvoices, start, end]);
+
+  const allPurchaseDocs = useMemo(() => {
+    const listPO = filteredPOs.map(po => ({
+      id: po.id,
+      docNumber: po.poNumber,
+      partyName: findName(suppliers, po.supplierId),
+      date: po.date,
+      type: "PO",
+      items: po.items || [],
+      total: (po.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0)
+    }));
+
+    const listDirect = directPInvoices.map(inv => ({
+      id: inv.id,
+      docNumber: inv.noFaktur,
+      partyName: findName(suppliers, inv.supplierId),
+      date: inv.date,
+      type: "Langsung",
+      items: inv.items || [],
+      total: calcTax((inv.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0), inv.taxType || "none").total
+    }));
+
+    return [...listPO, ...listDirect].sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [filteredPOs, directPInvoices, suppliers]);
+
+  // 2. FILTER PENJUALAN (SO + Faktur Penjualan Langsung)
   const filteredSOs = useMemo(() => (sos || []).filter((so) => inRange(so.date)), [sos, start, end]);
+  const directInvoices = useMemo(() => (invoices || []).filter((inv) => inv.isDirect && inRange(inv.date)), [invoices, start, end]);
+
+  const allSalesDocs = useMemo(() => {
+    const listSO = filteredSOs.map(so => ({
+      id: so.id,
+      docNumber: so.soNumber,
+      partyName: findName(customers, so.customerId),
+      date: so.date,
+      type: "SO",
+      items: so.items || [],
+      total: (so.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0)
+    }));
+
+    const listDirect = directInvoices.map(inv => ({
+      id: inv.id,
+      docNumber: inv.noFaktur,
+      partyName: findName(customers, inv.customerId),
+      date: inv.date,
+      type: "Langsung",
+      items: inv.items || [],
+      total: calcTax((inv.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0), inv.taxType || "none").total
+    }));
+
+    return [...listSO, ...listDirect].sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [filteredSOs, directInvoices, customers]);
 
   function aggregateByProduct(docs) {
     const map = {};
     docs.forEach((doc) => {
       (doc.items || []).forEach((it) => {
         if (!map[it.productId]) map[it.productId] = { qty: 0, value: 0 };
-        map[it.productId].qty += it.qty;
-        map[it.productId].value += it.qty * it.unitPrice;
+        map[it.productId].qty += Number(it.qty) || 0;
+        map[it.productId].value += (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
       });
     });
     return map;
   }
-  const purchaseAgg = useMemo(() => aggregateByProduct(filteredPOs), [filteredPOs]);
-  const salesAgg = useMemo(() => aggregateByProduct(filteredSOs), [filteredSOs]);
-  const purchaseTotal = Object.values(purchaseAgg).reduce((s, x) => s + x.value, 0);
-  const salesTotal = Object.values(salesAgg).reduce((s, x) => s + x.value, 0);
+
+  const purchaseAgg = useMemo(() => aggregateByProduct(allPurchaseDocs), [allPurchaseDocs]);
+  const salesAgg = useMemo(() => aggregateByProduct(allSalesDocs), [allSalesDocs]);
+
+  const purchaseTotal = allPurchaseDocs.reduce((s, x) => s + x.total, 0);
+  const salesTotal = allSalesDocs.reduce((s, x) => s + x.total, 0);
 
   const SUBNAV = [
     { id: "purchases", label: "Pembelian" },
@@ -4012,7 +4068,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
       <Eyebrow>Laporan</Eyebrow>
       <h2 className="text-xl font-semibold mb-5" style={{ color: COLOR.ink }}>Laporan Pembelian & Penjualan</h2>
 
-      <div className="flex items-end gap-3 mb-2">
+      <div className="flex items-end gap-3 mb-4">
         <Field label="Dari tanggal"><TextInput type="date" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
         <Field label="Sampai tanggal"><TextInput type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
       </div>
@@ -4036,12 +4092,13 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
             <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total Pembelian ({fmtDate(start)} – {fmtDate(end)})</div>
             <div className="text-xl font-mono font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(purchaseTotal)}</div>
           </Card>
-          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Rekap per Produk</div>
-          <Card className="!p-0 overflow-hidden mb-4">
+
+          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Rekap per Produk (Termasuk Pembelian Langsung)</div>
+          <Card className="!p-0 overflow-hidden mb-5">
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["Produk", "Qty Dibeli", "Nilai Pembelian"].map((h) => (
+                  {["Produk", "Qty Dibeli", "Nilai Beli (Nett)"].map((h) => (
                     <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
@@ -4057,30 +4114,32 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
                     </tr>
                   );
                 })}
-                {Object.keys(purchaseAgg).length === 0 && <tr><td colSpan={3} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada pembelian di periode ini.</td></tr>}
+                {Object.keys(purchaseAgg).length === 0 && <tr><td colSpan={3} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada transaksi pembelian di periode ini.</td></tr>}
               </tbody>
             </table>
           </Card>
-          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Daftar Transaksi PO</div>
+
+          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Daftar Semua Transaksi Pembelian</div>
           <Card className="!p-0 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["No. PO", "Supplier", "Tanggal", "Total"].map((h) => (
+                  {["No. Dokumen", "Tipe", "Supplier", "Tanggal", "Total"].map((h) => (
                     <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {[...filteredPOs].sort((a, b) => new Date(b.date) - new Date(a.date)).map((po) => (
-                  <tr key={po.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{po.poNumber}</td>
-                    <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(suppliers, po.supplierId)}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(po.date)}</td>
-                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR((po.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0))}</td>
+                {allPurchaseDocs.map((doc) => (
+                  <tr key={doc.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
+                    <td className="px-4 py-2.5"><Badge tone={doc.type === "Langsung" ? "warn" : "neutral"}>{doc.type}</Badge></td>
+                    <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{doc.partyName}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
+                    <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
                   </tr>
                 ))}
-                {filteredPOs.length === 0 && <tr><td colSpan={4} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada PO di periode ini.</td></tr>}
+                {allPurchaseDocs.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada riwayat transaksi pembelian di periode ini.</td></tr>}
               </tbody>
             </table>
           </Card>
@@ -4093,12 +4152,13 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
             <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total Penjualan ({fmtDate(start)} – {fmtDate(end)})</div>
             <div className="text-xl font-mono font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(salesTotal)}</div>
           </Card>
-          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Rekap per Produk</div>
-          <Card className="!p-0 overflow-hidden mb-4">
+
+          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Rekap per Produk (Termasuk Penjualan Langsung)</div>
+          <Card className="!p-0 overflow-hidden mb-5">
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["Produk", "Qty Terjual", "Nilai Penjualan"].map((h) => (
+                  {["Produk", "Qty Terjual", "Nilai Penjualan (Nett)"].map((h) => (
                     <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
@@ -4114,30 +4174,32 @@ function ReportsView({ products, suppliers, customers, pos, sos, findName }) {
                     </tr>
                   );
                 })}
-                {Object.keys(salesAgg).length === 0 && <tr><td colSpan={3} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada penjualan di periode ini.</td></tr>}
+                {Object.keys(salesAgg).length === 0 && <tr><td colSpan={3} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada transaksi penjualan di periode ini.</td></tr>}
               </tbody>
             </table>
           </Card>
-          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Daftar Transaksi SO</div>
+
+          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Daftar Semua Transaksi Penjualan</div>
           <Card className="!p-0 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  {["No. SO", "Pelanggan", "Tanggal", "Total"].map((h) => (
+                  {["No. Dokumen", "Tipe", "Pelanggan", "Tanggal", "Total"].map((h) => (
                     <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {[...filteredSOs].sort((a, b) => new Date(b.date) - new Date(a.date)).map((so) => (
-                  <tr key={so.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{so.soNumber}</td>
-                    <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(customers, so.customerId)}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(so.date)}</td>
-                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR((so.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0))}</td>
+                {allSalesDocs.map((doc) => (
+                  <tr key={doc.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
+                    <td className="px-4 py-2.5"><Badge tone={doc.type === "Langsung" ? "warn" : "neutral"}>{doc.type}</Badge></td>
+                    <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{doc.partyName}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
+                    <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
                   </tr>
                 ))}
-                {filteredSOs.length === 0 && <tr><td colSpan={4} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada SO di periode ini.</td></tr>}
+                {allSalesDocs.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada riwayat transaksi penjualan di periode ini.</td></tr>}
               </tbody>
             </table>
           </Card>
