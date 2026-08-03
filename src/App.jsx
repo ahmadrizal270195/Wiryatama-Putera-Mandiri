@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, Truck, Users, ShoppingCart, ClipboardList,
   AlertTriangle, Plus, X, Trash2, Search, Boxes, ArrowUpRight, ArrowDownRight,
   Loader2, Calendar, Printer, Wallet, Receipt, CreditCard, PiggyBank, BarChart3,
-  FileText, LogOut, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare, ShieldAlert, Download, RefreshCw
+  FileText, LogOut, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare, ShieldAlert, Download
 } from "lucide-react";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./firebase";
@@ -17,7 +17,7 @@ const IDLE_TIMEOUT_MS = 60 * 60 * 1000;
 const ACTIVE_TAB_KEY = "erp-last-active-tab"; 
 
 const ADMIN_FINANCE_EMAILS = [
-  "finance@wiryatamaputera.co.id",
+  "ahmadrizal270195@gmail.com",
   "direktur@wiryatamaputera.co.id",
   "admin@wiryatamaputera.co.id"
 ];
@@ -613,21 +613,6 @@ function PharmaERP({ userEmail, onLogout }) {
     setTimeout(() => setToast(null), 3000);
   }
 
-  // FUNGSI RESET SEMUA DATA LOKAL ERP PERMANEN
-  async function handleResetAllData() {
-    const confirmReset = window.confirm(
-      "PERHATIAN KHUSUS!\n\nApakah Anda yakin ingin MENGOSONGKAN SELURUH DATA ERP?\nSemua produk, stok, pelanggan, supplier, dan transaksi akan dihapus dari awal."
-    );
-    if (confirmReset) {
-      for (const key of Object.values(KEYS)) {
-        await saveKey(key, []);
-      }
-      localStorage.removeItem(ACTIVE_TAB_KEY);
-      await refreshAll();
-      notify("Seluruh data ERP berhasil dibersihkan dari awal!", "warn");
-    }
-  }
-
   const persist = {
     products: async (list) => { setProducts(list); await saveKey(KEYS.products, list); },
     suppliers: async (list) => { setSuppliers(list); await saveKey(KEYS.suppliers, list); },
@@ -660,7 +645,7 @@ function PharmaERP({ userEmail, onLogout }) {
 
   const lowStock = useMemo(() => Object.values(stockByProduct).filter((s) => s.qty < (s.product.minStock || 0)), [stockByProduct]);
   
-  // FIX CRITICAL: PERBAIKAN FILTER HARUS CEK Number(b.qty) > 0 DAN HANYA TAMPILKAN BATCH DENGAN PRODUK VALIDE
+  // FIX CRITICAL: PERBAIKAN FILTER HARUS CEK Number(b.qty) > 0 DAN HANYA TAMPILKAN BATCH DENGAN PRODUK VALID
   const nearExpiry = useMemo(() => (batches || []).filter((b) => Number(b.qty) > 0 && (products || []).some(p => p.id === b.productId) && daysUntil(b.expiryDate) >= 0 && daysUntil(b.expiryDate) <= 90), [batches, products]);
   const expired = useMemo(() => (batches || []).filter((b) => Number(b.qty) > 0 && (products || []).some(p => p.id === b.productId) && daysUntil(b.expiryDate) < 0), [batches, products]);
   
@@ -836,15 +821,6 @@ function PharmaERP({ userEmail, onLogout }) {
                   <LogOut size={12} /> Keluar
                 </button>
               </div>
-              
-              {/* TOMBOL RESET SELURUH DATA ERP */}
-              <button
-                onClick={handleResetAllData}
-                className="w-full py-1.5 px-2 rounded-lg text-[11px] font-medium text-red-200 bg-red-900/40 border border-red-700/50 hover:bg-red-900/80 transition-colors flex items-center justify-center gap-1.5"
-                title="Reset/Kosongkan Seluruh Data ERP"
-              >
-                <RefreshCw size={12} /> Reset Semua Data ERP
-              </button>
             </div>
           )}
         </div>
@@ -1919,7 +1895,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   return (
     <div>
       <div className="flex justify-end mb-4">
-        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Pembelian Langsung (Tanpa PO)</Button>
+        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Pembelian Langsung</Button>
       </div>
 
       {eligiblePOs.length > 0 && (
@@ -3118,7 +3094,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   return (
     <div>
       <div className="flex justify-end mb-4 no-print">
-        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Penjualan Langsung (Tanpa SO)</Button>
+        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Penjualan Langsung</Button>
       </div>
 
       {eligibleSOs.length > 0 && (
