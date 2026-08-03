@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, Truck, Users, ShoppingCart, ClipboardList,
   AlertTriangle, Plus, X, Trash2, Search, Boxes, ArrowUpRight, ArrowDownRight,
   Loader2, Calendar, Printer, Wallet, Receipt, CreditCard, PiggyBank, BarChart3,
-  FileText, LogOut, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare
+  FileText, LogOut, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare, ShieldAlert
 } from "lucide-react";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./firebase";
@@ -15,6 +15,13 @@ const CATEGORIES = ["Obat Generik", "Obat Paten", "Alat Kesehatan", "Vitamin & S
 const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Toko Obat", "Distributor Lain"];
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; 
 const ACTIVE_TAB_KEY = "erp-last-active-tab"; 
+
+// DAFTAR EMAIL USER YANG BOLEH AKSES DASHBOARD KEUANGAN & MODUL FINANCE
+const ADMIN_FINANCE_EMAILS = [
+  "finance@wiryatamaputera.co.id",
+  "direktur@wiryatamaputera.co.id",
+  "admin@wiryatamaputera.co.id"
+];
 
 const COMPANY_PROFILE = {
   name: "PT WIRYATAMA PUTERA MANDIRI",
@@ -515,6 +522,9 @@ function ExpiryRibbon({ productBatches }) {
 function PharmaERP({ userEmail, onLogout }) {
   const [loading, setLoading] = useState(true);
   
+  // PEMERIKSAAN OTORISASI PERAN (ROLE CHECK)
+  const isFinanceOrAdmin = ADMIN_FINANCE_EMAILS.includes((userEmail || "").toLowerCase());
+
   const [tab, setTabState] = useState(() => {
     return localStorage.getItem(ACTIVE_TAB_KEY) || "dashboard";
   });
@@ -695,17 +705,20 @@ function PharmaERP({ userEmail, onLogout }) {
     return { allocations, shortfall: remaining };
   }
 
-  const NAV = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "products", label: "Produk", icon: Package },
-    { id: "stock", label: "Stok & Batch", icon: Boxes },
-    { id: "suppliers", label: "Supplier", icon: Truck },
-    { id: "customers", label: "Pelanggan", icon: Users },
-    { id: "purchases", label: "Pembelian", icon: ClipboardList },
-    { id: "sales", label: "Penjualan", icon: ShoppingCart },
-    { id: "finance", label: "Finance", icon: Wallet },
-    { id: "reports", label: "Laporan", icon: BarChart3 },
+  // SEMBUNYIKAN MENU FINANCE JIKA USER BUKAN ADMIN/FINANCE
+  const ALL_NAV = [
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, requiresFinance: false },
+    { id: "products", label: "Produk", icon: Package, requiresFinance: false },
+    { id: "stock", label: "Stok & Batch", icon: Boxes, requiresFinance: false },
+    { id: "suppliers", label: "Supplier", icon: Truck, requiresFinance: false },
+    { id: "customers", label: "Pelanggan", icon: Users, requiresFinance: false },
+    { id: "purchases", label: "Pembelian", icon: ClipboardList, requiresFinance: false },
+    { id: "sales", label: "Penjualan", icon: ShoppingCart, requiresFinance: false },
+    { id: "finance", label: "Finance", icon: Wallet, requiresFinance: true },
+    { id: "reports", label: "Laporan", icon: BarChart3, requiresFinance: false },
   ];
+
+  const NAV = ALL_NAV.filter(n => !n.requiresFinance || isFinanceOrAdmin);
 
   if (loading) {
     return (
@@ -815,7 +828,7 @@ function PharmaERP({ userEmail, onLogout }) {
       <div className="flex-1 p-6 overflow-y-auto max-h-[100vh] main-container">
         <div className="no-print">
           {tab === "dashboard" && (
-            <Dashboard {...{ products, batches, pos, sos, suppliers, customers, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth }} />
+            <Dashboard {...{ products, batches, pos, sos, suppliers, customers, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth, isFinanceOrAdmin }} />
           )}
           {tab === "products" && (
             <ProductsView products={products} save={persist.products} stockByProduct={stockByProduct} notify={notify} />
@@ -855,14 +868,24 @@ function PharmaERP({ userEmail, onLogout }) {
 
         <div className="no-print">
           {tab === "finance" && (
-            <FinanceView
-              {...{ pos, sos, suppliers, customers, batches, invoices, pInvoices, pReturns, returns, paymentsOut, paymentsIn, expenses, findName, notify }}
-              savePaymentsOut={persist.paymentsOut} savePaymentsIn={persist.paymentsIn} saveExpenses={persist.expenses}
-              arOutstanding={arOutstanding} apOutstanding={apOutstanding} cashInMonth={cashInMonth} cashOutMonth={cashOutMonth}
-              grossProfitMonth={grossProfitMonth} expensesMonth={expensesMonth}
-              invoiceTotal={invoiceTotal} soDPAmount={soDPAmount} invoicePaidAmount={invoicePaidAmount} invoiceReturnedAmount={invoiceReturnedAmount} invoiceSisa={invoiceSisa}
-              pInvoiceTotal={pInvoiceTotal} pInvoicePaidAmount={pInvoicePaidAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount} pInvoiceSisa={pInvoiceSisa}
-            />
+            isFinanceOrAdmin ? (
+              <FinanceView
+                {...{ pos, sos, suppliers, customers, batches, invoices, pInvoices, pReturns, returns, paymentsOut, paymentsIn, expenses, findName, notify }}
+                savePaymentsOut={persist.paymentsOut} savePaymentsIn={persist.paymentsIn} saveExpenses={persist.expenses}
+                arOutstanding={arOutstanding} apOutstanding={apOutstanding} cashInMonth={cashInMonth} cashOutMonth={cashOutMonth}
+                grossProfitMonth={grossProfitMonth} expensesMonth={expensesMonth}
+                invoiceTotal={invoiceTotal} soDPAmount={soDPAmount} invoicePaidAmount={invoicePaidAmount} invoiceReturnedAmount={invoiceReturnedAmount} invoiceSisa={invoiceSisa}
+                pInvoiceTotal={pInvoiceTotal} pInvoicePaidAmount={pInvoicePaidAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount} pInvoiceSisa={pInvoiceSisa}
+              />
+            ) : (
+              <Card className="text-center py-16">
+                <ShieldAlert size={48} className="mx-auto mb-3" style={{ color: COLOR.danger }} />
+                <h3 className="font-bold text-lg mb-1" style={{ color: COLOR.ink }}>Akses Dibatasi</h3>
+                <p className="text-xs" style={{ color: COLOR.inkSoft }}>
+                  Modul Finance hanya dapat diakses oleh staf berwenang / tim keuangan.
+                </p>
+              </Card>
+            )
           )}
           {tab === "reports" && (
             <ReportsView products={products} suppliers={suppliers} customers={customers} pos={pos} sos={sos} findName={findName} />
@@ -879,8 +902,8 @@ function PharmaERP({ userEmail, onLogout }) {
   );
 }
 
-// ---------- Sub-komponen Dashboard & Master ----------
-function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, suppliers, customers, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth }) {
+// ---------- DASHBOARD (RINGKASAN KEUANGAN DIBATASI BERDASARKAN ROLE) ----------
+function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, suppliers, customers, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth, isFinanceOrAdmin }) {
   const recentPOs = [...(pos || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
   const recentSOs = [...(sos || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
   const netCashMonth = cashInMonth - cashOutMonth;
@@ -908,29 +931,34 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
         </Card>
       </div>
 
-      <Eyebrow>Ringkasan keuangan (bulan berjalan)</Eyebrow>
-      <div className="grid grid-cols-5 gap-3 mb-6">
-        <Card>
-          <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Piutang (AR)</div>
-          <div className="text-lg font-mono font-semibold" style={{ color: COLOR.warn }}>{fmtIDR(arOutstanding)}</div>
-        </Card>
-        <Card>
-          <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Hutang (AP)</div>
-          <div className="text-lg font-mono font-semibold" style={{ color: COLOR.danger }}>{fmtIDR(apOutstanding)}</div>
-        </Card>
-        <Card>
-          <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Kas Masuk</div>
-          <div className="text-lg font-mono font-semibold" style={{ color: COLOR.good }}>{fmtIDR(cashInMonth)}</div>
-        </Card>
-        <Card>
-          <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Kas Keluar</div>
-          <div className="text-lg font-mono font-semibold" style={{ color: COLOR.danger }}>{fmtIDR(cashOutMonth)}</div>
-        </Card>
-        <Card style={{ borderColor: netCashMonth >= 0 ? COLOR.good : COLOR.danger }}>
-          <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Laba Kotor</div>
-          <div className="text-lg font-mono font-semibold" style={{ color: grossProfitMonth >= 0 ? COLOR.good : COLOR.danger }}>{fmtIDR(grossProfitMonth)}</div>
-        </Card>
-      </div>
+      {/* KARTU RINGKASAN KEUANGAN HANYA DITAMPILKAN JIKA DENGAN ROLE FINANCE/ADMIN */}
+      {isFinanceOrAdmin && (
+        <>
+          <Eyebrow>Ringkasan keuangan (bulan berjalan)</Eyebrow>
+          <div className="grid grid-cols-5 gap-3 mb-6">
+            <Card>
+              <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Piutang (AR)</div>
+              <div className="text-lg font-mono font-semibold" style={{ color: COLOR.warn }}>{fmtIDR(arOutstanding)}</div>
+            </Card>
+            <Card>
+              <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Hutang (AP)</div>
+              <div className="text-lg font-mono font-semibold" style={{ color: COLOR.danger }}>{fmtIDR(apOutstanding)}</div>
+            </Card>
+            <Card>
+              <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Kas Masuk</div>
+              <div className="text-lg font-mono font-semibold" style={{ color: COLOR.good }}>{fmtIDR(cashInMonth)}</div>
+            </Card>
+            <Card>
+              <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Kas Keluar</div>
+              <div className="text-lg font-mono font-semibold" style={{ color: COLOR.danger }}>{fmtIDR(cashOutMonth)}</div>
+            </Card>
+            <Card style={{ borderColor: netCashMonth >= 0 ? COLOR.good : COLOR.danger }}>
+              <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Laba Kotor</div>
+              <div className="text-lg font-mono font-semibold" style={{ color: grossProfitMonth >= 0 ? COLOR.good : COLOR.danger }}>{fmtIDR(grossProfitMonth)}</div>
+            </Card>
+          </div>
+        </>
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         <Card>
@@ -2841,7 +2869,6 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
               const cust = (customers || []).find((c) => c.id === so?.customerId);
               const inv = (invoices || []).find((i) => i.soId === printTT.soId);
               
-              // PERBAIKAN SAFEGUARD DI SINI AGAR TIDAK ERROR/BLANK SAAT SO/INV KOSONG
               let totalAmount = 0;
               if (inv) {
                 totalAmount = invoiceTotal(inv);
