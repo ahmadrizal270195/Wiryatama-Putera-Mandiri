@@ -11,7 +11,7 @@ import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebas
 import { auth } from "./firebase";
 
 // ---------- CONSTANTS & COMPANY PROFILE CONFIG ----------
-const CATEGORIES = ["Obat Generik", "Obat Paten", "Alat Kesehatan", "Vitamin & Suplemen", "Consumables"];
+const CATEGORIES = ["Dental Material", "Alat Kesehatan", "Obat Generik", "Obat Paten", "Consumables"];
 const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Toko Obat", "Distributor Lain"];
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; 
 const ACTIVE_TAB_KEY = "erp-last-active-tab"; 
