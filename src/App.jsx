@@ -18,7 +18,7 @@ const ACTIVE_TAB_KEY = "erp-last-active-tab";
 
 // DAFTAR EMAIL USER YANG BOLEH AKSES DASHBOARD KEUANGAN & MODUL FINANCE
 const ADMIN_FINANCE_EMAILS = [
-  "ahmadrizal270195@gmail.com",
+  "ahmadrizal@gmail.com",
   "direktur@wiryatamaputera.co.id",
   "admin@wiryatamaputera.co.id"
 ];
