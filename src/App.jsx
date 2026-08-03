@@ -645,8 +645,8 @@ function PharmaERP({ userEmail, onLogout }) {
   }, [products, batches]);
 
   const lowStock = useMemo(() => Object.values(stockByProduct).filter((s) => s.qty < (s.product.minStock || 0)), [stockByProduct]);
-  const nearExpiry = useMemo(() => (batches || []).filter((b) => b.qty > 0 && daysUntil(b.expiryDate) >= 0 && daysUntil(b.expiryDate) <= 90), [batches]);
-  const expired = useMemo(() => (batches || []).filter((b) => b.qty > 0 && daysUntil(b.expiryDate) < 0), [batches]);
+  const nearExpiry = useMemo(() => (batches || []).filter((b) => Number(b.qty) > 0 && daysUntil(b.expiryDate) >= 0 && daysUntil(b.expiryDate) <= 90), [batches]);
+  const expired = useMemo(() => (batches || []).filter((b) => Number(b.qty) > 0 && daysUntil(b.expiryDate) < 0), [batches]);
   const totalStockValue = useMemo(() => Object.values(stockByProduct).reduce((s, x) => s + x.value, 0), [stockByProduct]);
 
   function findName(list, id) {
