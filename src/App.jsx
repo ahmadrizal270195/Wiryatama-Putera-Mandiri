@@ -2072,7 +2072,7 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
   }
 
   function openNew() {
-    setPInvoiceId(returnableInvoices[0]?.id || "");
+    setInvoiceId(returnableInvoices[0]?.id || "");
     setReturnQty({});
     setModal("new");
   }
