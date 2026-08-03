@@ -2171,7 +2171,7 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
   );
 }
 
-// ---------- SALES VIEW (DENGAN CETAK SURAT JALAN & TANDA TERIMA FAKTUR) ----------
+// ---------- SALES VIEW ----------
 function SalesView({
   products, customers, sos, batches, deliveryNotes, invoices, returns, paymentsIn,
   saveSOs, saveBatches, saveDeliveryNotes, saveInvoices, saveReturns, allocateFEFO,
@@ -2238,7 +2238,7 @@ function SalesView({
         <SOTab {...{ products, customers, sos, deliveryNotes, saveSOs, findName, notify, soTotal, getSOStatus, STATUS_LABEL, stockByProduct }} />
       )}
       {subTab === "sj" && (
-        <SJTab {...{ products, customers, sos, batches, deliveryNotes, invoices, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty }} />
+        <SJTab {...{ products, customers, sos, batches, deliveryNotes, invoices, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty, soTotal, invoiceTotal }} />
       )}
       {subTab === "faktur" && (
         <FakturTab {...{ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, batches, saveBatches, saveInvoices, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount, stockByProduct, allocateFEFO }} />
@@ -2438,12 +2438,11 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
   );
 }
 
-// SURAT JALAN TAB (LENGKAP DENGAN FITUR CETAK SURAT JALAN & TANDA TERIMA FAKTUR)
-function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty }) {
+function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty, soTotal, invoiceTotal }) {
   const [modal, setModal] = useState(null);
   const [detailDN, setDetailDN] = useState(null);
-  const [printDN, setPrintInvDN] = useState(null); // Print Surat Jalan
-  const [printTT, setPrintTT] = useState(null);    // Print Tanda Terima Faktur
+  const [printDN, setPrintInvDN] = useState(null); 
+  const [printTT, setPrintTT] = useState(null);    
   
   const [soId, setSoId] = useState("");
   const [date, setDate] = useState(todayISO());
@@ -2594,7 +2593,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
               return (
                 <tr key={dn.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{dn.noSJ}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{so?.soNumber}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{so?.soNumber || "-"}</td>
                   <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{so ? findName(customers, so.customerId) : "-"}</td>
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(dn.date)}</td>
                   <td className="px-4 py-2.5"><Badge tone={dn.status === "diterima" ? "good" : "warn"}>{dn.status === "diterima" ? "Diterima" : "Dikirim"}</Badge></td>
@@ -2799,7 +2798,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
         </Modal>
       )}
 
-      {/* TEMPLATE CETAK TANDA TERIMA FAKTUR/DOKUMEN */}
+      {/* TEMPLATE CETAK TANDA TERIMA FAKTUR/DOKUMEN SAFEGUARDED */}
       {printTT && (
         <Modal title={`Tanda Terima Dokumen — ${printTT.noSJ}`} onClose={() => setPrintTT(null)} wide>
           <div className="flex justify-end gap-2 mb-4 no-print">
@@ -2841,7 +2840,14 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
               const so = (sos || []).find((s) => s.id === printTT.soId);
               const cust = (customers || []).find((c) => c.id === so?.customerId);
               const inv = (invoices || []).find((i) => i.soId === printTT.soId);
-              const totalAmount = inv ? invoiceTotal(inv) : soTotal(so);
+              
+              // PERBAIKAN SAFEGUARD DI SINI AGAR TIDAK ERROR/BLANK SAAT SO/INV KOSONG
+              let totalAmount = 0;
+              if (inv) {
+                totalAmount = invoiceTotal(inv);
+              } else if (so) {
+                totalAmount = soTotal(so);
+              }
 
               return (
                 <div>
