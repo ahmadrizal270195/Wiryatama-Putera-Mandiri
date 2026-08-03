@@ -672,9 +672,15 @@ function PharmaERP({ userEmail, onLogout }) {
   function invoicePaidAmount(invId) { return (paymentsIn || []).filter((p) => p.invoiceId === invId).reduce((s, p) => s + p.amount, 0); }
   function invoiceReturnedAmount(invId) { return (returns || []).filter((r) => r.invoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
   function batchCost(batchId) { const b = (batches || []).find((x) => x.id === batchId); return b ? b.costPrice : 0; }
-  function soCOGS(soId) {
-    return (deliveryNotes || []).filter((dn) => dn.soId === soId).reduce((s, dn) => s + (dn.items || []).reduce((s2, it) => s2 + (it.allocations || []).reduce((s3, a) => s3 + a.qty * batchCost(a.batchId), 0), 0), 0);
+  
+  // PERBAIKAN FORMULA HPP (COGS): Menghitung modal barang dari alokasi batch Faktur Penjualan
+  function invoiceCOGS(inv) {
+    if (inv.isDirect) {
+      return (inv.items || []).reduce((s, it) => s + (it.allocations || []).reduce((s2, a) => s2 + a.qty * batchCost(a.batchId), 0), 0);
+    }
+    return (deliveryNotes || []).filter((dn) => dn.soId === inv.soId && dn.status === "diterima").reduce((s, dn) => s + (dn.items || []).reduce((s2, it) => s2 + (it.allocations || []).reduce((s3, a) => s3 + a.qty * batchCost(a.batchId), 0), 0), 0);
   }
+
   function invoiceSisa(inv) {
     return Math.max(0, invoiceTotal(inv) - invoiceReturnedAmount(inv.id) - soDPAmount(inv.soId) - invoicePaidAmount(inv.id));
   }
@@ -687,9 +693,17 @@ function PharmaERP({ userEmail, onLogout }) {
     const exp = (expenses || []).filter((e) => isThisMonth(e.date)).reduce((s, e) => s + e.amount, 0);
     return out + exp;
   }, [paymentsOut, expenses]);
+  
+  // PERBAIKAN LABA KOTOR (MARGIN): Penjualan Bersih (DPP) dikurangi Modal HPP & Retur
   const grossProfitMonth = useMemo(() => {
-    return (invoices || []).filter((inv) => isThisMonth(inv.date)).reduce((s, inv) => s + (invoiceTotal(inv) - invoiceReturnedAmount(inv.id) - soCOGS(inv.soId)), 0);
+    return (invoices || []).filter((inv) => isThisMonth(inv.date)).reduce((s, inv) => {
+      const dppSales = invoiceRawTotal(inv); // Penjualan Bersih sebelum PPN
+      const cogs = invoiceCOGS(inv);        // HPP Modal Beli Barang
+      const retur = invoiceReturnedAmount(inv.id);
+      return s + (dppSales - cogs - retur);
+    }, 0);
   }, [invoices, batches, deliveryNotes, returns]);
+
   const expensesMonth = useMemo(() => (expenses || []).filter((e) => isThisMonth(e.date)).reduce((s, e) => s + e.amount, 0), [expenses]);
 
   function allocateFEFO(productId, qty) {
@@ -952,8 +966,8 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
               <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Kas Keluar</div>
               <div className="text-lg font-mono font-semibold" style={{ color: COLOR.danger }}>{fmtIDR(cashOutMonth)}</div>
             </Card>
-            <Card style={{ borderColor: netCashMonth >= 0 ? COLOR.good : COLOR.danger }}>
-              <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Laba Kotor</div>
+            <Card style={{ borderColor: grossProfitMonth >= 0 ? COLOR.good : COLOR.danger }}>
+              <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Laba Kotor (Margin)</div>
               <div className="text-lg font-mono font-semibold" style={{ color: grossProfitMonth >= 0 ? COLOR.good : COLOR.danger }}>{fmtIDR(grossProfitMonth)}</div>
             </Card>
           </div>
@@ -3706,7 +3720,7 @@ function FinanceView(props) {
           <div className="text-xl font-mono font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(expensesMonth)}</div>
         </Card>
         <Card>
-          <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: COLOR.inkSoft }}><PiggyBank size={13} /> Laba Kotor Bulan Ini</div>
+          <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: COLOR.inkSoft }}><PiggyBank size={13} /> Laba Kotor (Margin) Bulan Ini</div>
           <div className="text-xl font-mono font-semibold" style={{ color: grossProfitMonth >= 0 ? COLOR.good : COLOR.danger }}>{fmtIDR(grossProfitMonth)}</div>
         </Card>
       </div>
