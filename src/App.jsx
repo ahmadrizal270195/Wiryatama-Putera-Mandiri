@@ -645,7 +645,6 @@ function PharmaERP({ userEmail, onLogout }) {
 
   const lowStock = useMemo(() => Object.values(stockByProduct).filter((s) => s.qty < (s.product.minStock || 0)), [stockByProduct]);
   
-  // FIX CRITICAL: PERBAIKAN FILTER HARUS CEK Number(b.qty) > 0 DAN HANYA TAMPILKAN BATCH DENGAN PRODUK VALID
   const nearExpiry = useMemo(() => (batches || []).filter((b) => Number(b.qty) > 0 && (products || []).some(p => p.id === b.productId) && daysUntil(b.expiryDate) >= 0 && daysUntil(b.expiryDate) <= 90), [batches, products]);
   const expired = useMemo(() => (batches || []).filter((b) => Number(b.qty) > 0 && (products || []).some(p => p.id === b.productId) && daysUntil(b.expiryDate) < 0), [batches, products]);
   
@@ -700,7 +699,7 @@ function PharmaERP({ userEmail, onLogout }) {
     for (const b of avail) {
       if (remaining <= 0) break;
       const take = Math.min(b.qty, remaining);
-      allocations.push({ batchId: b.id, batchNo: b.batchNo, qty: take });
+      allocations.push({ batchId: b.id, batchNo: b.batchNo, expiryDate: b.expiryDate, qty: take });
       remaining -= take;
     }
     return { allocations, shortfall: remaining };
@@ -2072,7 +2071,10 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
   }
 
   function openNew() {
-    setInvoiceId(returnableInvoices[0]?.id || "");
+    if (returnableInvoices.length === 0) {
+      return notify("Tidak ada Faktur Pembelian aktif yang dapat diretur.", "warn");
+    }
+    setPInvoiceId(returnableInvoices[0]?.id || "");
     setReturnQty({});
     setModal("new");
   }
@@ -2198,7 +2200,7 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
       {modal === "new" && (
         <Modal title="Catat Retur Pembelian ke Supplier" onClose={() => setModal(null)} wide>
           {returnableInvoices.length === 0 ? (
-            <div className="text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian yang bisa diretur.</div>
+            <div className="text-sm py-4 text-center" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian yang bisa diretur.</div>
           ) : (
             <>
               <Field label="Pilih Faktur Pembelian">
@@ -2209,15 +2211,15 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
 
               {selectedInvoice && (
                 <div className="flex flex-col gap-2 mt-2">
-                  <div className="text-xs font-medium" style={{ color: COLOR.inkSoft }}>Isi Qty Barang yang Dikembalikan Ke Supplier</div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-teal-800">Isi Qty Barang yang Dikembalikan Ke Supplier</div>
                   {(selectedInvoice.items || []).map((it) => {
                     const p = (products || []).find((x) => x.id === it.productId);
                     const maxReturn = it.qty - alreadyReturnedQty(selectedInvoice.id, it.productId);
                     if (maxReturn <= 0) return null;
                     return (
-                      <div key={it.productId} className="flex items-center gap-2">
-                        <div className="flex-1 text-sm" style={{ color: COLOR.ink }}>{p?.name} <span className="text-xs font-mono" style={{ color: COLOR.inkSoft }}>(maks {maxReturn} {p?.unit})</span></div>
-                        <TextInput type="number" value={returnQty[it.productId] || 0} onChange={(e) => setReturnQty({ ...returnQty, [it.productId]: Number(e.target.value) })} className="w-24" />
+                      <div key={it.productId} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border" style={{ borderColor: COLOR.border }}>
+                        <div className="flex-1 text-sm font-medium" style={{ color: COLOR.ink }}>{p?.name} <span className="text-xs font-mono font-normal" style={{ color: COLOR.inkSoft }}>(maks {maxReturn} {p?.unit})</span></div>
+                        <TextInput type="number" value={returnQty[it.productId] || 0} onChange={(e) => setReturnQty({ ...returnQty, [it.productId]: Number(e.target.value) })} className="w-24 text-center" />
                       </div>
                     );
                   })}
@@ -2555,7 +2557,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
       for (const b of avail) {
         if (remaining <= 0) break;
         const take = Math.min(b.qty, remaining);
-        allocations.push({ batchId: b.id, batchNo: b.batchNo, qty: take });
+        allocations.push({ batchId: b.id, batchNo: b.batchNo, expiryDate: b.expiryDate, qty: take });
         b.qty -= take;
         remaining -= take;
       }
@@ -3025,7 +3027,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       for (const b of avail) {
         if (remaining <= 0) break;
         const take = Math.min(b.qty, remaining);
-        allocations.push({ batchId: b.id, batchNo: b.batchNo, qty: take });
+        allocations.push({ batchId: b.id, batchNo: b.batchNo, expiryDate: b.expiryDate, qty: take });
         b.qty -= take;
         remaining -= take;
       }
@@ -3423,7 +3425,8 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
   const [invoiceId, setInvoiceId] = useState("");
   const [returnQty, setReturnQty] = useState({});
 
-  const returnableInvoices = (invoices || []).filter((inv) => invoiceReturnedAmount(inv.id) < invoiceTotal(inv));
+  // Hanya faktur dengan nilai > 0 dan sisa retur > 0 yang masuk daftar
+  const returnableInvoices = (invoices || []).filter((inv) => invoiceTotal(inv) > 0 && invoiceReturnedAmount(inv.id) < invoiceTotal(inv));
   const selectedInvoice = (invoices || []).find((x) => x.id === invoiceId);
 
   function alreadyReturnedQty(invId, productId) {
@@ -3434,7 +3437,10 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
   }
 
   function openNew() {
-    setPInvoiceId(returnableInvoices[0]?.id || "");
+    if (returnableInvoices.length === 0) {
+      return notify("Tidak ada Faktur Penjualan aktif yang dapat diretur.", "warn");
+    }
+    setInvoiceId(returnableInvoices[0]?.id || "");
     setReturnQty({});
     setModal("new");
   }
@@ -3455,11 +3461,11 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
   }
 
   async function submitRetur() {
-    if (!selectedInvoice) return notify("Pilih Faktur", "danger");
+    if (!selectedInvoice) return notify("Pilih Faktur terlebih dahulu", "danger");
     const lines = (selectedInvoice.items || [])
       .map((it) => ({ ...it, qtyReturn: Number(returnQty[it.productId]) || 0, maxReturn: it.qty - alreadyReturnedQty(selectedInvoice.id, it.productId) }))
       .filter((l) => l.qtyReturn > 0);
-    if (lines.length === 0) return notify("Isi jumlah yang mau diretur", "danger");
+    if (lines.length === 0) return notify("Isi jumlah barang yang mau diretur", "danger");
     for (const l of lines) {
       if (l.qtyReturn > l.maxReturn) {
         const p = (products || []).find((x) => x.id === l.productId);
@@ -3486,7 +3492,7 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
     await saveBatches(working);
     const noRetur = `RET-${new Date().getFullYear()}-${String((returns || []).length + 1).padStart(4, "0")}`;
     await saveReturns([...(returns || []), { id: uid(), noRetur, source: "faktur", invoiceId: selectedInvoice.id, soId: selectedInvoice.soId, date: todayISO(), items }]);
-    notify(`${noRetur} dicatat, stok dikembalikan`);
+    notify(`${noRetur} berhasil dicatat & stok dikembalikan ke gudang`);
     setModal(null);
   }
 
@@ -3549,32 +3555,33 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
       </Card>
 
       {modal === "new" && (
-        <Modal title="Catat Retur dari Faktur" onClose={() => setModal(null)} wide>
+        <Modal title="Catat Retur dari Faktur Penjualan" onClose={() => setModal(null)} wide>
           {returnableInvoices.length === 0 ? (
-            <div className="text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur yang masih bisa diretur.</div>
+            <div className="text-sm py-4 text-center" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur yang masih bisa diretur.</div>
           ) : (
             <>
-              <Field label="Faktur">
+              <Field label="Pilih Faktur Penjualan">
                 <Select value={invoiceId} onChange={(e) => { setInvoiceId(e.target.value); setReturnQty({}); }}>
-                  {returnableInvoices.map((inv) => <option key={inv.id} value={inv.id}>{inv.noFaktur}</option>)}
+                  {returnableInvoices.map((inv) => <option key={inv.id} value={inv.id}>{inv.noFaktur} ({fmtIDR(invoiceTotal(inv))})</option>)}
                 </Select>
               </Field>
               {selectedInvoice && (
                 <div className="flex flex-col gap-2 mt-2">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-teal-800">Isi Qty Barang yang Dikembalikan Pelanggan</div>
                   {(selectedInvoice.items || []).map((it) => {
                     const p = (products || []).find((x) => x.id === it.productId);
                     const maxReturn = it.qty - alreadyReturnedQty(selectedInvoice.id, it.productId);
                     if (maxReturn <= 0) return null;
                     return (
-                      <div key={it.productId} className="flex items-center gap-2">
-                        <div className="flex-1 text-sm" style={{ color: COLOR.ink }}>{p?.name} <span className="text-xs font-mono" style={{ color: COLOR.inkSoft }}>(maks {maxReturn} {p?.unit})</span></div>
-                        <TextInput type="number" value={returnQty[it.productId] || 0} onChange={(e) => setReturnQty({ ...returnQty, [it.productId]: Number(e.target.value) })} className="w-24" />
+                      <div key={it.productId} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border" style={{ borderColor: COLOR.border }}>
+                        <div className="flex-1 text-sm font-medium" style={{ color: COLOR.ink }}>{p?.name} <span className="text-xs font-mono font-normal" style={{ color: COLOR.inkSoft }}>(maks {maxReturn} {p?.unit})</span></div>
+                        <TextInput type="number" value={returnQty[it.productId] || 0} onChange={(e) => setReturnQty({ ...returnQty, [it.productId]: Number(e.target.value) })} className="w-24 text-center" />
                       </div>
                     );
                   })}
                 </div>
               )}
-              <Button onClick={submitRetur} className="w-full justify-center mt-4">Simpan Retur & Kembalikan Stok</Button>
+              <Button onClick={submitRetur} className="w-full justify-center mt-4">Simpan Retur & Kembalikan Stok Ke Gudang</Button>
             </>
           )}
         </Modal>
