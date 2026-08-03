@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, Truck, Users, ShoppingCart, ClipboardList,
   AlertTriangle, Plus, X, Trash2, Search, Boxes, ArrowUpRight, ArrowDownRight,
   Loader2, Calendar, Printer, Wallet, Receipt, CreditCard, PiggyBank, BarChart3,
-  FileText, LogOut, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare, ShieldAlert
+  FileText, LogOut, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare, ShieldAlert, Download
 } from "lucide-react";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./firebase";
@@ -18,7 +18,7 @@ const ACTIVE_TAB_KEY = "erp-last-active-tab";
 
 // DAFTAR EMAIL USER YANG BOLEH AKSES DASHBOARD KEUANGAN & MODUL FINANCE
 const ADMIN_FINANCE_EMAILS = [
-  "ahmadrizal270195@gmail.com",
+  "finance@wiryatamaputera.co.id",
   "direktur@wiryatamaputera.co.id",
   "admin@wiryatamaputera.co.id"
 ];
@@ -522,7 +522,6 @@ function ExpiryRibbon({ productBatches }) {
 function PharmaERP({ userEmail, onLogout }) {
   const [loading, setLoading] = useState(true);
   
-  // PEMERIKSAAN OTORISASI PERAN (ROLE CHECK)
   const isFinanceOrAdmin = ADMIN_FINANCE_EMAILS.includes((userEmail || "").toLowerCase());
 
   const [tab, setTabState] = useState(() => {
@@ -705,7 +704,6 @@ function PharmaERP({ userEmail, onLogout }) {
     return { allocations, shortfall: remaining };
   }
 
-  // SEMBUNYIKAN MENU FINANCE JIKA USER BUKAN ADMIN/FINANCE
   const ALL_NAV = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, requiresFinance: false },
     { id: "products", label: "Produk", icon: Package, requiresFinance: false },
@@ -902,7 +900,7 @@ function PharmaERP({ userEmail, onLogout }) {
   );
 }
 
-// ---------- DASHBOARD (RINGKASAN KEUANGAN DIBATASI BERDASARKAN ROLE) ----------
+// ---------- DASHBOARD ----------
 function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, suppliers, customers, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth, isFinanceOrAdmin }) {
   const recentPOs = [...(pos || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
   const recentSOs = [...(sos || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
@@ -931,7 +929,6 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
         </Card>
       </div>
 
-      {/* KARTU RINGKASAN KEUANGAN HANYA DITAMPILKAN JIKA DENGAN ROLE FINANCE/ADMIN */}
       {isFinanceOrAdmin && (
         <>
           <Eyebrow>Ringkasan keuangan (bulan berjalan)</Eyebrow>
@@ -1193,11 +1190,13 @@ function SuppliersView({ suppliers, save, notify }) {
   );
 }
 
+// CUSTOMERS VIEW (DENGAN TOMBOL EXPORT EXCEL/CSV)
 function CustomersView({ customers, save, notify }) {
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({ name: "", type: CUSTOMER_TYPES[0], npwp: "", contact: "", address: "" });
   function openNew() { setForm({ name: "", type: CUSTOMER_TYPES[0], npwp: "", contact: "", address: "" }); setModal("new"); }
   function openEdit(c) { setForm(c); setModal(c.id); }
+  
   async function submit() {
     if (!form.name.trim()) return notify("Nama pelanggan wajib diisi", "danger");
     if (modal === "new") { await save([...(customers || []), { ...form, id: uid() }]); notify("Pelanggan ditambahkan"); }
@@ -1206,11 +1205,43 @@ function CustomersView({ customers, save, notify }) {
   }
   async function remove(id) { await save((customers || []).filter((c) => c.id !== id)); notify("Pelanggan dihapus"); }
 
+  // FUNGSI UNTUK TARIK DATABASE PELANGGAN KE EXCEL (CSV)
+  function exportCustomersToExcel() {
+    if (!customers || customers.length === 0) {
+      return notify("Belum ada data pelanggan untuk di-export", "warn");
+    }
+
+    const headers = ["ID Pelanggan", "Nama Pelanggan", "Tipe Pelanggan", "NPWP", "Kontak", "Alamat"];
+    const rows = customers.map(c => [
+      `"${c.id || ""}"`,
+      `"${(c.name || "").replace(/"/g, '""')}"`,
+      `"${(c.type || "").replace(/"/g, '""')}"`,
+      `"${(c.npwp || "").replace(/"/g, '""')}"`,
+      `"${(c.contact || "").replace(/"/g, '""')}"`,
+      `"${(c.address || "").replace(/"/g, '""')}"`
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Data_Pelanggan_PT_WPM_${todayISO()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    notify("Database pelanggan berhasil di-export ke Excel");
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
         <div><Eyebrow>Master data</Eyebrow><h2 className="text-xl font-semibold" style={{ color: COLOR.ink }}>Pelanggan</h2></div>
-        <Button onClick={openNew}><Plus size={15} /> Tambah Pelanggan</Button>
+        <div className="flex gap-2">
+          <Button onClick={exportCustomersToExcel} variant="secondary" className="!bg-teal-50 !text-teal-800 !border-teal-200 hover:!bg-teal-100">
+            <Download size={15} /> Export / Tarik Excel
+          </Button>
+          <Button onClick={openNew}><Plus size={15} /> Tambah Pelanggan</Button>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         {(customers || []).map((c) => (
