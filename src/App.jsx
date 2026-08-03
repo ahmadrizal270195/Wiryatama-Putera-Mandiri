@@ -22,7 +22,7 @@ const COMPANY_PROFILE = {
   address: "Ruko New Aruna Residence, Jl. Serua Raya No.9, Bojongsari, Depok, Jawa Barat 16517",
   contact: "Email: finance@wiryatamaputera.co.id | Telp: (021) 7437964 / WA: 0817-773-791",
   whatsapp: "62817773791",
-  npwp: "01.234.567.8-012.000", // NPWP Perusahaan
+  npwp: "01.234.567.8-012.000",
   logoUrl: "https://i.imgur.com/EfI1R4p.jpeg", 
   bankDetails: {
     bankName: "Bank Central Asia (BCA)",
@@ -89,7 +89,6 @@ function isThisMonth(dateStr) {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
 
-// HELPER KALKULASI PPN
 function calcTax(subtotal, taxType) {
   if (taxType === "ppn11") {
     const ppn = subtotal * 0.11;
@@ -738,19 +737,19 @@ function PharmaERP({ userEmail, onLogout }) {
             width: 100% !important;
             max-width: 100% !important;
           }
-          #printable-invoice {
+          #printable-invoice, #printable-sj, #printable-tt {
             border: none !important;
             padding: 0 !important;
             margin: 0 !important;
             font-family: 'Inter', Arial, Helvetica, sans-serif !important;
           }
-          #printable-invoice * {
+          #printable-invoice *, #printable-sj *, #printable-tt * {
             font-family: inherit !important;
             font-weight: 400 !important;
           }
-          #printable-invoice .font-bold,
-          #printable-invoice strong,
-          #printable-invoice b {
+          #printable-invoice .font-bold, #printable-sj .font-bold, #printable-tt .font-bold,
+          #printable-invoice strong, #printable-sj strong, #printable-tt strong,
+          #printable-invoice b, #printable-sj b, #printable-tt b {
             font-weight: 700 !important;
           }
         }
@@ -1115,7 +1114,6 @@ function StockView({ products, batches, stockByProduct }) {
   );
 }
 
-// SUPPLIERS VIEW (DENGAN NPWP VENDOR)
 function SuppliersView({ suppliers, save, notify }) {
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({ name: "", npwp: "", contact: "", address: "" });
@@ -1167,7 +1165,6 @@ function SuppliersView({ suppliers, save, notify }) {
   );
 }
 
-// CUSTOMERS VIEW (DENGAN NPWP PELANGGAN)
 function CustomersView({ customers, save, notify }) {
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({ name: "", type: CUSTOMER_TYPES[0], npwp: "", contact: "", address: "" });
@@ -1227,7 +1224,7 @@ function CustomersView({ customers, save, notify }) {
   );
 }
 
-// ---------- PURCHASES VIEW (DENGAN PILIHAN PPN) ----------
+// ---------- PURCHASES VIEW ----------
 function PurchasesView({
   products, suppliers, pos, batches, pReceipts, pInvoices, pReturns, paymentsOut,
   savePOs, saveBatches, savePReceipts, savePInvoices, savePReturns, findName, notify,
@@ -1837,7 +1834,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   return (
     <div>
       <div className="flex justify-end mb-4">
-        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Pembelian Langsung</Button>
+        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Pembelian Langsung (Tanpa PO)</Button>
       </div>
 
       {eligiblePOs.length > 0 && (
@@ -1887,7 +1884,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         </table>
       </Card>
 
-      {/* MODAL FAKTUR PEMBELIAN LANGSUNG DENGAN PPN */}
+      {/* MODAL FAKTUR PEMBELIAN LANGSUNG */}
       {modalDirect && (
         <Modal title="Buat Faktur Pembelian Langsung (Tanpa PO)" onClose={() => setModalDirect(false)} wide>
           <div className="grid grid-cols-3 gap-3 mb-4">
@@ -2174,7 +2171,7 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
   );
 }
 
-// ---------- SALES VIEW (DENGAN NPWP & DUKUNGAN PPN) ----------
+// ---------- SALES VIEW (DENGAN CETAK SURAT JALAN & TANDA TERIMA FAKTUR) ----------
 function SalesView({
   products, customers, sos, batches, deliveryNotes, invoices, returns, paymentsIn,
   saveSOs, saveBatches, saveDeliveryNotes, saveInvoices, saveReturns, allocateFEFO,
@@ -2441,9 +2438,13 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, findName, not
   );
 }
 
+// SURAT JALAN TAB (LENGKAP DENGAN FITUR CETAK SURAT JALAN & TANDA TERIMA FAKTUR)
 function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty }) {
   const [modal, setModal] = useState(null);
   const [detailDN, setDetailDN] = useState(null);
+  const [printDN, setPrintInvDN] = useState(null); // Print Surat Jalan
+  const [printTT, setPrintTT] = useState(null);    // Print Tanda Terima Faktur
+  
   const [soId, setSoId] = useState("");
   const [date, setDate] = useState(todayISO());
   const [shipQty, setShipQty] = useState({});
@@ -2597,9 +2598,15 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
                   <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{so ? findName(customers, so.customerId) : "-"}</td>
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(dn.date)}</td>
                   <td className="px-4 py-2.5"><Badge tone={dn.status === "diterima" ? "good" : "warn"}>{dn.status === "diterima" ? "Diterima" : "Dikirim"}</Badge></td>
-                  <td className="px-4 py-2.5 text-right">
-                    <button onClick={() => setDetailDN(dn)} className="text-xs mr-3" style={{ color: COLOR.accent }}>Detail</button>
-                    {dn.status === "dikirim" && <button onClick={() => openReceive(dn)} className="text-xs mr-3" style={{ color: COLOR.good }}>Konfirmasi Terima</button>}
+                  <td className="px-4 py-2.5 text-right flex items-center justify-end gap-2">
+                    <button onClick={() => setPrintInvDN(dn)} className="text-xs flex items-center gap-1 font-semibold" style={{ color: COLOR.primary }}>
+                      <Printer size={13} /> Cetak SJ
+                    </button>
+                    <button onClick={() => setPrintTT(dn)} className="text-xs flex items-center gap-1 font-semibold text-teal-800">
+                      <FileText size={13} /> Tanda Terima
+                    </button>
+                    <button onClick={() => setDetailDN(dn)} className="text-xs" style={{ color: COLOR.accent }}>Detail</button>
+                    {dn.status === "dikirim" && <button onClick={() => openReceive(dn)} className="text-xs" style={{ color: COLOR.good }}>Konfirmasi Terima</button>}
                     {canCancel && <button onClick={() => cancelSJ(dn)} className="text-xs" style={{ color: COLOR.danger }}>Batalkan SJ</button>}
                   </td>
                 </tr>
@@ -2684,6 +2691,214 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
               })}
             </tbody>
           </table>
+        </Modal>
+      )}
+
+      {/* TEMPLATE CETAK SURAT JALAN RESMI */}
+      {printDN && (
+        <Modal title={`Cetak Surat Jalan — ${printDN.noSJ}`} onClose={() => setPrintInvDN(null)} wide>
+          <div className="flex justify-end gap-2 mb-4 no-print">
+            <Button
+              onClick={async () => {
+                try {
+                  if (document.fonts) {
+                    await Promise.all([
+                      document.fonts.load("400 12px Inter"),
+                      document.fonts.load("700 12px Inter"),
+                    ]);
+                    await document.fonts.ready;
+                  }
+                } catch (e) {}
+                window.print();
+              }}
+              variant="primary"
+            >
+              <Printer size={15} /> Cetak Surat Jalan / PDF
+            </Button>
+          </div>
+
+          <div id="printable-sj" className="p-6 bg-white border rounded-xl text-xs text-gray-800">
+            <div className="flex items-start justify-between border-b-2 pb-4 mb-4" style={{ borderColor: COLOR.primary }}>
+              <div className="flex items-start gap-3">
+                {COMPANY_PROFILE.logoUrl && <img src={COMPANY_PROFILE.logoUrl} alt="Logo" className="h-12 object-contain" />}
+                <div>
+                  <div className="text-base uppercase tracking-wide font-bold" style={{ color: COLOR.primary }}>{COMPANY_PROFILE.name}</div>
+                  <p className="text-[11px] text-gray-600">{COMPANY_PROFILE.tagline}</p>
+                  <p className="text-[10px] text-gray-500 mt-1">{COMPANY_PROFILE.address}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-lg uppercase tracking-wider text-gray-700 font-bold">SURAT JALAN</div>
+                <div className="font-mono text-sm mt-1 font-bold" style={{ color: COLOR.primary }}>{printDN.noSJ}</div>
+              </div>
+            </div>
+
+            {(() => {
+              const so = (sos || []).find((s) => s.id === printDN.soId);
+              const cust = (customers || []).find((c) => c.id === so?.customerId);
+
+              return (
+                <div>
+                  <div className="grid grid-cols-2 gap-4 mb-6 bg-gray-50 p-3 rounded-lg border">
+                    <div>
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Tujuan Pengiriman:</div>
+                      <div className="text-sm text-gray-900 font-bold">{cust?.name || "Pelanggan"}</div>
+                      <div className="text-[11px] text-gray-600 mt-0.5">{cust?.address || "-"}</div>
+                      <div className="text-[11px] text-gray-600">{cust?.contact || "-"}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Informasi Dokumen</div>
+                      <div><span className="text-gray-500">Tanggal Kirim:</span> <span className="font-mono">{fmtDate(printDN.date)}</span></div>
+                      <div><span className="text-gray-500">No. Sales Order:</span> <span className="font-mono">{so?.soNumber || "-"}</span></div>
+                    </div>
+                  </div>
+
+                  <table className="w-full text-xs border-collapse mb-8">
+                    <thead>
+                      <tr className="border-b-2" style={{ background: COLOR.primarySoft, borderColor: COLOR.primary }}>
+                        <th className="py-2 px-2 text-left font-bold" style={{ color: COLOR.primary }}>No</th>
+                        <th className="py-2 px-2 text-left font-bold" style={{ color: COLOR.primary }}>Nama Barang / Alkes</th>
+                        <th className="py-2 px-2 text-center font-bold" style={{ color: COLOR.primary }}>Qty Kirim</th>
+                        <th className="py-2 px-2 text-left font-bold" style={{ color: COLOR.primary }}>Batch & Expire Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(printDN.items || []).map((it, idx) => {
+                        const p = (products || []).find((x) => x.id === it.productId);
+                        const batchInfo = (it.allocations || []).map(a => `${a.batchNo} (${a.qty} ${p?.unit || "unit"})`).join(", ");
+                        return (
+                          <tr key={idx} className="border-b">
+                            <td className="py-2.5 px-2 font-mono text-gray-500">{idx + 1}</td>
+                            <td className="py-2.5 px-2 text-gray-900 font-bold">{p?.name || "-"}</td>
+                            <td className="py-2.5 px-2 text-center font-mono font-bold">{it.qty} {p?.unit || "unit"}</td>
+                            <td className="py-2.5 px-2 font-mono text-gray-700">{batchInfo || "-"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  <div className="grid grid-cols-3 gap-4 text-center text-xs mt-12 pt-4">
+                    <div>
+                      <p className="text-gray-500 mb-12">Disiapkan Oleh (Gudang),</p>
+                      <p className="underline text-gray-900 font-bold">( Petugas Gudang )</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 mb-12">Dikirim Oleh (Driver/Kurir),</p>
+                      <p className="underline text-gray-900 font-bold">( Pengirim )</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 mb-12">Diterima Oleh (Pelanggan),</p>
+                      <p className="underline text-gray-900 font-bold">( {cust?.name || "..........................."} )</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </Modal>
+      )}
+
+      {/* TEMPLATE CETAK TANDA TERIMA FAKTUR/DOKUMEN */}
+      {printTT && (
+        <Modal title={`Tanda Terima Dokumen — ${printTT.noSJ}`} onClose={() => setPrintTT(null)} wide>
+          <div className="flex justify-end gap-2 mb-4 no-print">
+            <Button
+              onClick={async () => {
+                try {
+                  if (document.fonts) {
+                    await Promise.all([
+                      document.fonts.load("400 12px Inter"),
+                      document.fonts.load("700 12px Inter"),
+                    ]);
+                    await document.fonts.ready;
+                  }
+                } catch (e) {}
+                window.print();
+              }}
+              variant="primary"
+            >
+              <Printer size={15} /> Cetak Tanda Terima / PDF
+            </Button>
+          </div>
+
+          <div id="printable-tt" className="p-6 bg-white border rounded-xl text-xs text-gray-800">
+            <div className="flex items-start justify-between border-b-2 pb-4 mb-4" style={{ borderColor: COLOR.primary }}>
+              <div className="flex items-start gap-3">
+                {COMPANY_PROFILE.logoUrl && <img src={COMPANY_PROFILE.logoUrl} alt="Logo" className="h-12 object-contain" />}
+                <div>
+                  <div className="text-base uppercase tracking-wide font-bold" style={{ color: COLOR.primary }}>{COMPANY_PROFILE.name}</div>
+                  <p className="text-[11px] text-gray-600">{COMPANY_PROFILE.tagline}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-base uppercase tracking-wider text-gray-700 font-bold">TANDA TERIMA FAKTUR & DOKUMEN</div>
+                <div className="font-mono text-xs mt-1 font-bold text-gray-500">Ref: {printTT.noSJ}</div>
+              </div>
+            </div>
+
+            {(() => {
+              const so = (sos || []).find((s) => s.id === printTT.soId);
+              const cust = (customers || []).find((c) => c.id === so?.customerId);
+              const inv = (invoices || []).find((i) => i.soId === printTT.soId);
+              const totalAmount = inv ? invoiceTotal(inv) : soTotal(so);
+
+              return (
+                <div>
+                  <p className="mb-4">Telah diserahkan dokumen tagihan/faktur penjualan dengan rincian sebagai berikut:</p>
+                  
+                  <div className="grid grid-cols-2 gap-4 mb-6 bg-gray-50 p-3 rounded-lg border">
+                    <div>
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Kepada Yth. (Pelanggan)</div>
+                      <div className="text-sm text-gray-900 font-bold">{cust?.name || "Pelanggan"}</div>
+                      <div className="text-[11px] text-gray-600 mt-0.5">{cust?.address || "-"}</div>
+                    </div>
+                    <div className="text-right">
+                      <div><span className="text-gray-500">Tanggal Penyerahan:</span> <span className="font-mono">{fmtDate(todayISO())}</span></div>
+                      <div><span className="text-gray-500">No. Faktur:</span> <span className="font-mono font-bold text-teal-800">{inv?.noFaktur || "Sesuai SO"}</span></div>
+                      <div><span className="text-gray-500">No. Surat Jalan:</span> <span className="font-mono">{printTT.noSJ}</span></div>
+                    </div>
+                  </div>
+
+                  <table className="w-full text-xs border-collapse mb-6">
+                    <thead>
+                      <tr className="border-b-2" style={{ background: COLOR.primarySoft, borderColor: COLOR.primary }}>
+                        <th className="py-2 px-2 text-left font-bold" style={{ color: COLOR.primary }}>No</th>
+                        <th className="py-2 px-2 text-left font-bold" style={{ color: COLOR.primary }}>Jenis Dokumen yang Diserahkan</th>
+                        <th className="py-2 px-2 text-center font-bold" style={{ color: COLOR.primary }}>Jumlah Legalisir/Set</th>
+                        <th className="py-2 px-2 text-right font-bold" style={{ color: COLOR.primary }}>Nilai Tagihan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b">
+                        <td className="py-2.5 px-2 font-mono">1</td>
+                        <td className="py-2.5 px-2 font-bold">Faktur Penjualan Asli / Invoice Tagihan</td>
+                        <td className="py-2.5 px-2 text-center font-mono">1 Lembar Asli + Rangkap</td>
+                        <td className="py-2.5 px-2 text-right font-mono font-bold">{fmtIDR(totalAmount)}</td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2.5 px-2 font-mono">2</td>
+                        <td className="py-2.5 px-2 font-bold">Surat Jalan / Bukti Penerimaan Barang Diterima</td>
+                        <td className="py-2.5 px-2 text-center font-mono">1 Lembar</td>
+                        <td className="py-2.5 px-2 text-right font-mono text-gray-400">-</td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  <div className="grid grid-cols-2 gap-8 text-center text-xs mt-12 pt-4">
+                    <div>
+                      <p className="text-gray-500 mb-12">Yang Menyerahkan (PT WPM),</p>
+                      <p className="underline text-gray-900 font-bold">( Kurir / Admin Finance )</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 mb-12">Diterima Oleh (Finance/AP Pelanggan),</p>
+                      <p className="underline text-gray-900 font-bold">( {cust?.name || "..........................."} )</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
         </Modal>
       )}
     </div>
@@ -2813,7 +3028,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   return (
     <div>
       <div className="flex justify-end mb-4 no-print">
-        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Penjualan Langsung</Button>
+        <Button onClick={openDirectModal}><Plus size={15} /> Buat Faktur Penjualan Langsung (Tanpa SO)</Button>
       </div>
 
       {eligibleSOs.length > 0 && (
@@ -2867,7 +3082,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         </table>
       </Card>
 
-      {/* MODAL FAKTUR PENJUALAN LANGSUNG DENGAN OPSI PPN */}
+      {/* MODAL FAKTUR PENJUALAN LANGSUNG */}
       {modalDirect && (
         <Modal title="Buat Faktur Penjualan Langsung (Tanpa SO)" onClose={() => setModalDirect(false)} wide>
           <div className="grid grid-cols-3 gap-3 mb-4">
@@ -2971,7 +3186,6 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         </Modal>
       )}
 
-      {/* TEMPLATE INVOICE DENGAN NPWP & PPN UNTUK CETAK */}
       {printInv && (
         <Modal title={`Faktur Penjualan — ${printInv.noFaktur}`} onClose={() => setPrintInv(null)} wide>
           <div className="flex justify-end gap-2 mb-4 no-print">
