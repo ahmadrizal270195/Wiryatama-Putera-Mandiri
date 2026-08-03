@@ -11,10 +11,10 @@ import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebas
 import { auth } from "./firebase";
 
 // ---------- CONSTANTS & COMPANY PROFILE CONFIG ----------
-const CATEGORIES = ["Obat Generik", "Obat Paten", "Alat Kesehatan", "Dental Material", "Consumables"];
+const CATEGORIES = ["Obat Generik", "Obat Paten", "Alat Kesehatan", "Vitamin & Suplemen", "Consumables"];
 const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Toko Obat", "Distributor Lain"];
-const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // Auto-Logout setelah 60 Menit Tidak Aktif
-const ACTIVE_TAB_KEY = "erp-last-active-tab"; // Penyimpanan tab terakhir
+const IDLE_TIMEOUT_MS = 60 * 60 * 1000; 
+const ACTIVE_TAB_KEY = "erp-last-active-tab"; 
 
 const COMPANY_PROFILE = {
   name: "PT WIRYATAMA PUTERA MANDIRI",
@@ -22,6 +22,7 @@ const COMPANY_PROFILE = {
   address: "Ruko New Aruna Residence, Jl. Serua Raya No.9, Bojongsari, Depok, Jawa Barat 16517",
   contact: "Email: finance@wiryatamaputera.co.id | Telp: (021) 7437964 / WA: 0817-773-791",
   whatsapp: "62817773791",
+  npwp: "01.234.567.8-012.000", // NPWP Perusahaan
   logoUrl: "https://i.imgur.com/EfI1R4p.jpeg", 
   bankDetails: {
     bankName: "Bank Central Asia (BCA)",
@@ -86,6 +87,20 @@ function isThisMonth(dateStr) {
   const d = new Date(dateStr);
   const now = new Date();
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+}
+
+// HELPER KALKULASI PPN
+function calcTax(subtotal, taxType) {
+  if (taxType === "ppn11") {
+    const ppn = subtotal * 0.11;
+    return { dpp: subtotal, ppn, total: subtotal + ppn };
+  }
+  if (taxType === "include11") {
+    const dpp = subtotal / 1.11;
+    const ppn = subtotal - dpp;
+    return { dpp, ppn, total: subtotal };
+  }
+  return { dpp: subtotal, ppn: 0, total: subtotal };
 }
 
 // ---------- MAIN APP ROUTER ----------
@@ -501,7 +516,6 @@ function ExpiryRibbon({ productBatches }) {
 function PharmaERP({ userEmail, onLogout }) {
   const [loading, setLoading] = useState(true);
   
-  // MENGAMBIL TAB TERAKHIR DARI LOCALSTORAGE AGAR TIDAK KEMBALI KE DASHBOARD SAAT REFRESH
   const [tab, setTabState] = useState(() => {
     return localStorage.getItem(ACTIVE_TAB_KEY) || "dashboard";
   });
@@ -533,7 +547,6 @@ function PharmaERP({ userEmail, onLogout }) {
 
   const idleTimerRef = useRef(null);
 
-  // IDLE TIMEOUT 60 MENIT
   useEffect(() => {
     const resetIdleTimer = () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
@@ -633,14 +646,19 @@ function PharmaERP({ userEmail, onLogout }) {
     return item ? item.name : "-";
   }
 
+  function invoiceRawTotal(inv) { return (inv?.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0); }
+  function invoiceTotal(inv) { return calcTax(invoiceRawTotal(inv), inv?.taxType || "none").total; }
+
+  function pInvoiceRawTotal(inv) { return (inv?.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0); }
+  function pInvoiceTotal(inv) { return calcTax(pInvoiceRawTotal(inv), inv?.taxType || "none").total; }
+
   function soTotal(so) { return (so?.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0); }
   function poTotal(po) { return (po?.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0); }
-  function pInvoiceTotal(inv) { return (inv?.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0); }
+  
   function pInvoicePaidAmount(invId) { return (paymentsOut || []).filter((p) => p.pInvoiceId === invId).reduce((s, p) => s + p.amount, 0); }
   function pInvoiceReturnedAmount(invId) { return (pReturns || []).filter((r) => r.pInvoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
   function pInvoiceSisa(inv) { return Math.max(0, pInvoiceTotal(inv) - pInvoiceReturnedAmount(inv.id) - pInvoicePaidAmount(inv.id)); }
 
-  function invoiceTotal(inv) { return (inv?.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0); }
   function soDPAmount(soId) { return (paymentsIn || []).filter((p) => p.soId === soId && p.type === "DP").reduce((s, p) => s + p.amount, 0); }
   function invoicePaidAmount(invId) { return (paymentsIn || []).filter((p) => p.invoiceId === invId).reduce((s, p) => s + p.amount, 0); }
   function invoiceReturnedAmount(invId) { return (returns || []).filter((r) => r.invoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
@@ -862,7 +880,7 @@ function PharmaERP({ userEmail, onLogout }) {
   );
 }
 
-// ---------- Sub-komponen Dashboard, Products, Stock, Purchases ----------
+// ---------- Sub-komponen Dashboard & Master ----------
 function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, suppliers, customers, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth }) {
   const recentPOs = [...(pos || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
   const recentSOs = [...(sos || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
@@ -1097,10 +1115,11 @@ function StockView({ products, batches, stockByProduct }) {
   );
 }
 
+// SUPPLIERS VIEW (DENGAN NPWP VENDOR)
 function SuppliersView({ suppliers, save, notify }) {
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({ name: "", contact: "", address: "" });
-  function openNew() { setForm({ name: "", contact: "", address: "" }); setModal("new"); }
+  const [form, setForm] = useState({ name: "", npwp: "", contact: "", address: "" });
+  function openNew() { setForm({ name: "", npwp: "", contact: "", address: "" }); setModal("new"); }
   function openEdit(s) { setForm(s); setModal(s.id); }
   async function submit() {
     if (!form.name.trim()) return notify("Nama supplier wajib diisi", "danger");
@@ -1122,6 +1141,7 @@ function SuppliersView({ suppliers, save, notify }) {
             <div className="flex items-start justify-between">
               <div>
                 <div className="font-medium text-sm" style={{ color: COLOR.ink }}>{s.name}</div>
+                {s.npwp && <div className="text-[11px] font-mono text-teal-700 font-medium mt-0.5">NPWP: {s.npwp}</div>}
                 <div className="text-xs mt-1" style={{ color: COLOR.inkSoft }}>{s.contact}</div>
                 <div className="text-xs" style={{ color: COLOR.inkSoft }}>{s.address}</div>
               </div>
@@ -1137,6 +1157,7 @@ function SuppliersView({ suppliers, save, notify }) {
       {modal && (
         <Modal title={modal === "new" ? "Tambah Supplier" : "Edit Supplier"} onClose={() => setModal(null)}>
           <Field label="Nama supplier / PBF"><TextInput value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <Field label="NPWP Vendor (opsional)"><TextInput placeholder="Contoh: 01.234.567.8-012.000" value={form.npwp || ""} onChange={(e) => setForm({ ...form, npwp: e.target.value })} /></Field>
           <Field label="Kontak (telp/email)"><TextInput value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} /></Field>
           <Field label="Alamat"><TextInput value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
           <Button onClick={submit} className="w-full justify-center mt-2">Simpan</Button>
@@ -1146,10 +1167,11 @@ function SuppliersView({ suppliers, save, notify }) {
   );
 }
 
+// CUSTOMERS VIEW (DENGAN NPWP PELANGGAN)
 function CustomersView({ customers, save, notify }) {
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({ name: "", type: CUSTOMER_TYPES[0], contact: "", address: "" });
-  function openNew() { setForm({ name: "", type: CUSTOMER_TYPES[0], contact: "", address: "" }); setModal("new"); }
+  const [form, setForm] = useState({ name: "", type: CUSTOMER_TYPES[0], npwp: "", contact: "", address: "" });
+  function openNew() { setForm({ name: "", type: CUSTOMER_TYPES[0], npwp: "", contact: "", address: "" }); setModal("new"); }
   function openEdit(c) { setForm(c); setModal(c.id); }
   async function submit() {
     if (!form.name.trim()) return notify("Nama pelanggan wajib diisi", "danger");
@@ -1171,7 +1193,10 @@ function CustomersView({ customers, save, notify }) {
             <div className="flex items-start justify-between">
               <div>
                 <div className="font-medium text-sm" style={{ color: COLOR.ink }}>{c.name}</div>
-                <Badge tone="neutral">{c.type}</Badge>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <Badge tone="neutral">{c.type}</Badge>
+                  {c.npwp && <span className="text-[11px] font-mono text-teal-700 font-medium">NPWP: {c.npwp}</span>}
+                </div>
                 <div className="text-xs mt-1" style={{ color: COLOR.inkSoft }}>{c.contact}</div>
                 <div className="text-xs" style={{ color: COLOR.inkSoft }}>{c.address}</div>
               </div>
@@ -1192,6 +1217,7 @@ function CustomersView({ customers, save, notify }) {
               {CUSTOMER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </Select>
           </Field>
+          <Field label="NPWP Pelanggan (opsional)"><TextInput placeholder="Contoh: 01.234.567.8-012.000" value={form.npwp || ""} onChange={(e) => setForm({ ...form, npwp: e.target.value })} /></Field>
           <Field label="Kontak (telp/email)"><TextInput value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} /></Field>
           <Field label="Alamat"><TextInput value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
           <Button onClick={submit} className="w-full justify-center mt-2">Simpan</Button>
@@ -1201,6 +1227,7 @@ function CustomersView({ customers, save, notify }) {
   );
 }
 
+// ---------- PURCHASES VIEW (DENGAN PILIHAN PPN) ----------
 function PurchasesView({
   products, suppliers, pos, batches, pReceipts, pInvoices, pReturns, paymentsOut,
   savePOs, saveBatches, savePReceipts, savePInvoices, savePReturns, findName, notify,
@@ -1687,6 +1714,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   const [modalDirect, setModalDirect] = useState(false);
   const [supplierId, setSupplierId] = useState("");
   const [date, setDate] = useState(todayISO());
+  const [taxType, setTaxType] = useState("none");
   const [items, setItems] = useState([]);
   const [searchProd, setSearchProd] = useState("");
 
@@ -1695,6 +1723,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   function openDirectModal() {
     setSupplierId((suppliers || [])[0]?.id || "");
     setDate(todayISO());
+    setTaxType("none");
     setItems([]);
     setSearchProd("");
     setModalDirect(true);
@@ -1755,7 +1784,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
     const noFaktur = `VINV-${new Date(date).getFullYear()}-${String((pInvoices || []).length + 1).padStart(4, "0")}`;
     await saveBatches([...(batches || []), ...newBatches]);
-    await savePInvoices([...(pInvoices || []), { id: uid(), noFaktur, poId: null, supplierId, date, items: invItems, isDirect: true }]);
+    await savePInvoices([...(pInvoices || []), { id: uid(), noFaktur, poId: null, supplierId, date, taxType, items: invItems, isDirect: true }]);
     notify(`${noFaktur} berhasil dibuat langsung & stok bertambah`);
     setModalDirect(false);
   }
@@ -1773,7 +1802,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
     if (items.length === 0) return notify("Tidak ada barang yang diterima untuk difakturkan", "danger");
     const noFaktur = `VINV-${new Date().getFullYear()}-${String((pInvoices || []).length + 1).padStart(4, "0")}`;
-    await savePInvoices([...(pInvoices || []), { id: uid(), noFaktur, poId: po.id, supplierId: po.supplierId, date: todayISO(), items }]);
+    await savePInvoices([...(pInvoices || []), { id: uid(), noFaktur, poId: po.id, supplierId: po.supplierId, date: todayISO(), taxType: "none", items }]);
     notify(`${noFaktur} berhasil diterbitkan`);
   }
 
@@ -1802,6 +1831,8 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   }
 
   const filteredProds = (products || []).filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
+  const directRawSubtotal = items.reduce((s, it) => s + it.qty * it.unitPrice, 0);
+  const directTax = calcTax(directRawSubtotal, taxType);
 
   return (
     <div>
@@ -1856,10 +1887,10 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         </table>
       </Card>
 
-      {/* MODAL FAKTUR PEMBELIAN LANGSUNG */}
+      {/* MODAL FAKTUR PEMBELIAN LANGSUNG DENGAN PPN */}
       {modalDirect && (
         <Modal title="Buat Faktur Pembelian Langsung (Tanpa PO)" onClose={() => setModalDirect(false)} wide>
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-3 gap-3 mb-4">
             <Field label="Supplier / PBF">
               <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
                 {(suppliers || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -1867,6 +1898,13 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
             </Field>
             <Field label="Tanggal Faktur">
               <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </Field>
+            <Field label="Opsi PPN (Pajak)">
+              <Select value={taxType} onChange={(e) => setTaxType(e.target.value)}>
+                <option value="none">Non-PPN (Tanpa Pajak)</option>
+                <option value="ppn11">PPN 11% (Tambah Pajak)</option>
+                <option value="include11">PPN 11% (Termasuk Pajak)</option>
+              </Select>
             </Field>
           </div>
 
@@ -1925,8 +1963,12 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
             {items.length === 0 && <div className="text-xs py-6 text-center rounded-lg border border-dashed" style={{ color: COLOR.inkSoft, borderColor: COLOR.border }}>Belum ada item terpilih.</div>}
           </div>
 
-          <div className="flex justify-between items-center mt-4 pt-3" style={{ borderTop: `1px solid ${COLOR.border}` }}>
-            <div className="font-mono font-bold text-base" style={{ color: COLOR.ink }}>Total Tagihan: {fmtIDR(items.reduce((s, it) => s + it.qty * it.unitPrice, 0))}</div>
+          <div className="flex justify-between items-end mt-4 pt-3 border-t" style={{ borderColor: COLOR.border }}>
+            <div className="text-xs flex flex-col gap-0.5">
+              <div>DPP: <span className="font-mono font-semibold">{fmtIDR(directTax.dpp)}</span></div>
+              {taxType !== "none" && <div>PPN (11%): <span className="font-mono font-semibold text-teal-700">{fmtIDR(directTax.ppn)}</span></div>}
+              <div className="font-bold text-sm text-gray-900 mt-1">Total Tagihan: <span className="font-mono">{fmtIDR(directTax.total)}</span></div>
+            </div>
             <Button onClick={submitDirectPInvoice}>Simpan Faktur Pembelian & Tambah Stok</Button>
           </div>
         </Modal>
@@ -2132,6 +2174,7 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
   );
 }
 
+// ---------- SALES VIEW (DENGAN NPWP & DUKUNGAN PPN) ----------
 function SalesView({
   products, customers, sos, batches, deliveryNotes, invoices, returns, paymentsIn,
   saveSOs, saveBatches, saveDeliveryNotes, saveInvoices, saveReturns, allocateFEFO,
@@ -2653,6 +2696,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   const [modalDirect, setModalDirect] = useState(false);
   const [customerId, setCustomerId] = useState("");
   const [date, setDate] = useState(todayISO());
+  const [taxType, setTaxType] = useState("none");
   const [items, setItems] = useState([]);
   const [searchProd, setSearchProd] = useState("");
 
@@ -2661,6 +2705,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   function openDirectModal() {
     setCustomerId((customers || [])[0]?.id || "");
     setDate(todayISO());
+    setTaxType("none");
     setItems([]);
     setSearchProd("");
     setModalDirect(true);
@@ -2716,7 +2761,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
 
     const noFaktur = `INV-${new Date(date).getFullYear()}-${String((invoices || []).length + 1).padStart(4, "0")}`;
     await saveBatches(working);
-    await saveInvoices([...(invoices || []), { id: uid(), noFaktur, soId: null, customerId, date, items: itemsWithAlloc, isDirect: true }]);
+    await saveInvoices([...(invoices || []), { id: uid(), noFaktur, soId: null, customerId, date, taxType, items: itemsWithAlloc, isDirect: true }]);
     notify(`${noFaktur} dibuat langsung & stok FEFO terpotong`);
     setModalDirect(false);
   }
@@ -2733,7 +2778,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       .filter((it) => it.qty > 0);
     if (items.length === 0) return notify("Tidak ada barang yang diterima untuk difakturkan", "danger");
     const noFaktur = `INV-${new Date().getFullYear()}-${String((invoices || []).length + 1).padStart(4, "0")}`;
-    await saveInvoices([...(invoices || []), { id: uid(), noFaktur, soId: so.id, date: todayISO(), items }]);
+    await saveInvoices([...(invoices || []), { id: uid(), noFaktur, soId: so.id, date: todayISO(), taxType: "none", items }]);
     notify(`${noFaktur} dibuat`);
   }
 
@@ -2762,6 +2807,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   }
 
   const filteredProds = (products || []).filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
+  const directRawSubtotal = items.reduce((s, it) => s + it.qty * it.unitPrice, 0);
+  const directTax = calcTax(directRawSubtotal, taxType);
 
   return (
     <div>
@@ -2820,10 +2867,10 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         </table>
       </Card>
 
-      {/* MODAL FAKTUR PENJUALAN LANGSUNG */}
+      {/* MODAL FAKTUR PENJUALAN LANGSUNG DENGAN OPSI PPN */}
       {modalDirect && (
         <Modal title="Buat Faktur Penjualan Langsung (Tanpa SO)" onClose={() => setModalDirect(false)} wide>
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-3 gap-3 mb-4">
             <Field label="Pelanggan">
               <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
                 {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -2831,6 +2878,13 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
             </Field>
             <Field label="Tanggal Faktur">
               <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </Field>
+            <Field label="Opsi PPN (Pajak)">
+              <Select value={taxType} onChange={(e) => setTaxType(e.target.value)}>
+                <option value="none">Non-PPN (Tanpa Pajak)</option>
+                <option value="ppn11">PPN 11% (Tambah Pajak)</option>
+                <option value="include11">PPN 11% (Termasuk Pajak)</option>
+              </Select>
             </Field>
           </div>
 
@@ -2885,8 +2939,12 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
             {items.length === 0 && <div className="text-xs py-6 text-center rounded-lg border border-dashed" style={{ color: COLOR.inkSoft, borderColor: COLOR.border }}>Belum ada item terpilih.</div>}
           </div>
 
-          <div className="flex justify-between items-center mt-4 pt-3" style={{ borderTop: `1px solid ${COLOR.border}` }}>
-            <div className="font-mono font-bold text-base" style={{ color: COLOR.ink }}>Total Faktur: {fmtIDR(items.reduce((s, it) => s + it.qty * it.unitPrice, 0))}</div>
+          <div className="flex justify-between items-end mt-4 pt-3 border-t" style={{ borderColor: COLOR.border }}>
+            <div className="text-xs flex flex-col gap-0.5">
+              <div>DPP: <span className="font-mono font-semibold">{fmtIDR(directTax.dpp)}</span></div>
+              {taxType !== "none" && <div>PPN (11%): <span className="font-mono font-semibold text-teal-700">{fmtIDR(directTax.ppn)}</span></div>}
+              <div className="font-bold text-sm text-gray-900 mt-1">Total Faktur: <span className="font-mono">{fmtIDR(directTax.total)}</span></div>
+            </div>
             <Button onClick={submitDirectInvoice}>Simpan Faktur & Potong Stok FEFO</Button>
           </div>
         </Modal>
@@ -2913,6 +2971,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         </Modal>
       )}
 
+      {/* TEMPLATE INVOICE DENGAN NPWP & PPN UNTUK CETAK */}
       {printInv && (
         <Modal title={`Faktur Penjualan — ${printInv.noFaktur}`} onClose={() => setPrintInv(null)} wide>
           <div className="flex justify-end gap-2 mb-4 no-print">
@@ -2949,6 +3008,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                   <p className="text-[11px] text-gray-600">{COMPANY_PROFILE.tagline}</p>
                   <p className="text-[10px] text-gray-500 mt-1">{COMPANY_PROFILE.address}</p>
                   <p className="text-[10px] text-gray-500">{COMPANY_PROFILE.contact}</p>
+                  {COMPANY_PROFILE.npwp && <p className="text-[10px] font-mono text-gray-700 font-bold mt-0.5">NPWP: {COMPANY_PROFILE.npwp}</p>}
                 </div>
               </div>
               <div className="text-right">
@@ -2963,8 +3023,10 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
               const dp = printInv.soId ? soDPAmount(printInv.soId) : 0;
               const paid = invoicePaidAmount(printInv.id);
               const ret = invoiceReturnedAmount(printInv.id);
-              const subtotal = invoiceTotal(printInv);
-              const sisa = Math.max(0, subtotal - ret - dp - paid);
+              
+              const rawSub = (printInv.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0);
+              const taxInfo = calcTax(rawSub, printInv.taxType || "none");
+              const sisa = Math.max(0, taxInfo.total - ret - dp - paid);
 
               return (
                 <div>
@@ -2972,6 +3034,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                     <div>
                       <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Kepada Yth.</div>
                       <div className="text-sm text-gray-900 font-bold">{cust?.name || "Pelanggan"}</div>
+                      {cust?.npwp && <div className="text-[11px] font-mono text-teal-800 font-bold mt-0.5">NPWP: {cust.npwp}</div>}
                       <div className="text-[11px] text-gray-600 mt-0.5">{cust?.address || "-"}</div>
                       <div className="text-[11px] text-gray-600">{cust?.contact || "-"}</div>
                     </div>
@@ -3021,9 +3084,15 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
 
                     <div className="w-5/12 text-xs flex flex-col gap-1.5">
                       <div className="flex justify-between py-1 border-b">
-                        <span className="text-gray-600">Subtotal Penjualan</span>
-                        <span className="font-mono font-bold">{fmtIDR(subtotal)}</span>
+                        <span className="text-gray-600">DPP (Dasar Pengenaan Pajak)</span>
+                        <span className="font-mono font-bold">{fmtIDR(taxInfo.dpp)}</span>
                       </div>
+                      {taxInfo.ppn > 0 && (
+                        <div className="flex justify-between py-1 border-b text-teal-800">
+                          <span>PPN (11%)</span>
+                          <span className="font-mono font-bold">{fmtIDR(taxInfo.ppn)}</span>
+                        </div>
+                      )}
                       {dp > 0 && (
                         <div className="flex justify-between py-1 border-b text-emerald-700">
                           <span>Potongan Uang Muka (DP)</span>
