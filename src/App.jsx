@@ -2379,39 +2379,44 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
   }
 
   async function cancelReturn(ret) {
-    let working = (batches || []).map((b) => ({ ...b }));
+  let working = (batches || []).map((b) => ({ ...b }));
+  const blockedItems = [];
 
-    const inv = (pInvoices || []).find((x) => x.id === ret.pInvoiceId);
-    if (inv && inv.isDirect) {
-      (ret.items || []).forEach((it) => {
-        const itemInv = (inv.items || []).find((x) => x.productId === it.productId);
-        if (itemInv) {
-          const b = working.find((x) => x.id === itemInv.batchId || (x.batchNo === itemInv.batchNo && x.productId === it.productId));
-          if (b) b.qty += it.qty;
-        }
-      });
-    } else {
-      const prs = (pReceipts || []).filter((pr) => pr.poId === ret.poId);
-      (ret.items || []).forEach((it) => {
-        let remainingToAdd = it.qty;
-        prs.forEach((pr) => {
-          (pr.items || []).forEach((rit) => {
-            if (rit.productId === it.productId && remainingToAdd > 0) {
-              const b = working.find((x) => x.id === rit.batchId || (x.batchNo === rit.batchNo && x.productId === it.productId));
-              if (b) {
-                b.qty += remainingToAdd;
-                remainingToAdd = 0;
-              }
-            }
-          });
-        });
-      });
-    }
+  // 1. Validasi: Cek apakah stok hasil retur masih utuh di gudang
+  (ret.items || []).forEach((it) => {
+    const p = (products || []).find((x) => x.id === it.productId);
+    (it.restockedBatches || []).forEach((r) => {
+      const b = working.find((x) => x.id === r.batchId);
+      // Jika batch tidak ditemukan ATAU sisa stok di batch kurang dari qty yang pernah dikembalikan
+      if (!b || b.qty < r.qty) {
+        const batchName = b ? b.batchNo : (r.batchNo || "Unknown");
+        blockedItems.push(`${p?.name || "Produk"} (Batch: ${batchName})`);
+      }
+    });
+  });
 
-    await saveBatches(working);
-    await savePReturns((pReturns || []).filter((r) => r.id !== ret.id));
-    notify(`${ret.noRetur} berhasil dibatalkan`);
+  // 2. Jika ada stok yang sudah terpakai transaksi lain, TOLAK pembatalan
+  if (blockedItems.length > 0) {
+    return notify(
+      `Gagal membatalkan retur: Stok barang [${blockedItems.join(", ")}] sudah terpakai untuk transaksi penjualan lain. Batalkan transaksi penjualan terkait terlebih dahulu.`,
+      "danger"
+    );
   }
+
+  // 3. Jika stok masih aman & utuh, potong kembali stok dari gudang
+  (ret.items || []).forEach((it) => {
+    (it.restockedBatches || []).forEach((r) => {
+      const b = working.find((x) => x.id === r.batchId);
+      if (b) {
+        b.qty -= r.qty;
+      }
+    });
+  });
+
+  await saveBatches(working);
+  await saveReturns((returns || []).filter((r) => r.id !== ret.id));
+  notify(`${ret.noRetur} berhasil dibatalkan & stok ditarik kembali dari gudang`);
+}
 
   return (
     <div>
