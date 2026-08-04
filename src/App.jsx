@@ -1880,19 +1880,28 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
     }
 
     let working = (batches || []).map((b) => ({ ...b }));
-    let shortage = false;
+    let isUsedOrSold = false;
 
+    // Validasi apakah barang dari batch ini sudah terjual / berkurang dari qty penerimaan
     (pr.items || []).forEach((it) => {
       const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
-      if (b) {
-        if (b.qty < it.qty) shortage = true;
-        b.qty = Math.max(0, b.qty - it.qty);
+      if (!b || b.qty < it.qty) {
+        isUsedOrSold = true;
       }
     });
 
-    if (shortage) {
-      notify("Peringatan: Sebagian barang dari batch ini sudah terpakai transaksi lain. Stok disesuaikan ke 0.", "warn");
+    // BLOKIR PEMBATALAN jika stok sudah terpakai/terjual
+    if (isUsedOrSold) {
+      return notify("Gagal membatalkan: Barang dari penerimaan (BPB) ini sudah ada yang terjual/digunakan!", "danger");
     }
+
+    // Jika stok masih utuh, kurangi stok dan batalkan BPB
+    (pr.items || []).forEach((it) => {
+      const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
+      if (b) {
+        b.qty -= it.qty;
+      }
+    });
 
     await saveBatches(working);
     await savePReceipts((pReceipts || []).filter((x) => x.id !== pr.id));
@@ -2122,12 +2131,29 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
     if (inv.isDirect) {
       let working = (batches || []).map((b) => ({ ...b }));
+      let isUsedOrSold = false;
+
+      // Validasi apakah stok barang sudah terjual
+      (inv.items || []).forEach((it) => {
+        const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
+        if (!b || b.qty < it.qty) {
+          isUsedOrSold = true;
+        }
+      });
+
+      // BLOKIR PEMBATALAN jika barang sudah terjual
+      if (isUsedOrSold) {
+        return notify("Gagal membatalkan: Barang dari Faktur Pembelian ini sudah ada yang terjual/terpakai!", "danger");
+      }
+
+      // Kurangi stok jika masih utuh
       (inv.items || []).forEach((it) => {
         const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
         if (b) {
-          b.qty = Math.max(0, b.qty - it.qty);
+          b.qty -= it.qty;
         }
       });
+
       const finalBatches = working.filter((b) => b.qty > 0);
       await saveBatches(finalBatches);
     }
