@@ -674,9 +674,11 @@ function PharmaERP({ userEmail, onLogout }) {
   function batchCost(batchId) { const b = (batches || []).find((x) => x.id === batchId); return b ? b.costPrice : 0; }
   
   function invoiceCOGS(inv) {
-    let initialCOGS = 0;
-    if (inv.isDirect) {
-      initialCOGS = (inv.items || []).reduce((s, it) => 
+  let initialCOGS = 0;
+
+  // 1. Hitung Modal (HPP) Awal Barang yang Keluar
+  if (inv.isDirect) {
+    initialCOGS = (inv.items || []).reduce((s, it) => 
       s + (it.allocations || []).reduce((s2, a) => s2 + a.qty * batchCost(a.batchId), 0)
     , 0);
   } else {
@@ -691,9 +693,16 @@ function PharmaERP({ userEmail, onLogout }) {
   const relatedReturns = (returns || []).filter((r) => r.invoiceId === inv.id || (inv.soId && r.soId === inv.soId));
   const returnedCOGS = relatedReturns.reduce((s, r) => {
     return s + (r.items || []).reduce((s2, it) => {
-      // Hitung nilai modal asli berdasarkan batch yang di-restock
-      const costFromBatches = (it.restockedBatches || []).reduce((s3, rb) => s3 + (rb.qty * batchCost(rb.batchId)), 0);
-      return s2 + costFromBatches;
+      // Hitung modal berdasarkan restockedBatches
+      let cost = (it.restockedBatches || []).reduce((s3, rb) => s3 + (rb.qty * batchCost(rb.batchId)), 0);
+      
+      // FALLBACK SAFEGUARD:
+      // Jika restockedBatches tidak ada / tidak punya batchId, gunakan estimasi HPP dari unitPrice barang (asumsi margin umum ~30%)
+      if (cost === 0 && it.qty > 0) {
+        cost = it.qty * (it.unitPrice * 0.7);
+      }
+
+      return s2 + cost;
     }, 0);
   }, 0);
 
@@ -711,13 +720,14 @@ function PharmaERP({ userEmail, onLogout }) {
   }, [paymentsOut, expenses]);
   
   const grossProfitMonth = useMemo(() => {
-    return (invoices || []).filter((inv) => isThisMonth(inv.date)).reduce((s, inv) => {
-      const dppSales = invoiceRawTotal(inv); 
-      const cogs = invoiceCOGS(inv);        
-      const retur = invoiceReturnedAmount(inv.id);
-      return s + (dppSales - cogs - retur);
-    }, 0);
-  }, [invoices, batches, deliveryNotes, returns]);
+  return (invoices || []).filter((inv) => isThisMonth(inv.date)).reduce((s, inv) => {
+    const dppSales = invoiceRawTotal(inv);
+    const returAmount = invoiceReturnedAmount(inv.id);
+    const cogs = invoiceCOGS(inv);
+    
+    return s + ((dppSales - returAmount) - cogs);
+  }, 0);
+}, [invoices, batches, deliveryNotes, returns]);
 
   const expensesMonth = useMemo(() => (expenses || []).filter((e) => isThisMonth(e.date)).reduce((s, e) => s + e.amount, 0), [expenses]);
 
