@@ -673,11 +673,33 @@ function PharmaERP({ userEmail, onLogout }) {
   function invoiceReturnedAmount(invId) { return (returns || []).filter((r) => r.invoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
   function batchCost(batchId) { const b = (batches || []).find((x) => x.id === batchId); return b ? b.costPrice : 0; }
   
+  // PERBAIKAN FUNGSI HPP (COGS): Memperhitungkan stok yang dikembalikan dari retur
   function invoiceCOGS(inv) {
+    let cogs = 0;
     if (inv.isDirect) {
-      return (inv.items || []).reduce((s, it) => s + (it.allocations || []).reduce((s2, a) => s2 + a.qty * batchCost(a.batchId), 0), 0);
+      cogs = (inv.items || []).reduce((s, it) => s + (it.allocations || []).reduce((s2, a) => s2 + a.qty * batchCost(a.batchId), 0), 0);
+    } else {
+      cogs = (deliveryNotes || []).filter((dn) => dn.soId === inv.soId && dn.status === "diterima")
+        .reduce((s, dn) => s + (dn.items || []).reduce((s2, it) => s2 + (it.allocations || []).reduce((s3, a) => s3 + a.qty * batchCost(a.batchId), 0), 0), 0);
     }
-    return (deliveryNotes || []).filter((dn) => dn.soId === inv.soId && dn.status === "diterima").reduce((s, dn) => s + (dn.items || []).reduce((s2, it) => s2 + (it.allocations || []).reduce((s3, a) => s3 + a.qty * batchCost(a.batchId), 0), 0), 0);
+
+    const returList = (returns || []).filter((r) => r.invoiceId === inv.id || (inv.soId && r.soId === inv.soId));
+    let returnedCOGS = 0;
+    
+    returList.forEach((r) => {
+      (r.items || []).forEach((it) => {
+        if (it.restockedBatches && it.restockedBatches.length > 0) {
+          it.restockedBatches.forEach((rb) => {
+            returnedCOGS += rb.qty * batchCost(rb.batchId);
+          });
+        } else {
+          const avgCost = (batches || []).filter(b => b.productId === it.productId)[0]?.costPrice || 0;
+          returnedCOGS += it.qty * avgCost;
+        }
+      });
+    });
+
+    return Math.max(0, cogs - returnedCOGS);
   }
 
   function invoiceSisa(inv) {
@@ -693,14 +715,18 @@ function PharmaERP({ userEmail, onLogout }) {
     return out + exp;
   }, [paymentsOut, expenses]);
   
+  // PERBAIKAN RUMUS LABA KOTOR BERSIH (Net Sales - Net COGS)
   const grossProfitMonth = useMemo(() => {
     return (invoices || []).filter((inv) => isThisMonth(inv.date)).reduce((s, inv) => {
-      const dppSales = invoiceRawTotal(inv); 
-      const cogs = invoiceCOGS(inv);        
-      const retur = invoiceReturnedAmount(inv.id);
-      return s + (dppSales - cogs - retur);
+      const dppSales = invoiceRawTotal(inv);             
+      const returAmount = invoiceReturnedAmount(inv.id); 
+      const netSales = dppSales - returAmount;            
+      
+      const netCOGS = invoiceCOGS(inv);                   
+      
+      return s + (netSales - netCOGS);                    
     }, 0);
-  }, [invoices, batches, deliveryNotes, returns]);
+  }, [invoices, batches, deliveryNotes, returns, products]);
 
   const expensesMonth = useMemo(() => (expenses || []).filter((e) => isThisMonth(e.date)).reduce((s, e) => s + e.amount, 0), [expenses]);
 
@@ -859,7 +885,7 @@ function PharmaERP({ userEmail, onLogout }) {
             <PurchasesView
               products={products} suppliers={suppliers} pos={pos} batches={batches}
               pReceipts={pReceipts} pInvoices={pInvoices} pReturns={pReturns} paymentsOut={paymentsOut}
-              deliveryNotes={deliveryNotes} invoices={invoices} // <-- DITAMBAHKAN DI SINI
+              deliveryNotes={deliveryNotes} invoices={invoices}
               savePOs={persist.pos} saveBatches={persist.batches} savePReceipts={persist.pReceipts}
               savePInvoices={persist.pInvoices} savePReturns={persist.pReturns} findName={findName} notify={notify}
               poTotal={poTotal} pInvoiceTotal={pInvoiceTotal} pInvoicePaidAmount={pInvoicePaidAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount} pInvoiceSisa={pInvoiceSisa}
