@@ -518,6 +518,7 @@ function ExpiryRibbon({ productBatches }) {
 }
 
 // ---------- 3. INTERNAL PHARMA ERP SYSTEM ----------
+// ---------- 3. INTERNAL PHARMA ERP SYSTEM ----------
 function PharmaERP({ userEmail, onLogout }) {
   const [loading, setLoading] = useState(true);
   
@@ -655,14 +656,14 @@ function PharmaERP({ userEmail, onLogout }) {
     return item ? item.name : "-";
   }
 
-  function invoiceRawTotal(inv) { return (inv?.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0); }
+  function invoiceRawTotal(inv) { return (inv?.items || []).reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unitPrice) || 0), 0); }
   function invoiceTotal(inv) { return calcTax(invoiceRawTotal(inv), inv?.taxType || "none").total; }
 
-  function pInvoiceRawTotal(inv) { return (inv?.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0); }
+  function pInvoiceRawTotal(inv) { return (inv?.items || []).reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unitPrice) || 0), 0); }
   function pInvoiceTotal(inv) { return calcTax(pInvoiceRawTotal(inv), inv?.taxType || "none").total; }
 
-  function soTotal(so) { return (so?.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0); }
-  function poTotal(po) { return (po?.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0); }
+  function soTotal(so) { return (so?.items || []).reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unitPrice) || 0), 0); }
+  function poTotal(po) { return (po?.items || []).reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unitPrice) || 0), 0); }
   
   function pInvoicePaidAmount(invId) { return (paymentsOut || []).filter((p) => p.pInvoiceId === invId).reduce((s, p) => s + p.amount, 0); }
   function pInvoiceReturnedAmount(invId) { return (pReturns || []).filter((r) => r.pInvoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
@@ -671,53 +672,54 @@ function PharmaERP({ userEmail, onLogout }) {
   function soDPAmount(soId) { return (paymentsIn || []).filter((p) => p.soId === soId && p.type === "DP").reduce((s, p) => s + p.amount, 0); }
   function invoicePaidAmount(invId) { return (paymentsIn || []).filter((p) => p.invoiceId === invId).reduce((s, p) => s + p.amount, 0); }
   function invoiceReturnedAmount(invId) { return (returns || []).filter((r) => r.invoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
-  function batchCost(batchId) {
-  if (!batchId) return 0;
-  const b = (batches || []).find((x) => x.id === batchId);
-  return b ? (Number(b.costPrice) || 0) : 0;
-}
-  
-  function invoiceCOGS(inv) {
-  if (!inv) return 0;
-  let initialCOGS = 0;
 
-  // 1. Hitung Modal/HPP Awal
-  if (inv.isDirect) {
-    initialCOGS = (inv.items || []).reduce((s, it) => {
-      const itemAllocCost = (it.allocations || []).reduce((s2, a) => s2 + ((Number(a.qty) || 0) * batchCost(a.batchId)), 0);
-      
-      // SAFEGUARD: Jika allocations kosong/lama, gunakan estimasi HPP dari harga jual x 0.67 (30% margin)
-      if (itemAllocCost === 0 && it.qty) {
-        return s + ((Number(it.qty) || 0) * ((Number(it.unitPrice) || 0) * 0.6667));
-      }
-      return s + itemAllocCost;
-    }, 0);
-  } else {
-    initialCOGS = (deliveryNotes || [])
-      .filter((dn) => dn && dn.soId === inv.soId && dn.status === "diterima")
-      .reduce((s, dn) => s + (dn.items || []).reduce((s2, it) => 
-        s2 + (it.allocations || []).reduce((s3, a) => s3 + ((Number(a.qty) || 0) * batchCost(a.batchId)), 0)
-      , 0), 0);
+  // 1. PENCATAT COST BATCH (Harus di atas invoiceCOGS)
+  function batchCost(batchId) {
+    if (!batchId) return 0;
+    const b = (batches || []).find((x) => x.id === batchId);
+    return b ? (Number(b.costPrice) || 0) : 0;
   }
 
-  // 2. Hitung Pengurang Modal dari Retur
-  const safeReturns = returns || [];
-  const relatedReturns = safeReturns.filter((r) => r && (r.invoiceId === inv.id || (inv.soId && r.soId === inv.soId)));
-  
-  const returnedCOGS = relatedReturns.reduce((s, r) => {
-    return s + (r.items || []).reduce((s2, it) => {
-      let cost = (it.restockedBatches || []).reduce((s3, rb) => s3 + ((Number(rb.qty) || 0) * batchCost(rb.batchId)), 0);
-      
-      // SAFEGUARD Retur
-      if (cost === 0 && it.qty) {
-        cost = (Number(it.qty) || 0) * ((Number(it.unitPrice) || 0) * 0.6667);
-      }
-      return s2 + cost;
-    }, 0);
-  }, 0);
+  // 2. PENGHITUNG HPP (Harus di atas grossProfitMonth)
+  function invoiceCOGS(inv) {
+    if (!inv) return 0;
+    let initialCOGS = 0;
 
-  return Math.max(0, initialCOGS - returnedCOGS);
-}
+    if (inv.isDirect) {
+      initialCOGS = (inv.items || []).reduce((s, it) => {
+        const itemAllocCost = (it.allocations || []).reduce((s2, a) => s2 + ((Number(a.qty) || 0) * batchCost(a.batchId)), 0);
+        
+        if (itemAllocCost === 0 && it.qty) {
+          return s + ((Number(it.qty) || 0) * ((Number(it.unitPrice) || 0) * 0.6667));
+        }
+        return s + itemAllocCost;
+      }, 0);
+    } else {
+      initialCOGS = (deliveryNotes || [])
+        .filter((dn) => dn && dn.soId === inv.soId && dn.status === "diterima")
+        .reduce((s, dn) => s + (dn.items || []).reduce((s2, it) => 
+          s2 + (it.allocations || []).reduce((s3, a) => s3 + ((Number(a.qty) || 0) * batchCost(a.batchId)), 0)
+        , 0), 0);
+    }
+
+    const safeReturns = returns || [];
+    const relatedReturns = safeReturns.filter((r) => r && (r.invoiceId === inv.id || (inv.soId && r.soId === inv.soId)));
+    
+    const returnedCOGS = relatedReturns.reduce((s, r) => {
+      return s + (r.items || []).reduce((s2, it) => {
+        let cost = (it.restockedBatches || []).reduce((s3, rb) => s3 + ((Number(rb.qty) || 0) * batchCost(rb.batchId)), 0);
+        
+        if (cost === 0 && it.qty) {
+          cost = (Number(it.qty) || 0) * ((Number(it.unitPrice) || 0) * 0.6667);
+        }
+        return s2 + cost;
+      }, 0);
+    }, 0);
+
+    return Math.max(0, initialCOGS - returnedCOGS);
+  }
+
+  // 3. FINANCIAL SUMMARY CALCULATIONS (Di bawah invoiceCOGS)
   const arOutstanding = useMemo(() => (invoices || []).reduce((s, inv) => s + invoiceSisa(inv), 0), [invoices, returns, paymentsIn]);
   const apOutstanding = useMemo(() => (pInvoices || []).reduce((s, inv) => s + pInvoiceSisa(inv), 0), [pInvoices, pReturns, paymentsOut]);
   const cashInMonth = useMemo(() => (paymentsIn || []).filter((p) => isThisMonth(p.date)).reduce((s, p) => s + p.amount, 0), [paymentsIn]);
@@ -728,18 +730,18 @@ function PharmaERP({ userEmail, onLogout }) {
   }, [paymentsOut, expenses]);
   
   const grossProfitMonth = useMemo(() => {
-  const safeInvoices = invoices || [];
-  return safeInvoices
-    .filter((inv) => inv && inv.date && isThisMonth(inv.date))
-    .reduce((s, inv) => {
-      const dppSales = invoiceRawTotal(inv) || 0;
-      const returAmount = invoiceReturnedAmount(inv.id) || 0;
-      const cogs = invoiceCOGS(inv) || 0;
-      
-      // Laba Bersih = Omzet Bersih (Sales - Retur) - HPP Bersih (COGS)
-      return s + ((dppSales - returAmount) - cogs);
-    }, 0);
-}, [invoices, batches, deliveryNotes, returns]);
+    const safeInvoices = invoices || [];
+    return safeInvoices
+      .filter((inv) => inv && inv.date && isThisMonth(inv.date))
+      .reduce((s, inv) => {
+        const dppSales = invoiceRawTotal(inv) || 0;
+        const returAmount = invoiceReturnedAmount(inv.id) || 0;
+        const cogs = invoiceCOGS(inv) || 0;
+        
+        return s + ((dppSales - returAmount) - cogs);
+      }, 0);
+  }, [invoices, batches, deliveryNotes, returns]);
+
   const expensesMonth = useMemo(() => (expenses || []).filter((e) => isThisMonth(e.date)).reduce((s, e) => s + e.amount, 0), [expenses]);
 
   function allocateFEFO(productId, qty) {
@@ -952,7 +954,6 @@ function PharmaERP({ userEmail, onLogout }) {
     </div>
   );
 }
-
 // ---------- DASHBOARD ----------
 function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, expired, totalStockValue, findName, suppliers, customers, arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth, isFinanceOrAdmin }) {
   const recentPOs = [...(pos || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
