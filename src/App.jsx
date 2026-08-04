@@ -2102,11 +2102,12 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
           b.qty = Math.max(0, b.qty - it.qty);
         }
       });
-      await saveBatches(working);
+      const finalBatches = working.filter((b) => b.qty > 0);
+      await saveBatches(finalBatches);
     }
 
     await savePInvoices((pInvoices || []).filter((x) => x.id !== inv.id));
-    notify(`${inv.noFaktur} berhasil dibatalkan`);
+    notify(`${inv.noFaktur} berhasil dibatalkan & stok batch telah dikurangi`);
   }
 
   const filteredProds = (products || []).filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
