@@ -3698,12 +3698,15 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
     const items = lines.map((l) => {
       let restocked = [];
       if (selectedInvoice.isDirect) {
+        let remainingToRestock = l.qtyReturn;
         (l.allocations || []).forEach((a) => {
+          if (remainingToRestock <= 0) return;
           const b = working.find((x) => x.id === a.batchId);
           if (b) {
-            const take = Math.min(a.qty, l.qtyReturn);
+            const take = Math.min(a.qty, remainingToRestock);
             b.qty += take;
             restocked.push({ batchId: a.batchId, batchNo: a.batchNo, qty: take });
+            remainingToRestock -= take;
           }
         });
       } else {
