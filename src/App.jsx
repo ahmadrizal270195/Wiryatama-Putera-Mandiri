@@ -674,14 +674,31 @@ function PharmaERP({ userEmail, onLogout }) {
   function batchCost(batchId) { const b = (batches || []).find((x) => x.id === batchId); return b ? b.costPrice : 0; }
   
   function invoiceCOGS(inv) {
+    let initialCOGS = 0;
     if (inv.isDirect) {
-      return (inv.items || []).reduce((s, it) => s + (it.allocations || []).reduce((s2, a) => s2 + a.qty * batchCost(a.batchId), 0), 0);
-    }
-    return (deliveryNotes || []).filter((dn) => dn.soId === inv.soId && dn.status === "diterima").reduce((s, dn) => s + (dn.items || []).reduce((s2, it) => s2 + (it.allocations || []).reduce((s3, a) => s3 + a.qty * batchCost(a.batchId), 0), 0), 0);
+      initialCOGS = (inv.items || []).reduce((s, it) => 
+      s + (it.allocations || []).reduce((s2, a) => s2 + a.qty * batchCost(a.batchId), 0)
+    , 0);
+  } else {
+    initialCOGS = (deliveryNotes || [])
+      .filter((dn) => dn.soId === inv.soId && dn.status === "diterima")
+      .reduce((s, dn) => s + (dn.items || []).reduce((s2, it) => 
+        s2 + (it.allocations || []).reduce((s3, a) => s3 + a.qty * batchCost(a.batchId), 0)
+      , 0), 0);
   }
 
-  function invoiceSisa(inv) {
-    return Math.max(0, invoiceTotal(inv) - invoiceReturnedAmount(inv.id) - soDPAmount(inv.soId) - invoicePaidAmount(inv.id));
+  // 2. Hitung Pengurang Modal (HPP) dari Barang yang Diretur Kembali
+  const relatedReturns = (returns || []).filter((r) => r.invoiceId === inv.id || (inv.soId && r.soId === inv.soId));
+  const returnedCOGS = relatedReturns.reduce((s, r) => {
+    return s + (r.items || []).reduce((s2, it) => {
+      // Hitung nilai modal asli berdasarkan batch yang di-restock
+      const costFromBatches = (it.restockedBatches || []).reduce((s3, rb) => s3 + (rb.qty * batchCost(rb.batchId)), 0);
+      return s2 + costFromBatches;
+    }, 0);
+  }, 0);
+
+  // HPP Bersih = HPP Awal - HPP Retur
+  return Math.max(0, initialCOGS - returnedCOGS);
   }
 
   const arOutstanding = useMemo(() => (invoices || []).reduce((s, inv) => s + invoiceSisa(inv), 0), [invoices, returns, paymentsIn]);
