@@ -2112,30 +2112,55 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   }
 
   async function cancelInvoice(inv) {
-    const paid = pInvoicePaidAmount(inv.id);
-    if (paid > 0) {
-      return notify("Gagal membatalkan: Faktur ini sudah memiliki riwayat pembayaran ke supplier.", "danger");
-    }
-    if ((pReturns || []).some((r) => r.pInvoiceId === inv.id)) {
-      return notify("Gagal membatalkan: Faktur ini memiliki riwayat retur pembelian. Batalkan retur terlebih dahulu.", "danger");
-    }
-
-    if (inv.isDirect) {
-      let working = (batches || []).map((b) => ({ ...b }));
-      (inv.items || []).forEach((it) => {
-        const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
-        if (b) {
-          b.qty = Math.max(0, b.qty - it.qty);
-        }
-      });
-      const finalBatches = working.filter((b) => b.qty > 0);
-      await saveBatches(finalBatches);
-    }
-
-    await savePInvoices((pInvoices || []).filter((x) => x.id !== inv.id));
-    notify(`${inv.noFaktur} berhasil dibatalkan & stok batch telah dikurangi`);
+  // 1. Cek Riwayat Pembayaran
+  const paid = pInvoicePaidAmount(inv.id);
+  if (paid > 0) {
+    return notify("Gagal membatalkan: Faktur ini sudah memiliki riwayat pembayaran ke supplier.", "danger");
   }
 
+  // 2. Cek Riwayat Retur Pembelian
+  if ((pReturns || []).some((r) => r.pInvoiceId === inv.id)) {
+    return notify("Gagal membatalkan: Faktur ini memiliki riwayat retur pembelian. Batalkan retur terlebih dahulu.", "danger");
+  }
+
+  // 3. Kumpulkan semua Batch ID & Batch No yang tercipta dari Pembelian ini
+  const invBatchIds = (inv.items || []).map(it => it.batchId).filter(Boolean);
+  const invBatchNos = (inv.items || []).map(it => it.batchNo).filter(Boolean);
+
+  // 4. Cek apakah Batch dari Pembelian ini SUDAH PERNAH DIJUAL / TERPAKAI di Surat Jalan (SJ)
+  const isUsedInSJ = (deliveryNotes || []).some((dn) => 
+    (dn.items || []).some((it) => 
+      (it.allocations || []).some((a) => invBatchIds.includes(a.batchId) || invBatchNos.includes(a.batchNo))
+    )
+  );
+
+  // 5. Cek apakah Batch dari Pembelian ini SUDAH PERNAH DIJUAL / TERPAKAI di Faktur Penjualan Langsung
+  const isUsedInSalesInvoice = (invoices || []).some((sinv) => 
+    sinv.isDirect && (sinv.items || []).some((it) => 
+      (it.allocations || []).some((a) => invBatchIds.includes(a.batchId) || invBatchNos.includes(a.batchNo))
+    )
+  );
+
+  if (isUsedInSJ || isUsedInSalesInvoice) {
+    return notify("Gagal membatalkan: Barang dari Faktur Pembelian ini (Batch) sudah terpakai pada transaksi Penjualan. Batalkan transaksi Penjualan terlebih dahulu.", "danger");
+  }
+
+  // 6. Jika belum pernah dijual, kurangi / hapus stok batch yang bersangkutan
+  if (inv.isDirect) {
+    let working = (batches || []).map((b) => ({ ...b }));
+    (inv.items || []).forEach((it) => {
+      const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
+      if (b) {
+        b.qty = Math.max(0, b.qty - it.qty);
+      }
+    });
+    const finalBatches = working.filter((b) => b.qty > 0);
+    await saveBatches(finalBatches);
+  }
+
+  await savePInvoices((pInvoices || []).filter((x) => x.id !== inv.id));
+  notify(`${inv.noFaktur} berhasil dibatalkan & stok batch telah ditarik`);
+}
   const filteredProds = (products || []).filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
   const directRawSubtotal = items.reduce((s, it) => s + it.qty * it.unitPrice, 0);
   const directTax = calcTax(directRawSubtotal, taxType);
