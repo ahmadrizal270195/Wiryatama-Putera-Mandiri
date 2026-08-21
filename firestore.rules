@@ -1,0 +1,20 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Versi awal (test mode / cepat jalan): siapa saja yang punya link bisa baca+tulis.
+    // Cocok untuk internal tool yang linknya tidak disebar luas, TAPI tidak aman
+    // untuk data sensitif jika link bocor.
+    match /erp_data/{docId} {
+      allow read, write: if true;
+    }
+  }
+}
+
+// Setelah admin login diaktifkan (lihat README bagian "Menambahkan Login"),
+// ganti blok di atas menjadi:
+//
+// match /erp_data/{docId} {
+//   allow read, write: if request.auth != null;
+// }
+//
+// supaya hanya user yang sudah login (email/password) yang bisa akses data.
