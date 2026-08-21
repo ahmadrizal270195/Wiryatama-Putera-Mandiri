@@ -1,11 +1,6 @@
 import React from "react";
 import { X, Calendar } from "lucide-react";
 
-// Kebijakan Warna & Theme Fallback
-export const inputStyle = {
-  border: "1px solid var(--border-color, #CBD5E1)",
-};
-
 export function Eyebrow({ children }) {
   return (
     <div style={{ letterSpacing: "0.08em" }} className="text-[11px] font-mono uppercase mb-1 text-slate-500">
@@ -83,6 +78,13 @@ export function DateInput(props) {
     return iso;
   };
 
+  const baseInputStyle = {
+    background: colorConfig?.surface || "#FFFFFF",
+    color: colorConfig?.ink || "#15302D",
+    border: `1px solid ${colorConfig?.border || "#CBD5E1"}`,
+    ...style,
+  };
+
   return (
     <div className="relative w-full flex items-center">
       <input
@@ -91,7 +93,7 @@ export function DateInput(props) {
         value={formatDisplay(value)}
         placeholder="dd/mm/yyyy"
         className={"w-full rounded-lg pl-3 pr-9 py-1.5 text-sm outline-none " + className}
-        style={{ ...inputStyle, ...style }}
+        style={baseInputStyle}
       />
       <Calendar size={15} className="absolute right-3 pointer-events-none" style={{ color: colorConfig?.inkSoft || "#5C7873" }} />
       <input
@@ -101,56 +103,78 @@ export function DateInput(props) {
         required={required}
         disabled={disabled}
         className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-        style={{ colorScheme: "dark" }}
+        style={{ colorScheme: colorConfig?.ink === "#F8FAFC" ? "dark" : "light" }}
       />
     </div>
   );
 }
 
 export function TextInput(props) {
-  if (props.type === "date") {
+  const { colorConfig, style, className = "", type, value, onChange, onWheel, ...rest } = props;
+
+  if (type === "date") {
     return <DateInput {...props} />;
   }
 
-  if (props.type === "number") {
+  const baseInputStyle = {
+    background: colorConfig?.surface || "#FFFFFF",
+    color: colorConfig?.ink || "#15302D",
+    border: `1px solid ${colorConfig?.border || "#CBD5E1"}`,
+    ...style,
+  };
+
+  if (type === "number") {
     return (
       <input
-        {...props}
-        value={props.value === 0 || props.value === "0" ? 0 : props.value || ""}
+        {...rest}
+        type="number"
+        value={value === 0 || value === "0" ? 0 : value || ""}
         onChange={(e) => {
-          if (!props.onChange) return;
-          props.onChange(e);
+          if (!onChange) return;
+          onChange(e);
         }}
         onWheel={(e) => {
           e.target.blur();
-          if (props.onWheel) props.onWheel(e);
+          if (onWheel) onWheel(e);
         }}
         className={
           "w-full rounded-lg px-3 py-1.5 text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none " +
-          (props.className || "")
+          className
         }
-        style={{ ...inputStyle, ...props.style }}
+        style={baseInputStyle}
       />
     );
   }
 
   return (
     <input
-      {...props}
-      className={"w-full rounded-lg px-3 py-1.5 text-sm outline-none " + (props.className || "")}
-      style={{ ...inputStyle, ...props.style }}
+      {...rest}
+      type={type}
+      value={value}
+      onChange={onChange}
+      className={"w-full rounded-lg px-3 py-1.5 text-sm outline-none " + className}
+      style={baseInputStyle}
     />
   );
 }
 
 export function Select(props) {
+  const { colorConfig, style, className = "", children, ...rest } = props;
+
+  const baseSelectStyle = {
+    background: colorConfig?.surface || "#FFFFFF",
+    color: colorConfig?.ink || "#15302D",
+    border: `1px solid ${colorConfig?.border || "#CBD5E1"}`,
+    ...style,
+  };
+
   return (
     <select
-      {...props}
-      className={"w-full rounded-lg px-3 py-1.5 text-sm outline-none " + (props.className || "")}
-      style={{ ...inputStyle, ...props.style }}
+      {...rest}
+      className={"w-full rounded-lg px-3 py-1.5 text-sm outline-none " + className}
+      style={baseSelectStyle}
     >
-      {props.children}
+      {children}
     </select>
   );
 }

@@ -2,6 +2,50 @@ import React, { useState, useMemo } from "react";
 import { Plus, Search, Printer, FileText, Trash2 } from "lucide-react";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 
+// Helper Input Diskon Dwi-Mode (% / Rp)
+function DiscountControl({ type, value, onTypeChange, onValueChange, colorConfig }) {
+  return (
+    <div className="flex items-center gap-1">
+      <select
+        value={type || "percent"}
+        onChange={(e) => onTypeChange(e.target.value)}
+        className="rounded-lg px-2 py-1.5 text-xs font-bold outline-none cursor-pointer border shrink-0"
+        style={{
+          background: colorConfig?.surface || "#FFFFFF",
+          color: colorConfig?.primary || "#0E4749",
+          borderColor: colorConfig?.border || "#CBD5E1",
+        }}
+      >
+        <option value="percent">%</option>
+        <option value="amount">Rp</option>
+      </select>
+      <TextInput
+        type="number"
+        value={value}
+        onChange={(e) => {
+          const val = e.target.value;
+          if (val === "") onValueChange("");
+          else {
+            const num = Number(val);
+            onValueChange(type === "percent" ? Math.min(100, Math.max(0, num)) : Math.max(0, num));
+          }
+        }}
+        placeholder={type === "amount" ? "Rp 0" : "0 %"}
+        colorConfig={colorConfig}
+        className="font-mono text-right"
+      />
+    </div>
+  );
+}
+
+// Helper Hitung Nilai Diskon Item
+function getItemDiscountAmount(qty, unitPrice, discType, discVal) {
+  const gross = qty * unitPrice;
+  const val = Number(discVal || 0);
+  if (discType === "amount") return Math.min(gross, val);
+  return gross * (Math.min(100, val) / 100);
+}
+
 export default function SalesView({
   products, customers, sos, batches, deliveryNotes, invoices, returns, paymentsIn,
   saveSOs, saveBatches, saveDeliveryNotes, saveInvoices, saveReturns, saveCustomers,
@@ -100,6 +144,7 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
   const [customerId, setCustomerId] = useState("");
   const [date, setDate] = useState(todayISO());
   const [taxType, setTaxType] = useState("none");
+  const [discountTypeHeader, setDiscountTypeHeader] = useState("percent");
   const [discountPercentHeader, setDiscountPercentHeader] = useState(0);
   const [items, setItems] = useState([]);
   const [searchProd, setSearchProd] = useState("");
@@ -154,6 +199,7 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
     setCustomerId((customers || [])[0]?.id || "");
     setDate(todayISO());
     setTaxType("none");
+    setDiscountTypeHeader("percent");
     setDiscountPercentHeader(0);
     setItems([]);
     setSearchProd("");
@@ -170,8 +216,9 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
     setCustomerId(so.customerId);
     setDate(so.date || todayISO());
     setTaxType(so.taxType || "none");
-    setDiscountPercentHeader(so.discountPercent || so.discount || 0);
-    setItems((so.items || []).map(it => ({ ...it })));
+    setDiscountTypeHeader(so.discountType || "percent");
+    setDiscountPercentHeader(so.discountPercent ?? so.discount ?? 0);
+    setItems((so.items || []).map(it => ({ ...it, discountType: it.discountType || "percent", discountPercent: it.discountPercent ?? 0 })));
     setSearchProd("");
     setModal("edit");
   }
@@ -196,7 +243,7 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
   function addProductToSO(prod) {
     const existing = items.find((x) => x.productId === prod.id);
     if (existing) setItems(items.map((x) => x.productId === prod.id ? { ...x, qty: x.qty + 1 } : x));
-    else setItems([...items, { productId: prod.id, qty: 1, unitPrice: prod.sellPrice, discountPercent: 0 }]);
+    else setItems([...items, { productId: prod.id, qty: 1, unitPrice: prod.sellPrice, discountType: "percent", discountPercent: 0 }]);
   }
 
   function updateItem(i, patch) { setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it))); }
@@ -204,18 +251,32 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
 
   const rawSubtotal = items.reduce((s, it) => {
     const gross = it.qty * it.unitPrice;
-    const discAmount = gross * (Number(it.discountPercent || 0) / 100);
+    const discAmount = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
     return s + Math.max(0, gross - discAmount);
   }, 0);
 
-  const taxInfo = calcTax(rawSubtotal, taxType, discountPercentHeader);
+  const effectiveHeaderPct = discountTypeHeader === "amount" 
+    ? (rawSubtotal > 0 ? (Math.min(rawSubtotal, Number(discountPercentHeader || 0)) / rawSubtotal) * 100 : 0)
+    : Number(discountPercentHeader || 0);
+
+  const taxInfo = calcTax(rawSubtotal, taxType, effectiveHeaderPct);
 
   async function submit() {
     if (!soNumber.trim()) return notify("Nomor SO wajib diisi", "danger");
     if (!customerId) return notify("Pilih pelanggan", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
     
-    const payload = { soNumber: soNumber.trim(), customerId, date, taxType, discountPercent: Number(discountPercentHeader || 0), items, status: "open" };
+    const payload = { 
+      soNumber: soNumber.trim(), 
+      customerId, 
+      date, 
+      taxType, 
+      discountType: discountTypeHeader,
+      discountPercent: Number(discountPercentHeader || 0), 
+      items, 
+      status: "open" 
+    };
+
     if (editingId) {
       await saveSOs((sos || []).map(s => s.id === editingId ? { ...s, ...payload } : s));
       notify(`${soNumber.trim()} berhasil diperbarui`);
@@ -319,11 +380,14 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
                 <option value="include11">PPN 11% (Termasuk Pajak)</option>
               </Select>
             </Field>
-            <Field label="Diskon Nota / Global (%)" colorConfig={colorConfig}>
-              <div className="relative flex items-center">
-                <TextInput type="number" value={discountPercentHeader} onChange={(e) => { const val = e.target.value; setDiscountPercentHeader(val === "" ? "" : Math.min(100, Math.max(0, Number(val)))); }} placeholder="0" className="font-mono pr-6" colorConfig={colorConfig} />
-                <span className="absolute right-3 text-xs font-bold text-teal-800 pointer-events-none">%</span>
-              </div>
+            <Field label="Diskon Nota / Global (% / Rp)" colorConfig={colorConfig}>
+              <DiscountControl
+                type={discountTypeHeader}
+                value={discountPercentHeader}
+                onTypeChange={setDiscountTypeHeader}
+                onValueChange={setDiscountPercentHeader}
+                colorConfig={colorConfig}
+              />
             </Field>
           </div>
 
@@ -356,7 +420,7 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
               const s = stockByProduct[it.productId] || { qty: 0 };
               const isStockShort = s && s.qty < it.qty;
               const gross = it.qty * it.unitPrice;
-              const discAmount = gross * (Number(it.discountPercent || 0) / 100);
+              const discAmount = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
               const lineTotal = Math.max(0, gross - discAmount);
 
               return (
@@ -381,11 +445,14 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
                       <TextInput type="number" value={it.unitPrice} onChange={(e) => { const val = e.target.value; updateItem(i, { unitPrice: val === "" ? "" : Math.max(0, Number(val)) }); }} colorConfig={colorConfig} />
                     </div>
                     <div>
-                      <label className="text-[10px] block text-gray-500 font-mono">Diskon Item (%)</label>
-                      <div className="relative flex items-center">
-                        <TextInput type="number" value={it.discountPercent} onChange={(e) => { const val = e.target.value; updateItem(i, { discountPercent: val === "" ? "" : Math.min(100, Math.max(0, Number(val))) }); }} placeholder="0" className="font-mono text-teal-800 pr-6" colorConfig={colorConfig} />
-                        <span className="absolute right-2 text-xs font-bold text-teal-800 pointer-events-none">%</span>
-                      </div>
+                      <label className="text-[10px] block text-gray-500 font-mono">Diskon Item (% / Rp)</label>
+                      <DiscountControl
+                        type={it.discountType || "percent"}
+                        value={it.discountPercent}
+                        onTypeChange={(t) => updateItem(i, { discountType: t })}
+                        onValueChange={(v) => updateItem(i, { discountPercent: v })}
+                        colorConfig={colorConfig}
+                      />
                     </div>
                   </div>
                 </div>
@@ -396,7 +463,7 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
           <div className="flex justify-between items-end mt-4 pt-3 border-t" style={{ borderColor: colorConfig?.border }}>
             <div className="text-xs flex flex-col gap-0.5">
               <div>Subtotal Kotor: <span className="font-mono font-semibold">{fmtIDR(rawSubtotal)}</span></div>
-              {Number(discountPercentHeader) > 0 && <div>Diskon Nota ({discountPercentHeader}%): <span className="font-mono font-semibold text-red-600">- {fmtIDR(taxInfo.discHeaderAmount)}</span></div>}
+              {Number(discountPercentHeader) > 0 && <div>Diskon Nota: <span className="font-mono font-semibold text-red-600">- {fmtIDR(taxInfo.discHeaderAmount)}</span></div>}
               <div>DPP: <span className="font-mono font-semibold">{fmtIDR(taxInfo.dpp)}</span></div>
               {taxType !== "none" && <div>PPN (11%): <span className="font-mono font-semibold text-teal-700">{fmtIDR(taxInfo.ppn)}</span></div>}
               <div className="font-bold text-sm text-gray-900 mt-1">Total SO: <span className="font-mono">{fmtIDR(taxInfo.total)}</span></div>
@@ -429,20 +496,20 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
             Pelanggan: {findName(customers, detailSO.customerId)} · Tanggal: {fmtDate(detailSO.date)} · Status: {STATUS_LABEL[getSOStatus(detailSO)].label}
           </div>
           <table className="w-full text-sm mb-3">
-            <thead><tr style={{ background: colorConfig?.primarySoft }}>{["Produk", "Qty", "Harga", "Diskon %", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: colorConfig?.primary }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: colorConfig?.primarySoft }}>{["Produk", "Qty", "Harga", "Diskon", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: colorConfig?.primary }}>{h}</th>)}</tr></thead>
             <tbody>
               {(detailSO.items || []).map((it, i) => {
                 const p = (products || []).find((x) => x.id === it.productId);
-                const discPct = Number(it.discountPercent || 0);
+                const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
                 const gross = it.qty * it.unitPrice;
-                const lineTotal = Math.max(0, gross - gross * (discPct / 100));
+                const lineTotal = Math.max(0, gross - discAmt);
 
                 return (
                   <tr key={i} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
                     <td className="px-3 py-2" style={{ color: colorConfig?.ink }}>{p?.name}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{it.qty} {p?.unit}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
-                    <td className="px-3 py-2 font-mono text-teal-800 font-semibold">{discPct > 0 ? `${discPct}%` : "-"}</td>
+                    <td className="px-3 py-2 font-mono text-teal-800 font-semibold">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.ink }}>{fmtIDR(lineTotal)}</td>
                   </tr>
                 );
@@ -456,7 +523,7 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
       {printSO && (
         <Modal title={`Cetak Sales Order — ${printSO.soNumber}`} onClose={() => setPrintSO(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
-            <Button onClick={async () => { window.print(); }} variant="primary" colorConfig={colorConfig}><Printer size={15} /> Cetak SO / Simpan PDF</Button>
+            <Button onClick={() => window.print()} variant="primary" colorConfig={colorConfig}><Printer size={15} /> Cetak SO / Simpan PDF</Button>
           </div>
           <div className="overflow-x-auto w-full">
             <div id="printable-so" className="p-4 sm:p-6 bg-white border rounded-xl text-xs text-gray-800 min-w-[550px] sm:min-w-0">
@@ -467,7 +534,6 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
                     <div className="text-sm sm:text-base uppercase tracking-wide font-bold" style={{ color: colorConfig?.primary }}>{COMPANY_PROFILE?.name}</div>
                     <p className="text-[11px] text-gray-600">{COMPANY_PROFILE?.tagline}</p>
                     <p className="text-[10px] text-gray-500 mt-1">{COMPANY_PROFILE?.address}</p>
-                    <p className="text-[10px] text-gray-500">{COMPANY_PROFILE?.contact}</p>
                   </div>
                 </div>
                 <div className="text-left sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 w-full sm:w-auto">
@@ -478,9 +544,17 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
 
               {(() => {
                 const cust = (customers || []).find((c) => c.id === printSO.customerId);
-                const rawSub = (printSO.items || []).reduce((s, it) => s + Math.max(0, it.qty * it.unitPrice - (it.qty * it.unitPrice * (Number(it.discountPercent || 0) / 100))), 0);
-                const discHeaderPct = Number(printSO.discountPercent || 0);
-                const taxInfo = calcTax(rawSub, printSO.taxType || "none", discHeaderPct);
+                const rawSub = (printSO.items || []).reduce((s, it) => {
+                  const gross = it.qty * it.unitPrice;
+                  const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
+                  return s + Math.max(0, gross - discAmt);
+                }, 0);
+
+                const effPct = printSO.discountType === "amount" 
+                  ? (rawSub > 0 ? (Math.min(rawSub, Number(printSO.discountPercent || 0)) / rawSub) * 100 : 0)
+                  : Number(printSO.discountPercent || 0);
+
+                const taxInfo = calcTax(rawSub, printSO.taxType || "none", effPct);
 
                 return (
                   <div>
@@ -489,12 +563,10 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
                         <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Kepada Yth. (Pelanggan)</div>
                         <div className="text-sm text-gray-900 font-bold">{cust?.name || "Pelanggan"}</div>
                         <div className="text-[11px] text-gray-600 mt-0.5">{cust?.address || "-"}</div>
-                        <div className="text-[11px] text-gray-600">{cust?.contact || "-"}</div>
                       </div>
                       <div className="text-right">
                         <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Detail Dokumen</div>
                         <div><span className="text-gray-500">Tanggal Order:</span> <span className="font-mono">{fmtDate(printSO.date)}</span></div>
-                        <div><span className="text-gray-500">Status Pesanan:</span> <span className="font-mono font-bold text-teal-800">Dikonfirmasi</span></div>
                       </div>
                     </div>
 
@@ -505,15 +577,16 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
                           <th className="py-2 px-2 text-left font-bold" style={{ color: colorConfig?.primary }}>Nama Barang / Alkes</th>
                           <th className="py-2 px-2 text-center font-bold" style={{ color: colorConfig?.primary }}>Qty</th>
                           <th className="py-2 px-2 text-right font-bold" style={{ color: colorConfig?.primary }}>Harga Satuan</th>
-                          <th className="py-2 px-2 text-center font-bold" style={{ color: colorConfig?.primary }}>Disc %</th>
+                          <th className="py-2 px-2 text-center font-bold" style={{ color: colorConfig?.primary }}>Diskon</th>
                           <th className="py-2 px-2 text-right font-bold" style={{ color: colorConfig?.primary }}>Subtotal</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(printSO.items || []).map((it, idx) => {
                           const p = (products || []).find((x) => x.id === it.productId);
-                          const discPct = Number(it.discountPercent || 0);
-                          const lineTotal = Math.max(0, it.qty * it.unitPrice - (it.qty * it.unitPrice * (discPct / 100)));
+                          const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
+                          const gross = it.qty * it.unitPrice;
+                          const lineTotal = Math.max(0, gross - discAmt);
 
                           return (
                             <tr key={idx} className="border-b">
@@ -521,7 +594,7 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
                               <td className="py-2.5 px-2 text-gray-900 font-bold">{p?.name || "-"}</td>
                               <td className="py-2.5 px-2 text-center font-mono font-bold">{it.qty} {p?.unit || "unit"}</td>
                               <td className="py-2.5 px-2 text-right font-mono">{fmtIDR(it.unitPrice)}</td>
-                              <td className="py-2.5 px-2 text-center font-mono text-teal-800">{discPct > 0 ? `${discPct}%` : "-"}</td>
+                              <td className="py-2.5 px-2 text-center font-mono text-teal-800">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
                               <td className="py-2.5 px-2 text-right font-mono font-bold">{fmtIDR(lineTotal)}</td>
                             </tr>
                           );
@@ -534,47 +607,16 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
                         <div className="text-gray-700 mb-1 font-bold">Ketentuan & Syarat Pemesanan:</div>
                         <p className="text-gray-500 leading-relaxed">
                           1. Barang yang dipesan akan disiapkan setelah Sales Order disetujui.<br />
-                          2. Harga sudah termasuk pajak sesuai dengan ketentuan perpajakan yang berlaku.<br />
-                          3. Dokumen ini dapat digunakan sebagai Penawaran Resmi & Konfirmasi Pemesanan.
+                          2. Harga sudah termasuk pajak sesuai dengan ketentuan perpajakan yang berlaku.
                         </p>
                       </div>
 
                       <div className="w-5/12 text-xs flex flex-col gap-1.5">
-                        <div className="flex justify-between py-1 border-b">
-                          <span className="text-gray-600">Subtotal Item</span>
-                          <span className="font-mono font-bold">{fmtIDR(rawSub)}</span>
-                        </div>
-                        {discHeaderPct > 0 && (
-                          <div className="flex justify-between py-1 border-b text-red-600">
-                            <span>Diskon Nota ({discHeaderPct}%)</span>
-                            <span className="font-mono font-bold">- {fmtIDR(taxInfo.discHeaderAmount)}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between py-1 border-b">
-                          <span className="text-gray-600">DPP</span>
-                          <span className="font-mono font-bold">{fmtIDR(taxInfo.dpp)}</span>
-                        </div>
-                        {taxInfo.ppn > 0 && (
-                          <div className="flex justify-between py-1 border-b text-teal-800">
-                            <span>PPN (11%)</span>
-                            <span className="font-mono font-bold">{fmtIDR(taxInfo.ppn)}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between py-2 border-b-2 text-sm font-bold" style={{ color: colorConfig?.primary, borderColor: colorConfig?.primary }}>
-                          <span>Total Nilai Pesanan</span>
-                          <span className="font-mono">{fmtIDR(taxInfo.total)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-8 text-center text-xs mt-12 pt-4">
-                      <div>
-                        <p className="text-gray-500 mb-12">Disetujui Oleh (Pelanggan),</p>
-                        <p className="underline text-gray-900 font-bold">( {cust?.name || "..........................."} )</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 mb-12">Hormat Kami ({COMPANY_PROFILE?.name}),</p>
-                        <p className="underline text-gray-900 font-bold">( Sales & Marketing )</p>
+                        <div className="flex justify-between py-1 border-b"><span className="text-gray-600">Subtotal Item</span><span className="font-mono font-bold">{fmtIDR(rawSub)}</span></div>
+                        {taxInfo.discHeaderAmount > 0 && <div className="flex justify-between py-1 border-b text-red-600"><span>Diskon Nota</span><span className="font-mono font-bold">- {fmtIDR(taxInfo.discHeaderAmount)}</span></div>}
+                        <div className="flex justify-between py-1 border-b"><span className="text-gray-600">DPP</span><span className="font-mono font-bold">{fmtIDR(taxInfo.dpp)}</span></div>
+                        {taxInfo.ppn > 0 && <div className="flex justify-between py-1 border-b text-teal-800"><span>PPN (11%)</span><span className="font-mono font-bold">{fmtIDR(taxInfo.ppn)}</span></div>}
+                        <div className="flex justify-between py-2 border-b-2 text-sm font-bold" style={{ color: colorConfig?.primary, borderColor: colorConfig?.primary }}><span>Total Nilai Pesanan</span><span className="font-mono">{fmtIDR(taxInfo.total)}</span></div>
                       </div>
                     </div>
                   </div>
@@ -1066,6 +1108,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   const [customerId, setCustomerId] = useState("");
   const [date, setDate] = useState(todayISO());
   const [taxType, setTaxType] = useState("none");
+  const [discountTypeHeader, setDiscountTypeHeader] = useState("percent");
   const [discountPercentHeader, setDiscountPercentHeader] = useState(0);
   const [items, setItems] = useState([]);
   const [searchProd, setSearchProd] = useState("");
@@ -1083,7 +1126,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     }, 0);
 
     setNoFakturDirect(`INV-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`);
-    setCustomerId((customers || [])[0]?.id || ""); setDate(todayISO()); setTaxType("none"); setDiscountPercentHeader(0); setItems([]); setSearchProd(""); setEditingId(null); setIsEditingFromSO(false); setModalDirect(true);
+    setCustomerId((customers || [])[0]?.id || ""); setDate(todayISO()); setTaxType("none"); setDiscountTypeHeader("percent"); setDiscountPercentHeader(0); setItems([]); setSearchProd(""); setEditingId(null); setIsEditingFromSO(false); setModalDirect(true);
   }
 
   function openEditInvoice(inv) {
@@ -1091,7 +1134,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     if ((returns || []).some((r) => r.invoiceId === inv.id)) return notify("Gagal Edit: Faktur ini memiliki transaksi retur. Batalkan retur terlebih dahulu.", "danger");
 
     const so = (sos || []).find((s) => s.id === inv.soId);
-    setEditingId(inv.id); setIsEditingFromSO(!inv.isDirect); setNoFakturDirect(inv.noFaktur); setCustomerId(inv.isDirect ? inv.customerId : so?.customerId || ""); setDate(inv.date || todayISO()); setTaxType(inv.taxType || "none"); setDiscountPercentHeader(inv.discountPercent || inv.discount || 0); setItems((inv.items || []).map(it => ({ ...it }))); setSearchProd(""); setModalDirect(true);
+    setEditingId(inv.id); setIsEditingFromSO(!inv.isDirect); setNoFakturDirect(inv.noFaktur); setCustomerId(inv.isDirect ? inv.customerId : so?.customerId || ""); setDate(inv.date || todayISO()); setTaxType(inv.taxType || "none"); setDiscountTypeHeader(inv.discountType || "percent"); setDiscountPercentHeader(inv.discountPercent || inv.discount || 0); setItems((inv.items || []).map(it => ({ ...it, discountType: it.discountType || "percent", discountPercent: it.discountPercent || 0 }))); setSearchProd(""); setModalDirect(true);
   }
 
   function handleSelectCustomer(val) {
@@ -1110,7 +1153,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   function addProductToDirect(prod) {
     const existing = items.find((x) => x.productId === prod.id);
     if (existing) setItems(items.map((x) => x.productId === prod.id ? { ...x, qty: x.qty + 1 } : x));
-    else setItems([...items, { productId: prod.id, qty: 1, unitPrice: prod.sellPrice, discountPercent: 0 }]);
+    else setItems([...items, { productId: prod.id, qty: 1, unitPrice: prod.sellPrice, discountType: "percent", discountPercent: 0 }]);
   }
 
   function updateDirectItem(i, patch) { setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it))); }
@@ -1141,15 +1184,24 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
           b.qty -= take; remaining -= take;
         }
         if (remaining > 0) { const p = (products || []).find((x) => x.id === it.productId); shortages.push(`${p?.name || "Obat"}: kurang ${remaining} ${p?.unit || "unit"}`); }
-        itemsWithAlloc.push({ productId: it.productId, qty: it.qty, unitPrice: it.unitPrice, discountPercent: Number(it.discountPercent || 0), allocations });
+        itemsWithAlloc.push({ productId: it.productId, qty: it.qty, unitPrice: it.unitPrice, discountType: it.discountType || "percent", discountPercent: Number(it.discountPercent || 0), allocations });
       }
       if (shortages.length > 0) return notify("Stok tidak cukup — " + shortages.join(", "), "danger");
       await saveBatches(working);
     } else {
-      items.forEach(it => { itemsWithAlloc.push({ productId: it.productId, qty: it.qty, unitPrice: it.unitPrice, discountPercent: Number(it.discountPercent || 0) }); });
+      items.forEach(it => { itemsWithAlloc.push({ productId: it.productId, qty: it.qty, unitPrice: it.unitPrice, discountType: it.discountType || "percent", discountPercent: Number(it.discountPercent || 0) }); });
     }
 
-    const payload = { noFaktur: noFakturDirect.trim(), customerId, date, taxType, discountPercent: Number(discountPercentHeader || 0), items: itemsWithAlloc };
+    const payload = { 
+      noFaktur: noFakturDirect.trim(), 
+      customerId, 
+      date, 
+      taxType, 
+      discountType: discountTypeHeader,
+      discountPercent: Number(discountPercentHeader || 0), 
+      items: itemsWithAlloc 
+    };
+
     if (editingId) {
       await saveInvoices((invoices || []).map(inv => inv.id === editingId ? { ...inv, ...payload } : inv));
       notify(`${noFakturDirect.trim()} berhasil diperbarui`);
@@ -1167,7 +1219,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       receivedByProduct[it.productId] = (receivedByProduct[it.productId] || 0) + (it.receivedQty ?? it.qty);
     }));
 
-    const invItems = (so.items || []).map((it) => ({ productId: it.productId, qty: receivedByProduct[it.productId] || 0, unitPrice: it.unitPrice, discountPercent: Number(it.discountPercent || 0) })).filter((it) => it.qty > 0);
+    const invItems = (so.items || []).map((it) => ({ productId: it.productId, qty: receivedByProduct[it.productId] || 0, unitPrice: it.unitPrice, discountType: it.discountType || "percent", discountPercent: Number(it.discountPercent || 0) })).filter((it) => it.qty > 0);
     if (invItems.length === 0) return notify("Tidak ada barang yang diterima untuk difakturkan", "danger");
 
     const currentYear = new Date().getFullYear();
@@ -1179,7 +1231,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     const inputFaktur = prompt("Masukkan Nomor Faktur Penjualan / Pajak:", `INV-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`);
     if (!inputFaktur) return;
 
-    await saveInvoices([...(invoices || []), { id: uid(), noFaktur: inputFaktur.trim(), soId: so.id, customerId: so.customerId, date: todayISO(), taxType: so.taxType || "none", discountPercent: Number(so.discountPercent || 0), items: invItems }]);
+    await saveInvoices([...(invoices || []), { id: uid(), noFaktur: inputFaktur.trim(), soId: so.id, customerId: so.customerId, date: todayISO(), taxType: so.taxType || "none", discountType: so.discountType || "percent", discountPercent: Number(so.discountPercent || 0), items: invItems }]);
     notify(`${inputFaktur.trim()} dibuat`);
   }
 
@@ -1197,8 +1249,18 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   }
 
   const filteredProds = (products || []).filter((p) => p.name.toLowerCase().includes(searchProd.toLowerCase()) || p.category.toLowerCase().includes(searchProd.toLowerCase()));
-  const directRawSubtotal = items.reduce((s, it) => s + Math.max(0, it.qty * it.unitPrice - (it.qty * it.unitPrice * (Number(it.discountPercent || 0) / 100))), 0);
-  const directTax = calcTax(directRawSubtotal, taxType, discountPercentHeader);
+  
+  const directRawSubtotal = items.reduce((s, it) => {
+    const gross = it.qty * it.unitPrice;
+    const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
+    return s + Math.max(0, gross - discAmt);
+  }, 0);
+
+  const directEffHeaderPct = discountTypeHeader === "amount" 
+    ? (directRawSubtotal > 0 ? (Math.min(directRawSubtotal, Number(discountPercentHeader || 0)) / directRawSubtotal) * 100 : 0)
+    : Number(discountPercentHeader || 0);
+
+  const directTax = calcTax(directRawSubtotal, taxType, directEffHeaderPct);
 
   return (
     <div>
@@ -1280,11 +1342,14 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                 <option value="include11">PPN 11% (Termasuk Pajak)</option>
               </Select>
             </Field>
-            <Field label="Diskon Nota / Global (%)" colorConfig={colorConfig}>
-              <div className="relative flex items-center">
-                <TextInput type="number" value={discountPercentHeader} onChange={(e) => { const val = e.target.value; setDiscountPercentHeader(val === "" ? "" : Math.min(100, Math.max(0, Number(val)))); }} placeholder="0" className="font-mono pr-6" colorConfig={colorConfig} />
-                <span className="absolute right-3 text-xs font-bold text-teal-800 pointer-events-none">%</span>
-              </div>
+            <Field label="Diskon Nota / Global (% / Rp)" colorConfig={colorConfig}>
+              <DiscountControl
+                type={discountTypeHeader}
+                value={discountPercentHeader}
+                onTypeChange={setDiscountTypeHeader}
+                onValueChange={setDiscountPercentHeader}
+                colorConfig={colorConfig}
+              />
             </Field>
           </div>
 
@@ -1315,7 +1380,9 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
               const p = (products || []).find((x) => x.id === it.productId);
               const s = stockByProduct[it.productId] || { qty: 0 };
               const isStockShort = !isEditingFromSO && s && s.qty < it.qty;
-              const lineTotal = Math.max(0, it.qty * it.unitPrice - (it.qty * it.unitPrice * (Number(it.discountPercent || 0) / 100)));
+              const gross = it.qty * it.unitPrice;
+              const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
+              const lineTotal = Math.max(0, gross - discAmt);
 
               return (
                 <div key={i} className="p-2.5 rounded-lg bg-white border flex flex-col gap-2" style={{ borderColor: isStockShort ? colorConfig?.warn : colorConfig?.border }}>
@@ -1330,7 +1397,16 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                   <div className="grid grid-cols-3 gap-2 pt-1 border-t border-gray-100">
                     <div><label className="text-[10px] block text-gray-500 font-mono">Qty</label><TextInput type="number" value={it.qty} onChange={(e) => updateDirectItem(i, { qty: Math.max(1, Number(e.target.value)) })} disabled={isEditingFromSO} className="text-center" colorConfig={colorConfig} /></div>
                     <div><label className="text-[10px] block text-gray-500 font-mono">Harga Jual (Satuan)</label><TextInput type="number" value={it.unitPrice} onChange={(e) => updateDirectItem(i, { unitPrice: Number(e.target.value) })} disabled={isEditingFromSO} colorConfig={colorConfig} /></div>
-                    <div><label className="text-[10px] block text-gray-500 font-mono">Diskon Item (%)</label><div className="relative flex items-center"><TextInput type="number" value={it.discountPercent || 0} onChange={(e) => updateDirectItem(i, { discountPercent: Math.min(100, Math.max(0, Number(e.target.value))) })} placeholder="0" disabled={isEditingFromSO} className="font-mono text-teal-800 pr-6" colorConfig={colorConfig} /><span className="absolute right-2 text-xs font-bold text-teal-800 pointer-events-none">%</span></div></div>
+                    <div>
+                      <label className="text-[10px] block text-gray-500 font-mono">Diskon Item (% / Rp)</label>
+                      <DiscountControl
+                        type={it.discountType || "percent"}
+                        value={it.discountPercent}
+                        onTypeChange={(t) => updateDirectItem(i, { discountType: t })}
+                        onValueChange={(v) => updateDirectItem(i, { discountPercent: v })}
+                        colorConfig={colorConfig}
+                      />
+                    </div>
                   </div>
                 </div>
               );
@@ -1340,7 +1416,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
           <div className="flex justify-between items-end mt-4 pt-3 border-t" style={{ borderColor: colorConfig?.border }}>
             <div className="text-xs flex flex-col gap-0.5">
               <div>Subtotal Kotor: <span className="font-mono font-semibold">{fmtIDR(directRawSubtotal)}</span></div>
-              {Number(discountPercentHeader) > 0 && <div>Diskon Nota ({discountPercentHeader}%): <span className="font-mono font-semibold text-red-600">- {fmtIDR(directTax.discHeaderAmount)}</span></div>}
+              {Number(discountPercentHeader) > 0 && <div>Diskon Nota: <span className="font-mono font-semibold text-red-600">- {fmtIDR(directTax.discHeaderAmount)}</span></div>}
               <div>DPP: <span className="font-mono font-semibold">{fmtIDR(directTax.dpp)}</span></div>
               {taxType !== "none" && <div>PPN (11%): <span className="font-mono font-semibold text-teal-700">{fmtIDR(directTax.ppn)}</span></div>}
               <div className="font-bold text-sm text-gray-900 mt-1">Total Faktur: <span className="font-mono">{fmtIDR(directTax.total)}</span></div>
@@ -1366,18 +1442,19 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       {detailInv && (
         <Modal title={`Detail ${detailInv.noFaktur}`} onClose={() => setDetailInv(null)} wide colorConfig={colorConfig}>
           <table className="w-full text-sm mb-3">
-            <thead><tr style={{ background: colorConfig?.primarySoft }}>{["Produk", "Qty", "Harga", "Diskon %", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: colorConfig?.primary }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: colorConfig?.primarySoft }}>{["Produk", "Qty", "Harga", "Diskon", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: colorConfig?.primary }}>{h}</th>)}</tr></thead>
             <tbody>
               {(detailInv.items || []).map((it, i) => {
                 const p = (products || []).find((x) => x.id === it.productId);
-                const discPct = Number(it.discountPercent || 0);
-                const lineTotal = Math.max(0, it.qty * it.unitPrice - (it.qty * it.unitPrice * (discPct / 100)));
+                const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
+                const gross = it.qty * it.unitPrice;
+                const lineTotal = Math.max(0, gross - discAmt);
                 return (
                   <tr key={i} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
                     <td className="px-3 py-2" style={{ color: colorConfig?.ink }}>{p?.name}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{it.qty} {p?.unit}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
-                    <td className="px-3 py-2 font-mono text-teal-800 font-semibold">{discPct > 0 ? `${discPct}%` : "-"}</td>
+                    <td className="px-3 py-2 font-mono text-teal-800 font-semibold">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.ink }}>{fmtIDR(lineTotal)}</td>
                   </tr>
                 );
@@ -1391,7 +1468,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       {printInv && (
         <Modal title={`Faktur Penjualan — ${printInv.noFaktur}`} onClose={() => setPrintInv(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
-            <Button onClick={async () => { window.print(); }} variant="primary" colorConfig={colorConfig}><Printer size={15} /> Cetak Sekarang / Simpan PDF</Button>
+            <Button onClick={() => window.print()} variant="primary" colorConfig={colorConfig}><Printer size={15} /> Cetak Sekarang / Simpan PDF</Button>
           </div>
           <div className="overflow-x-auto w-full">
             <div id="printable-invoice" className="p-4 sm:p-6 bg-white border rounded-xl text-xs text-gray-800 min-w-[550px] sm:min-w-0">
@@ -1417,9 +1494,18 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                 const dp = printInv.soId ? soDPAmount(printInv.soId) : 0;
                 const paid = invoicePaidAmount(printInv.id);
                 const ret = invoiceReturnedAmount(printInv.id);
-                const rawSub = (printInv.items || []).reduce((s, it) => s + Math.max(0, it.qty * it.unitPrice - (it.qty * it.unitPrice * (Number(it.discountPercent || 0) / 100))), 0);
-                const discHeaderPct = Number(printInv.discountPercent || 0);
-                const taxInfo = calcTax(rawSub, printInv.taxType || "none", discHeaderPct);
+                
+                const rawSub = (printInv.items || []).reduce((s, it) => {
+                  const gross = it.qty * it.unitPrice;
+                  const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
+                  return s + Math.max(0, gross - discAmt);
+                }, 0);
+
+                const effPct = printInv.discountType === "amount" 
+                  ? (rawSub > 0 ? (Math.min(rawSub, Number(printInv.discountPercent || 0)) / rawSub) * 100 : 0)
+                  : Number(printInv.discountPercent || 0);
+
+                const taxInfo = calcTax(rawSub, printInv.taxType || "none", effPct);
                 const sisa = Math.max(0, taxInfo.total - ret - dp - paid);
 
                 return (
@@ -1445,15 +1531,16 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                           <th className="py-2 px-2 text-left font-bold" style={{ color: colorConfig?.primary }}>Nama Barang / Alkes</th>
                           <th className="py-2 px-2 text-center font-bold" style={{ color: colorConfig?.primary }}>Qty</th>
                           <th className="py-2 px-2 text-right font-bold" style={{ color: colorConfig?.primary }}>Harga Satuan</th>
-                          <th className="py-2 px-2 text-center font-bold" style={{ color: colorConfig?.primary }}>Disc %</th>
+                          <th className="py-2 px-2 text-center font-bold" style={{ color: colorConfig?.primary }}>Diskon</th>
                           <th className="py-2 px-2 text-right font-bold" style={{ color: colorConfig?.primary }}>Subtotal</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(printInv.items || []).map((it, idx) => {
                           const p = (products || []).find((x) => x.id === it.productId);
-                          const discPct = Number(it.discountPercent || 0);
-                          const lineTotal = Math.max(0, it.qty * it.unitPrice - (it.qty * it.unitPrice * (discPct / 100)));
+                          const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
+                          const gross = it.qty * it.unitPrice;
+                          const lineTotal = Math.max(0, gross - discAmt);
 
                           return (
                             <tr key={idx} className="border-b">
@@ -1461,7 +1548,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                               <td className="py-2 px-2 text-gray-900">{p?.name || "-"}</td>
                               <td className="py-2 px-2 text-center font-mono">{it.qty} {p?.unit || "unit"}</td>
                               <td className="py-2 px-2 text-right font-mono">{fmtIDR(it.unitPrice)}</td>
-                              <td className="py-2 px-2 text-center font-mono text-teal-800">{discPct > 0 ? `${discPct}%` : "-"}</td>
+                              <td className="py-2 px-2 text-center font-mono text-teal-800">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
                               <td className="py-2 px-2 text-right font-mono font-bold">{fmtIDR(lineTotal)}</td>
                             </tr>
                           );
@@ -1481,7 +1568,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
 
                       <div className="w-5/12 text-xs flex flex-col gap-1.5">
                         <div className="flex justify-between py-1 border-b"><span className="text-gray-600">Subtotal Item</span><span className="font-mono font-bold">{fmtIDR(rawSub)}</span></div>
-                        {discHeaderPct > 0 && <div className="flex justify-between py-1 border-b text-red-600"><span>Diskon Nota ({discHeaderPct}%)</span><span className="font-mono font-bold">- {fmtIDR(taxInfo.discHeaderAmount)}</span></div>}
+                        {taxInfo.discHeaderAmount > 0 && <div className="flex justify-between py-1 border-b text-red-600"><span>Diskon Nota</span><span className="font-mono font-bold">- {fmtIDR(taxInfo.discHeaderAmount)}</span></div>}
                         <div className="flex justify-between py-1 border-b"><span className="text-gray-600">DPP</span><span className="font-mono font-bold">{fmtIDR(taxInfo.dpp)}</span></div>
                         {taxInfo.ppn > 0 && <div className="flex justify-between py-1 border-b text-teal-800"><span>PPN (11%)</span><span className="font-mono font-bold">{fmtIDR(taxInfo.ppn)}</span></div>}
                         {dp > 0 && <div className="flex justify-between py-1 border-b text-emerald-700"><span>Potongan DP</span><span className="font-mono font-bold">- {fmtIDR(dp)}</span></div>}

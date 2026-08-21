@@ -1,6 +1,57 @@
 import React, { useState } from "react";
-import { Plus, Printer, FileText, Trash2, Search, Download } from "lucide-react";
+import { Plus, Printer, FileText, Trash2, Search } from "lucide-react";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
+
+// Helper Input Diskon Dwi-Mode (% / Rp)
+function DiscountControl({ type, value, onTypeChange, onValueChange, colorConfig }) {
+  return (
+    <div className="flex items-center gap-1">
+      <select
+        value={type || "percent"}
+        onChange={(e) => onTypeChange(e.target.value)}
+        className="rounded-lg px-2 py-1.5 text-xs font-bold outline-none cursor-pointer border shrink-0"
+        style={{
+          background: colorConfig?.surface || "#FFFFFF",
+          color: colorConfig?.primary || "#0E4749",
+          borderColor: colorConfig?.border || "#CBD5E1",
+        }}
+      >
+        <option value="percent">%</option>
+        <option value="amount">Rp</option>
+      </select>
+      <TextInput
+        type="number"
+        value={value}
+        onChange={(e) => {
+          const val = e.target.value;
+          if (val === "") {
+            onValueChange("");
+          } else {
+            const num = Number(val);
+            if (type === "percent") {
+              onValueChange(Math.min(100, Math.max(0, num)));
+            } else {
+              onValueChange(Math.max(0, num));
+            }
+          }
+        }}
+        placeholder={type === "amount" ? "Rp 0" : "0 %"}
+        colorConfig={colorConfig}
+        className="font-mono text-right"
+      />
+    </div>
+  );
+}
+
+// Helper kalkulasi diskon item
+function getItemDiscountAmount(qty, unitPrice, discType, discVal) {
+  const gross = qty * unitPrice;
+  const val = Number(discVal || 0);
+  if (discType === "amount") {
+    return Math.min(gross, val);
+  }
+  return gross * (Math.min(100, val) / 100);
+}
 
 export default function PurchasesView({
   products, suppliers, pos, batches, pReceipts, pInvoices, pReturns, paymentsOut,
@@ -89,6 +140,7 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
   const [supplierId, setSupplierId] = useState("");
   const [date, setDate] = useState(todayISO());
   const [taxType, setTaxType] = useState("none");
+  const [discountTypeHeader, setDiscountTypeHeader] = useState("percent");
   const [discountPercentHeader, setDiscountPercentHeader] = useState(0);
   const [items, setItems] = useState([]);
   const [searchProd, setSearchProd] = useState("");
@@ -107,13 +159,13 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
       return max;
     }, 0);
 
-    const nextSeq = maxSeq + 1;
-    const autoPO = `PO-${currentYear}-${String(nextSeq).padStart(4, "0")}`;
+    const autoPO = `PO-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`;
 
     setPoNumber(autoPO);
     setSupplierId((suppliers || [])[0]?.id || "");
     setDate(todayISO());
     setTaxType("none");
+    setDiscountTypeHeader("percent");
     setDiscountPercentHeader(0);
     setItems([]);
     setSearchProd("");
@@ -130,8 +182,9 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
     setSupplierId(po.supplierId);
     setDate(po.date || todayISO());
     setTaxType(po.taxType || "none");
-    setDiscountPercentHeader(po.discountPercent || po.discount || 0);
-    setItems((po.items || []).map(it => ({ ...it })));
+    setDiscountTypeHeader(po.discountType || "percent");
+    setDiscountPercentHeader(po.discountPercent ?? po.discount ?? 0);
+    setItems((po.items || []).map(it => ({ ...it, discountType: it.discountType || "percent", discountPercent: it.discountPercent ?? 0 })));
     setSearchProd("");
     setModal("edit");
   }
@@ -161,7 +214,7 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
     if (existing) {
       setItems(items.map((x) => x.productId === prod.id ? { ...x, qty: x.qty + 1 } : x));
     } else {
-      setItems([...items, { productId: prod.id, qty: 1, unitPrice: prod.sellPrice * 0.7, discountPercent: 0 }]);
+      setItems([...items, { productId: prod.id, qty: 1, unitPrice: prod.sellPrice * 0.7, discountType: "percent", discountPercent: 0 }]);
     }
   }
 
@@ -170,11 +223,15 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
   
   const rawSubtotal = items.reduce((s, it) => {
     const gross = it.qty * it.unitPrice;
-    const discAmount = gross * (Number(it.discountPercent || 0) / 100);
+    const discAmount = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
     return s + Math.max(0, gross - discAmount);
   }, 0);
 
-  const taxInfo = calcTax(rawSubtotal, taxType, discountPercentHeader);
+  const effectiveHeaderPct = discountTypeHeader === "amount" 
+    ? (rawSubtotal > 0 ? (Math.min(rawSubtotal, Number(discountPercentHeader || 0)) / rawSubtotal) * 100 : 0)
+    : Number(discountPercentHeader || 0);
+
+  const taxInfo = calcTax(rawSubtotal, taxType, effectiveHeaderPct);
 
   async function submit() {
     if (!poNumber.trim()) return notify("Nomor PO wajib diisi", "danger");
@@ -186,6 +243,7 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
       supplierId, 
       date, 
       taxType, 
+      discountType: discountTypeHeader,
       discountPercent: Number(discountPercentHeader || 0), 
       items, 
       status: "ordered" 
@@ -285,21 +343,14 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
               </Select>
             </Field>
 
-            <Field label="Diskon Nota Supplier (%)" colorConfig={colorConfig}>
-              <div className="relative flex items-center">
-                <TextInput 
-                  type="number" 
-                  value={discountPercentHeader} 
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setDiscountPercentHeader(val === "" ? "" : Math.min(100, Math.max(0, Number(val))));
-                  }} 
-                  placeholder="0"
-                  className="font-mono pr-6"
-                  colorConfig={colorConfig}
-                />
-                <span className="absolute right-3 text-xs font-bold text-teal-800 pointer-events-none">%</span>
-              </div>
+            <Field label="Diskon Nota Supplier (% / Rp)" colorConfig={colorConfig}>
+              <DiscountControl
+                type={discountTypeHeader}
+                value={discountPercentHeader}
+                onTypeChange={setDiscountTypeHeader}
+                onValueChange={setDiscountPercentHeader}
+                colorConfig={colorConfig}
+              />
             </Field>
           </div>
 
@@ -307,7 +358,7 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
             <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: colorConfig?.primary }}>Pilih / Tambah Produk Kebijakan PO</div>
             <div className="relative mb-2">
               <Search size={14} className="absolute left-3 top-2.5" color={colorConfig?.inkSoft} />
-              <TextInput placeholder="Cari nama produk / kategori untuk ditambahkan..." value={searchProd} onChange={(e) => setSearchProd(e.target.value)} className="pl-8" colorConfig={colorConfig} />
+              <TextInput placeholder="Cari nama produk / kategori..." value={searchProd} onChange={(e) => setSearchProd(e.target.value)} className="pl-8" colorConfig={colorConfig} />
             </div>
             <div className="max-h-36 overflow-y-auto flex flex-col gap-1 pr-1">
               {filteredProds.map((prod) => {
@@ -324,7 +375,6 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
                   </div>
                 );
               })}
-              {filteredProds.length === 0 && <div className="text-xs py-2 text-center" style={{ color: colorConfig?.inkSoft }}>Produk tidak ditemukan.</div>}
             </div>
           </div>
 
@@ -333,7 +383,7 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
             {items.map((it, i) => {
               const p = (products || []).find((x) => x.id === it.productId);
               const gross = it.qty * it.unitPrice;
-              const discAmount = gross * (Number(it.discountPercent || 0) / 100);
+              const discAmount = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
               const lineTotal = Math.max(0, gross - discAmount);
 
               return (
@@ -358,11 +408,7 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
                           const val = e.target.value;
                           updateItem(i, { qty: val === "" ? "" : Math.max(0, Number(val)) });
                         }} 
-                        onBlur={() => {
-                          if (!it.qty || Number(it.qty) <= 0) {
-                            updateItem(i, { qty: 1 });
-                          }
-                        }}
+                        onBlur={() => { if (!it.qty || Number(it.qty) <= 0) updateItem(i, { qty: 1 }); }}
                         className="text-center" 
                         colorConfig={colorConfig}
                       />
@@ -380,33 +426,25 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] block text-gray-500 font-mono">Diskon Item (%)</label>
-                      <div className="relative flex items-center">
-                        <TextInput 
-                          type="number" 
-                          value={it.discountPercent} 
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            updateItem(i, { discountPercent: val === "" ? "" : Math.min(100, Math.max(0, Number(val))) });
-                          }} 
-                          placeholder="0" 
-                          className="font-mono text-teal-800 pr-6" 
-                          colorConfig={colorConfig}
-                        />
-                        <span className="absolute right-2 text-xs font-bold text-teal-800 pointer-events-none">%</span>
-                      </div>
+                      <label className="text-[10px] block text-gray-500 font-mono">Diskon Item (% / Rp)</label>
+                      <DiscountControl
+                        type={it.discountType || "percent"}
+                        value={it.discountPercent}
+                        onTypeChange={(t) => updateItem(i, { discountType: t })}
+                        onValueChange={(v) => updateItem(i, { discountPercent: v })}
+                        colorConfig={colorConfig}
+                      />
                     </div>
                   </div>
                 </div>
               );
             })}
-            {items.length === 0 && <div className="text-xs py-6 text-center rounded-lg border border-dashed" style={{ color: colorConfig?.inkSoft, borderColor: colorConfig?.border }}>Belum ada item terpilih. Silakan klik "Tambah" produk di atas.</div>}
           </div>
 
           <div className="flex justify-between items-end mt-4 pt-3 border-t" style={{ borderColor: colorConfig?.border }}>
             <div className="text-xs flex flex-col gap-0.5">
               <div>Subtotal Kotor: <span className="font-mono font-semibold">{fmtIDR(rawSubtotal)}</span></div>
-              {Number(discountPercentHeader) > 0 && <div>Diskon Nota Supplier ({discountPercentHeader}%): <span className="font-mono font-semibold text-red-600">- {fmtIDR(taxInfo.discHeaderAmount)}</span></div>}
+              {Number(discountPercentHeader) > 0 && <div>Diskon Nota Supplier: <span className="font-mono font-semibold text-red-600">- {fmtIDR(taxInfo.discHeaderAmount)}</span></div>}
               <div>DPP: <span className="font-mono font-semibold">{fmtIDR(taxInfo.dpp)}</span></div>
               {taxType !== "none" && <div>PPN (11%): <span className="font-mono font-semibold text-teal-700">{fmtIDR(taxInfo.ppn)}</span></div>}
               <div className="font-bold text-sm text-gray-900 mt-1">Total PO: <span className="font-mono">{fmtIDR(taxInfo.total)}</span></div>
@@ -423,10 +461,7 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
             <Field label="NPWP Vendor (opsional)" colorConfig={colorConfig}><TextInput value={quickSuppForm.npwp} onChange={(e) => setQuickSuppForm({ ...quickSuppForm, npwp: e.target.value })} placeholder="Contoh: 01.234.567.8-012.000" colorConfig={colorConfig} /></Field>
             <Field label="Kontak (Telp/Email)" colorConfig={colorConfig}><TextInput value={quickSuppForm.contact} onChange={(e) => setQuickSuppForm({ ...quickSuppForm, contact: e.target.value })} placeholder="No HP / Email PBF" colorConfig={colorConfig} /></Field>
             <Field label="Alamat Kantor/Gudang" colorConfig={colorConfig}><TextInput value={quickSuppForm.address} onChange={(e) => setQuickSuppForm({ ...quickSuppForm, address: e.target.value })} placeholder="Alamat lengkap PBF" colorConfig={colorConfig} /></Field>
-            
-            <Button type="submit" onClick={submitQuickSupplier} className="w-full justify-center mt-3 cursor-pointer" colorConfig={colorConfig}>
-              Simpan & Pilih Supplier Ini
-            </Button>
+            <Button type="submit" onClick={submitQuickSupplier} className="w-full justify-center mt-3 cursor-pointer" colorConfig={colorConfig}>Simpan & Pilih Supplier Ini</Button>
           </form>
         </Modal>
       )}
@@ -437,28 +472,26 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
             Supplier: {findName(suppliers, detailPO.supplierId)} · Tanggal: {fmtDate(detailPO.date)} · Status: {STATUS_LABEL[getPOStatus(detailPO)].label}
           </div>
           <table className="w-full text-sm mb-3">
-            <thead><tr style={{ background: colorConfig?.primarySoft }}>{["Produk", "Qty", "Harga Beli", "Diskon %", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: colorConfig?.primary }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: colorConfig?.primarySoft }}>{["Produk", "Qty", "Harga Beli", "Diskon", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: colorConfig?.primary }}>{h}</th>)}</tr></thead>
             <tbody>
               {(detailPO.items || []).map((it, i) => {
                 const p = (products || []).find((x) => x.id === it.productId);
-                const discPct = Number(it.discountPercent || 0);
+                const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
                 const gross = it.qty * it.unitPrice;
-                const discAmount = gross * (discPct / 100);
-                const lineTotal = Math.max(0, gross - discAmount);
+                const lineTotal = Math.max(0, gross - discAmt);
 
                 return (
                   <tr key={i} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
                     <td className="px-3 py-2" style={{ color: colorConfig?.ink }}>{p?.name}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{it.qty} {p?.unit}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
-                    <td className="px-3 py-2 font-mono text-teal-800 font-semibold">{discPct > 0 ? `${discPct}%` : "-"}</td>
+                    <td className="px-3 py-2 font-mono text-teal-800 font-semibold">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.ink }}>{fmtIDR(lineTotal)}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-          {detailPO.discountPercent > 0 && <div className="text-right font-mono text-xs text-red-600 mb-1">Diskon Nota Vendor: - {detailPO.discountPercent}%</div>}
           <div className="text-right font-mono text-sm mb-2 font-bold" style={{ color: colorConfig?.ink }}>Total PO: {fmtIDR(poTotal(detailPO))}</div>
         </Modal>
       )}
@@ -466,39 +499,17 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
       {printPO && (
         <Modal title={`Purchase Order — ${printPO.poNumber}`} onClose={() => setPrintPO(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
-            <Button
-              onClick={async () => {
-                try {
-                  if (document.fonts) {
-                    await Promise.all([
-                      document.fonts.load("400 12px Inter"),
-                      document.fonts.load("700 12px Inter"),
-                    ]);
-                    await document.fonts.ready;
-                  }
-                } catch (e) {}
-                window.print();
-              }}
-              variant="primary"
-              colorConfig={colorConfig}
-            >
-              <Printer size={15} /> Cetak Sekarang / Simpan PDF
-            </Button>
+            <Button onClick={() => window.print()} variant="primary" colorConfig={colorConfig}><Printer size={15} /> Cetak Sekarang / Simpan PDF</Button>
           </div>
-
           <div className="overflow-x-auto w-full">
             <div id="printable-po" className="p-4 sm:p-6 bg-white border rounded-xl text-xs text-gray-800 min-w-[550px] sm:min-w-0">
               <div className="flex flex-col sm:flex-row items-start justify-between border-b-2 pb-4 mb-4 gap-3 sm:gap-0" style={{ borderColor: colorConfig?.primary }}>
                 <div className="flex items-start gap-3">
-                  {COMPANY_PROFILE?.logoUrl && (
-                    <img src={COMPANY_PROFILE.logoUrl} alt="Logo" className="h-10 sm:h-12 object-contain shrink-0" />
-                  )}
+                  {COMPANY_PROFILE?.logoUrl && <img src={COMPANY_PROFILE.logoUrl} alt="Logo" className="h-10 sm:h-12 object-contain shrink-0" />}
                   <div>
                     <div className="text-sm sm:text-base uppercase tracking-wide font-bold" style={{ color: colorConfig?.primary }}>{COMPANY_PROFILE?.name}</div>
                     <p className="text-[11px] text-gray-600">{COMPANY_PROFILE?.tagline}</p>
                     <p className="text-[10px] text-gray-500 mt-1">{COMPANY_PROFILE?.address}</p>
-                    <p className="text-[10px] text-gray-500">{COMPANY_PROFILE?.contact}</p>
-                    {COMPANY_PROFILE?.npwp && <p className="text-[10px] font-mono text-gray-700 font-bold mt-0.5">NPWP: {COMPANY_PROFILE.npwp}</p>}
                   </div>
                 </div>
                 <div className="text-left sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 w-full sm:w-auto">
@@ -511,12 +522,15 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
                 const supp = (suppliers || []).find((s) => s.id === printPO.supplierId);
                 const rawSub = (printPO.items || []).reduce((s, it) => {
                   const gross = it.qty * it.unitPrice;
-                  const discAmount = gross * (Number(it.discountPercent || 0) / 100);
+                  const discAmount = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
                   return s + Math.max(0, gross - discAmount);
                 }, 0);
 
-                const discHeaderPct = Number(printPO.discountPercent || 0);
-                const taxInfo = calcTax(rawSub, printPO.taxType || "none", discHeaderPct);
+                const effPct = printPO.discountType === "amount" 
+                  ? (rawSub > 0 ? (Math.min(rawSub, Number(printPO.discountPercent || 0)) / rawSub) * 100 : 0)
+                  : Number(printPO.discountPercent || 0);
+
+                const taxInfo = calcTax(rawSub, printPO.taxType || "none", effPct);
 
                 return (
                   <div>
@@ -524,14 +538,11 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
                       <div>
                         <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Kepada Yth. (Supplier / Vendor)</div>
                         <div className="text-sm text-gray-900 font-bold">{supp?.name || "Supplier / Vendor"}</div>
-                        {supp?.npwp && <div className="text-[11px] font-mono text-teal-800 font-bold mt-0.5">NPWP: {supp.npwp}</div>}
                         <div className="text-[11px] text-gray-600 mt-0.5">{supp?.address || "-"}</div>
-                        <div className="text-[11px] text-gray-600">{supp?.contact || "-"}</div>
                       </div>
                       <div className="text-right">
                         <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Detail Dokumen Pesanan</div>
                         <div><span className="text-gray-500">Tanggal PO:</span> <span className="font-mono">{fmtDate(printPO.date)}</span></div>
-                        <div><span className="text-gray-500">Status PO:</span> <span className="font-mono font-bold text-teal-800">Resmi Diterbitkan</span></div>
                       </div>
                     </div>
 
@@ -542,17 +553,16 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
                           <th className="py-2 px-2 text-left font-bold" style={{ color: colorConfig?.primary }}>Nama Barang / Alkes Dipesan</th>
                           <th className="py-2 px-2 text-center font-bold" style={{ color: colorConfig?.primary }}>Qty</th>
                           <th className="py-2 px-2 text-right font-bold" style={{ color: colorConfig?.primary }}>Harga Beli Satuan</th>
-                          <th className="py-2 px-2 text-center font-bold" style={{ color: colorConfig?.primary }}>Disc %</th>
+                          <th className="py-2 px-2 text-center font-bold" style={{ color: colorConfig?.primary }}>Diskon</th>
                           <th className="py-2 px-2 text-right font-bold" style={{ color: colorConfig?.primary }}>Subtotal</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(printPO.items || []).map((it, idx) => {
                           const p = (products || []).find((x) => x.id === it.productId);
-                          const discPct = Number(it.discountPercent || 0);
+                          const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
                           const gross = it.qty * it.unitPrice;
-                          const discAmount = gross * (discPct / 100);
-                          const lineTotal = Math.max(0, gross - discAmount);
+                          const lineTotal = Math.max(0, gross - discAmt);
 
                           return (
                             <tr key={idx} className="border-b">
@@ -560,7 +570,7 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
                               <td className="py-2.5 px-2 text-gray-900 font-bold">{p?.name || "-"}</td>
                               <td className="py-2.5 px-2 text-center font-mono font-bold">{it.qty} {p?.unit || "unit"}</td>
                               <td className="py-2.5 px-2 text-right font-mono">{fmtIDR(it.unitPrice)}</td>
-                              <td className="py-2.5 px-2 text-center font-mono text-teal-800">{discPct > 0 ? `${discPct}%` : "-"}</td>
+                              <td className="py-2.5 px-2 text-center font-mono text-teal-800">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
                               <td className="py-2.5 px-2 text-right font-mono font-bold">{fmtIDR(lineTotal)}</td>
                             </tr>
                           );
@@ -573,54 +583,16 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
                         <div className="text-gray-700 mb-1 font-bold">Instruksi Pengiriman & Ketentuan:</div>
                         <p className="text-gray-500 leading-relaxed">
                           1. Harap sertakan nomor Purchase Order ini pada Surat Jalan & Faktur Vendor.<br />
-                          2. Pengiriman barang ditujukan ke alamat gudang resmi PT Wiryatama Putera Mandiri.<br />
-                          3. Barang yang dikirim harus memiliki tanggal kedaluwarsa (*expiry date*) yang memadai sesuai standar PBF/CDOB.
+                          2. Pengiriman barang ditujukan ke alamat gudang resmi PT Wiryatama Putera Mandiri.
                         </p>
                       </div>
 
                       <div className="w-5/12 text-xs flex flex-col gap-1.5">
-                        <div className="flex justify-between py-1 border-b">
-                          <span className="text-gray-600">Subtotal Item</span>
-                          <span className="font-mono font-bold">{fmtIDR(rawSub)}</span>
-                        </div>
-                        {discHeaderPct > 0 && (
-                          <div className="flex justify-between py-1 border-b text-red-600">
-                            <span>Diskon Nota Vendor ({discHeaderPct}%)</span>
-                            <span className="font-mono font-bold">- {fmtIDR(taxInfo.discHeaderAmount)}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between py-1 border-b">
-                          <span className="text-gray-600">DPP</span>
-                          <span className="font-mono font-bold">{fmtIDR(taxInfo.dpp)}</span>
-                        </div>
-                        {taxInfo.ppn > 0 && (
-                          <div className="flex justify-between py-1 border-b text-teal-800">
-                            <span>PPN (11%)</span>
-                            <span className="font-mono font-bold">{fmtIDR(taxInfo.ppn)}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between py-2 border-b-2 text-sm font-bold" style={{ color: colorConfig?.primary, borderColor: colorConfig?.primary }}>
-                          <span>Total Pesanan PO</span>
-                          <span className="font-mono">{fmtIDR(taxInfo.total)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-8 text-center text-xs mt-8 pt-4">
-                      <div>
-                        <p className="text-gray-500 mb-16">Dikonfirmasi Oleh (Supplier),</p>
-                        <p className="underline text-gray-900 font-bold">( {supp?.name || "..........................."} )</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 mb-2">Hormat Kami ({COMPANY_PROFILE?.name}),</p>
-                        <div className="relative h-20 flex items-center justify-center my-1">
-                          {COMPANY_PROFILE?.stampUrl ? (
-                            <img src={COMPANY_PROFILE.stampUrl} alt="Tanda Tangan & Stempel PJT" className="h-20 object-contain mx-auto" />
-                          ) : (
-                            <div className="h-16" />
-                          )}
-                        </div>
-                        <p className="underline text-gray-900 font-bold mt-1">( {COMPANY_PROFILE?.pjtName || "Purchasing / PJT"} )</p>
+                        <div className="flex justify-between py-1 border-b"><span className="text-gray-600">Subtotal Item</span><span className="font-mono font-bold">{fmtIDR(rawSub)}</span></div>
+                        {taxInfo.discHeaderAmount > 0 && <div className="flex justify-between py-1 border-b text-red-600"><span>Diskon Nota Vendor</span><span className="font-mono font-bold">- {fmtIDR(taxInfo.discHeaderAmount)}</span></div>}
+                        <div className="flex justify-between py-1 border-b"><span className="text-gray-600">DPP</span><span className="font-mono font-bold">{fmtIDR(taxInfo.dpp)}</span></div>
+                        {taxInfo.ppn > 0 && <div className="flex justify-between py-1 border-b text-teal-800"><span>PPN (11%)</span><span className="font-mono font-bold">{fmtIDR(taxInfo.ppn)}</span></div>}
+                        <div className="flex justify-between py-2 border-b-2 text-sm font-bold" style={{ color: colorConfig?.primary, borderColor: colorConfig?.primary }}><span>Total Pesanan PO</span><span className="font-mono">{fmtIDR(taxInfo.total)}</span></div>
                       </div>
                     </div>
                   </div>
@@ -735,9 +707,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
 
     (pr.items || []).forEach((it) => {
       const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
-      if (!b || b.qty < it.qty) {
-        isUsedOrSold = true;
-      }
+      if (!b || b.qty < it.qty) isUsedOrSold = true;
     });
 
     if (isUsedOrSold) {
@@ -746,9 +716,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
 
     (pr.items || []).forEach((it) => {
       const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
-      if (b) {
-        b.qty -= it.qty;
-      }
+      if (b) b.qty -= it.qty;
     });
 
     await saveBatches(working);
@@ -882,6 +850,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   const [supplierId, setSupplierId] = useState("");
   const [date, setDate] = useState(todayISO());
   const [taxType, setTaxType] = useState("none");
+  const [discountTypeHeader, setDiscountTypeHeader] = useState("percent");
   const [discountPercentHeader, setDiscountPercentHeader] = useState(0);
   const [items, setItems] = useState([]);
   const [searchProd, setSearchProd] = useState("");
@@ -902,13 +871,13 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       return max;
     }, 0);
 
-    const nextSeq = maxSeq + 1;
     const autoFaktur = `VINV-${currentYear}-${String(nextSeq).padStart(4, "0")}`;
 
     setNoFakturDirect(autoFaktur);
     setSupplierId((suppliers || [])[0]?.id || "");
     setDate(todayISO());
     setTaxType("none");
+    setDiscountTypeHeader("percent");
     setDiscountPercentHeader(0);
     setItems([]);
     setSearchProd("");
@@ -926,8 +895,9 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     setSupplierId(inv.supplierId);
     setDate(inv.date || todayISO());
     setTaxType(inv.taxType || "none");
+    setDiscountTypeHeader(inv.discountType || "percent");
     setDiscountPercentHeader(inv.discountPercent || 0);
-    setItems((inv.items || []).map(it => ({ ...it })));
+    setItems((inv.items || []).map(it => ({ ...it, discountType: it.discountType || "percent", discountPercent: it.discountPercent || 0 })));
     setSearchProd("");
     setModalDirect(true);
   }
@@ -955,7 +925,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     if (existing) {
       setItems(items.map((x) => x.productId === prod.id ? { ...x, qty: x.qty + 1 } : x));
     } else {
-      setItems([...items, { productId: prod.id, qty: 1, unitPrice: prod.sellPrice * 0.7, discountPercent: 0, batchNo: "", expiryDate: todayISO() }]);
+      setItems([...items, { productId: prod.id, qty: 1, unitPrice: prod.sellPrice * 0.7, discountType: "percent", discountPercent: 0, batchNo: "", expiryDate: todayISO() }]);
     }
   }
 
@@ -996,8 +966,10 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
     items.forEach((it) => {
       const batchId = uid();
-      const discPct = Number(it.discountPercent || 0);
-      const netUnitPrice = it.unitPrice * (1 - discPct / 100);
+      const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
+      const gross = it.qty * it.unitPrice;
+      const netTotal = Math.max(0, gross - discAmt);
+      const netUnitPrice = it.qty > 0 ? netTotal / it.qty : 0;
 
       newBatches.push({
         id: batchId,
@@ -1015,7 +987,8 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         productId: it.productId,
         qty: it.qty,
         unitPrice: it.unitPrice,
-        discountPercent: discPct,
+        discountType: it.discountType || "percent",
+        discountPercent: Number(it.discountPercent || 0),
         batchId: batchId,
         batchNo: it.batchNo,
         expiryDate: it.expiryDate
@@ -1030,6 +1003,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       supplierId, 
       date, 
       taxType, 
+      discountType: discountTypeHeader,
       discountPercent: Number(discountPercentHeader || 0), 
       items: invItems, 
       isDirect: true 
@@ -1059,6 +1033,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         productId: it.productId, 
         qty: receivedByProduct[it.productId] || 0, 
         unitPrice: it.unitPrice,
+        discountType: it.discountType || "percent",
         discountPercent: Number(it.discountPercent || 0)
       }))
       .filter((it) => it.qty > 0);
@@ -1075,9 +1050,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       return max;
     }, 0);
 
-    const nextSeq = maxSeq + 1;
-    const defaultNo = `VINV-${currentYear}-${String(nextSeq).padStart(4, "0")}`;
-
+    const defaultNo = `VINV-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`;
     const inputFaktur = prompt("Masukkan Nomor Faktur Vendor / Supplier:", defaultNo);
     if (!inputFaktur) return;
 
@@ -1088,6 +1061,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       supplierId: po.supplierId, 
       date: todayISO(), 
       taxType: po.taxType || "none", 
+      discountType: po.discountType || "percent",
       discountPercent: Number(po.discountPercent || 0),
       items: invItems 
     }]);
@@ -1096,12 +1070,8 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
   async function cancelInvoice(inv) {
     const paid = pInvoicePaidAmount(inv.id);
-    if (paid > 0) {
-      return notify("Gagal membatalkan: Faktur ini sudah memiliki riwayat pembayaran ke supplier.", "danger");
-    }
-    if ((pReturns || []).some((r) => r.pInvoiceId === inv.id)) {
-      return notify("Gagal membatalkan: Faktur ini memiliki riwayat retur pembelian. Batalkan retur terlebih dahulu.", "danger");
-    }
+    if (paid > 0) return notify("Gagal membatalkan: Faktur ini sudah memiliki riwayat pembayaran ke supplier.", "danger");
+    if ((pReturns || []).some((r) => r.pInvoiceId === inv.id)) return notify("Gagal membatalkan: Faktur ini memiliki riwayat retur pembelian. Batalkan retur terlebih dahulu.", "danger");
 
     if (inv.isDirect) {
       let working = (batches || []).map((b) => ({ ...b }));
@@ -1109,20 +1079,14 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
       (inv.items || []).forEach((it) => {
         const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
-        if (!b || b.qty < it.qty) {
-          isUsedOrSold = true;
-        }
+        if (!b || b.qty < it.qty) isUsedOrSold = true;
       });
 
-      if (isUsedOrSold) {
-        return notify("Gagal membatalkan: Barang dari Faktur Pembelian ini sudah ada yang terjual/terpakai!", "danger");
-      }
+      if (isUsedOrSold) return notify("Gagal membatalkan: Barang dari Faktur Pembelian ini sudah ada yang terjual/terpakai!", "danger");
 
       (inv.items || []).forEach((it) => {
         const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
-        if (b) {
-          b.qty -= it.qty;
-        }
+        if (b) b.qty -= it.qty;
       });
 
       const finalBatches = working.filter((b) => b.qty > 0);
@@ -1137,11 +1101,15 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
   const directRawSubtotal = items.reduce((s, it) => {
     const gross = it.qty * it.unitPrice;
-    const discAmount = gross * (Number(it.discountPercent || 0) / 100);
+    const discAmount = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
     return s + Math.max(0, gross - discAmount);
   }, 0);
 
-  const directTax = calcTax(directRawSubtotal, taxType, discountPercentHeader);
+  const directEffHeaderPct = discountTypeHeader === "amount" 
+    ? (directRawSubtotal > 0 ? (Math.min(directRawSubtotal, Number(discountPercentHeader || 0)) / directRawSubtotal) * 100 : 0)
+    : Number(discountPercentHeader || 0);
+
+  const directTax = calcTax(directRawSubtotal, taxType, directEffHeaderPct);
 
   return (
     <div>
@@ -1227,21 +1195,14 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
               </Select>
             </Field>
 
-            <Field label="Diskon Nota Vendor (%)" colorConfig={colorConfig}>
-              <div className="relative flex items-center">
-                <TextInput 
-                  type="number" 
-                  value={discountPercentHeader} 
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setDiscountPercentHeader(val === "" ? "" : Math.min(100, Math.max(0, Number(val))));
-                  }} 
-                  placeholder="0"
-                  className="font-mono pr-6"
-                  colorConfig={colorConfig}
-                />
-                <span className="absolute right-3 text-xs font-bold text-teal-800 pointer-events-none">%</span>
-              </div>
+            <Field label="Diskon Nota Vendor (% / Rp)" colorConfig={colorConfig}>
+              <DiscountControl
+                type={discountTypeHeader}
+                value={discountPercentHeader}
+                onTypeChange={setDiscountTypeHeader}
+                onValueChange={setDiscountPercentHeader}
+                colorConfig={colorConfig}
+              />
             </Field>
           </div>
 
@@ -1286,8 +1247,14 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
                       <TextInput type="number" value={it.unitPrice} onChange={(e) => updateDirectItem(i, { unitPrice: Number(e.target.value) })} colorConfig={colorConfig} />
                     </div>
                     <div>
-                      <label className="text-[10px] block text-gray-500 font-mono">Disc (%)</label>
-                      <TextInput type="number" value={it.discountPercent || 0} onChange={(e) => updateDirectItem(i, { discountPercent: Math.min(100, Math.max(0, Number(e.target.value))) })} colorConfig={colorConfig} />
+                      <label className="text-[10px] block text-gray-500 font-mono">Disc (% / Rp)</label>
+                      <DiscountControl
+                        type={it.discountType || "percent"}
+                        value={it.discountPercent}
+                        onTypeChange={(t) => updateDirectItem(i, { discountType: t })}
+                        onValueChange={(v) => updateDirectItem(i, { discountPercent: v })}
+                        colorConfig={colorConfig}
+                      />
                     </div>
                     <div>
                       <label className="text-[10px] block text-gray-500 font-mono">No. Batch</label>
@@ -1301,13 +1268,12 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
                 </div>
               );
             })}
-            {items.length === 0 && <div className="text-xs py-6 text-center rounded-lg border border-dashed" style={{ color: colorConfig?.inkSoft, borderColor: colorConfig?.border }}>Belum ada item terpilih.</div>}
           </div>
 
           <div className="flex justify-between items-end mt-4 pt-3 border-t" style={{ borderColor: colorConfig?.border }}>
             <div className="text-xs flex flex-col gap-0.5">
               <div>Subtotal Kotor: <span className="font-mono font-semibold">{fmtIDR(directRawSubtotal)}</span></div>
-              {Number(discountPercentHeader) > 0 && <div>Diskon Nota ({discountPercentHeader}%): <span className="font-mono font-semibold text-red-600">- {fmtIDR(directTax.discHeaderAmount)}</span></div>}
+              {Number(discountPercentHeader) > 0 && <div>Diskon Nota: <span className="font-mono font-semibold text-red-600">- {fmtIDR(directTax.discHeaderAmount)}</span></div>}
               <div>DPP: <span className="font-mono font-semibold">{fmtIDR(directTax.dpp)}</span></div>
               {taxType !== "none" && <div>PPN (11%): <span className="font-mono font-semibold text-teal-700">{fmtIDR(directTax.ppn)}</span></div>}
               <div className="font-bold text-sm text-gray-900 mt-1">Total Tagihan: <span className="font-mono">{fmtIDR(directTax.total)}</span></div>
@@ -1330,27 +1296,26 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       {detailInv && (
         <Modal title={`Detail ${detailInv.noFaktur}`} onClose={() => setDetailInv(null)} wide colorConfig={colorConfig}>
           <table className="w-full text-sm mb-3">
-            <thead><tr style={{ background: colorConfig?.primarySoft }}>{["Produk", "Qty", "Harga Beli", "Diskon %", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: colorConfig?.primary }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: colorConfig?.primarySoft }}>{["Produk", "Qty", "Harga Beli", "Diskon", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: colorConfig?.primary }}>{h}</th>)}</tr></thead>
             <tbody>
               {(detailInv.items || []).map((it, i) => {
                 const p = (products || []).find((x) => x.id === it.productId);
-                const discPct = Number(it.discountPercent || 0);
+                const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
                 const gross = it.qty * it.unitPrice;
-                const lineTotal = Math.max(0, gross - (gross * (discPct / 100)));
+                const lineTotal = Math.max(0, gross - discAmt);
 
                 return (
                   <tr key={i} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
                     <td className="px-3 py-2" style={{ color: colorConfig?.ink }}>{p?.name}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{it.qty} {p?.unit}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
-                    <td className="px-3 py-2 font-mono text-teal-800 font-semibold">{discPct > 0 ? `${discPct}%` : "-"}</td>
+                    <td className="px-3 py-2 font-mono text-teal-800 font-semibold">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.ink }}>{fmtIDR(lineTotal)}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-          {detailInv.discountPercent > 0 && <div className="text-right font-mono text-xs text-red-600 mb-1">Diskon Nota Vendor: - {detailInv.discountPercent}%</div>}
           <div className="text-right font-mono text-sm mb-2 font-bold" style={{ color: colorConfig?.ink }}>Total Tagihan: {fmtIDR(pInvoiceTotal(detailInv))}</div>
         </Modal>
       )}

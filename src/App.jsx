@@ -1013,161 +1013,181 @@ const NAV = ALL_NAV.filter((n) => currentUserAccess.includes(n.id));
 
       <style>{`
 
-        /* HILANGKAN PANAH SPINNER PADA INPUT NUMBER (CHROME, SAFARI, EDGE, OPERA) */
-input[type=number]::-webkit-inner-spin-button, 
-input[type=number]::-webkit-outer-spin-button { 
-  -webkit-appearance: none; 
-  margin: 0; 
-}
+  /* HILANGKAN PANAH SPINNER PADA INPUT NUMBER (CHROME, SAFARI, EDGE, OPERA) */
+  input[type=number]::-webkit-inner-spin-button, 
+  input[type=number]::-webkit-outer-spin-button { 
+    -webkit-appearance: none; 
+    margin: 0; 
+  }
 
-/* HILANGKAN PANAH SPINNER PADA INPUT NUMBER (FIREFOX) */
-input[type=number] {
-  -moz-appearance: textfield;
-}
+  /* HILANGKAN PANAH SPINNER PADA INPUT NUMBER (FIREFOX) */
+  input[type=number] {
+    -moz-appearance: textfield;
+  }
 
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
 
-        /* ============================================================ */
-        /* STYLING CHIP BATCH STOK (MODE TERANG & GELAP TAJAM & KONTRAS)*/
-        /* ============================================================ */
-        
-        /* 1. KONTRAST DI MODE TERANG */
-        .batch-chip {
-          background-color: #F1F5F9 !important;
-          border-color: #CBD5E1 !important;
-          color: #0F172A !important;
-        }
-        .batch-chip .batch-no {
-          color: #0E4749 !important;
-        }
-        .batch-chip .batch-qty {
-          color: #0F172A !important;
-          font-weight: 700 !important;
-        }
-        .batch-chip .batch-exp {
-          color: #475569 !important;
-        }
+  /* ============================================================ */
+  /* STYLING CHIP BATCH STOK (MODE TERANG & GELAP TAJAM & KONTRAS)*/
+  /* ============================================================ */
+  
+  /* 1. KONTRAST DI MODE TERANG */
+  .batch-chip {
+    background-color: #F1F5F9 !important;
+    border-color: #CBD5E1 !important;
+    color: #0F172A !important;
+  }
+  .batch-chip .batch-no {
+    color: #0E4749 !important;
+  }
+  .batch-chip .batch-qty {
+    color: #0F172A !important;
+    font-weight: 700 !important;
+  }
+  .batch-chip .batch-exp {
+    color: #475569 !important;
+  }
 
-        /* 2. KONTRAST DI MODE GELAP */
-        ${isDarkMode ? `
-          .batch-chip {
-            background-color: #1E293B !important;
-            border-color: #334155 !important;
-            color: #F8FAFC !important;
-          }
-          .batch-chip .batch-no {
-            color: #34D399 !important;
-          }
-          .batch-chip .batch-qty {
-            color: #F8FAFC !important;
-            font-weight: 700 !important;
-          }
-          .batch-chip .batch-exp {
-            color: #94A3B8 !important;
-          }
+  /* 2. KONTRAST DI MODE GELAP */
+  ${isDarkMode ? `
+    .batch-chip {
+      background-color: #1E293B !important;
+      border-color: #334155 !important;
+      color: #F8FAFC !important;
+    }
+    .batch-chip .batch-no {
+      color: #34D399 !important;
+    }
+    .batch-chip .batch-qty {
+      color: #F8FAFC !important;
+      font-weight: 700 !important;
+    }
+    .batch-chip .batch-exp {
+      color: #94A3B8 !important;
+    }
 
-          /* General Dark Mode Fixes */
-          .bg-white, .bg-gray-50, .bg-gray-100, .bg-teal-50, .bg-amber-50, 
-          div[style*="background: rgb(255, 255, 255)"], 
-          div[style*="background-color: rgb(255, 255, 255)"],
-          div[style*="background: #FFFFFF"], 
-          div[style*="background: #ffffff"],
-          div[style*="background-color: #FFFFFF"],
-          div[style*="background-color: #ffffff"] {
-            background-color: #0F172A !important;
-            color: #F8FAFC !important;
-            border-color: #1E293B !important;
-          }
+    /* General Dark Mode Fixes */
+    .bg-white, .bg-gray-50, .bg-gray-100, .bg-teal-50, .bg-amber-50, 
+    div[style*="background: rgb(255, 255, 255)"], 
+    div[style*="background-color: rgb(255, 255, 255)"],
+    div[style*="background: #FFFFFF"], 
+    div[style*="background: #ffffff"],
+    div[style*="background-color: #FFFFFF"],
+    div[style*="background-color: #ffffff"] {
+      background-color: #0F172A !important;
+      color: #F8FAFC !important;
+      border-color: #1E293B !important;
+    }
 
-          table thead tr,
-          tr[style*="background: rgb(232, 240, 239)"],
-          tr[style*="background: #E8F0EF"] {
-            background-color: #1E293B !important;
-          }
-          table thead th,
-          table thead th * {
-            color: #34D399 !important;
-            font-weight: 700 !important;
-          }
+    table thead tr,
+    tr[style*="background: rgb(232, 240, 239)"],
+    tr[style*="background: #E8F0EF"] {
+      background-color: #1E293B !important;
+    }
+    table thead th,
+    table thead th * {
+      color: #34D399 !important;
+      font-weight: 700 !important;
+    }
 
-          h1, h2, h3, h4, h5, h6,
-          p, a, td,
-          div[style*="color: rgb(21, 48, 45)"],
-          div[style*="color: #15302D"],
-          span[style*="color: rgb(21, 48, 45)"],
-          span[style*="color: #15302D"] {
-            color: #F8FAFC !important;
-          }
+    h1, h2, h3, h4, h5, h6,
+    p, a, td,
+    div[style*="color: rgb(21, 48, 45)"],
+    div[style*="color: #15302D"],
+    span[style*="color: rgb(21, 48, 45)"],
+    span[style*="color: #15302D"] {
+      color: #F8FAFC !important;
+    }
 
-          .text-gray-500, .text-gray-400,
-          div[style*="color: rgb(92, 120, 115)"],
-          div[style*="color: #5C7873"] {
-            color: #94A3B8 !important;
-          }
+    .text-gray-500, .text-gray-400,
+    div[style*="color: rgb(92, 120, 115)"],
+    div[style*="color: #5C7873"] {
+      color: #94A3B8 !important;
+    }
 
-          span.rounded-full, 
-          span[class*="rounded-full"] {
-            background-color: #1E293B !important;
-            color: #34D399 !important;
-            border: 1px solid #34D399 !important;
-            font-weight: 700 !important;
-          }
+    span.rounded-full, 
+    span[class*="rounded-full"] {
+      background-color: #1E293B !important;
+      color: #34D399 !important;
+      border: 1px solid #34D399 !important;
+      font-weight: 700 !important;
+    }
 
-          table tbody tr, div[style*="border-bottom"] {
-            border-color: #1E293B !important;
-          }
-          select option {
-            background-color: #0F172A !important;
-            color: #F8FAFC !important;
-          }
-        ` : `
-          select option {
-            background-color: #FFFFFF !important;
-            color: #15302D !important;
-          }
-          table tbody tr:hover {
-            background-color: rgba(0, 0, 0, 0.02) !important;
-          }
-        `}
+    table tbody tr, div[style*="border-bottom"] {
+      border-color: #1E293B !important;
+    }
 
-        /* PRINT STYLING */
-        @media print {
-          body { visibility: hidden !important; }
-          .no-print, .no-print * { display: none !important; }
-          .printable-area, .printable-area *,
-          #printable-invoice, #printable-invoice *,
-          #printable-sj, #printable-sj *,
-          #printable-tt, #printable-tt *,
-          #printable-so, #printable-so *,
-          #printable-po, #printable-po * {
-            visibility: visible !important;
-          }
-          .printable-area,
-          #printable-invoice, #printable-sj, #printable-tt, #printable-so, #printable-po { 
-            position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 20px !important;
-            border: none !important; 
-            font-family: 'Inter', Arial, Helvetica, sans-serif !important; 
-            display: block !important; 
-            background: #ffffff !important;
-            box-shadow: none !important;
-            color: #000000 !important;
-          }
-          .modal-backdrop, .modal-content {
-            background: transparent !important;
-            border: none !important;
-            box-shadow: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            max-height: none !important;
-            overflow: visible !important;
-          }
-        }
-      `}</style>
+    /* FIX INPUT FIELD MODE GELAP */
+    input, select, textarea {
+      background-color: #0F172A !important;
+      color: #F8FAFC !important;
+      border-color: #334155 !important;
+    }
+
+    input::placeholder, textarea::placeholder {
+      color: #64748B !important;
+    }
+
+    select option {
+      background-color: #0F172A !important;
+      color: #F8FAFC !important;
+    }
+  ` : `
+    /* FIX INPUT FIELD MODE TERANG */
+    input, select, textarea {
+      background-color: #FFFFFF !important;
+      color: #15302D !important;
+      border-color: #E2E9E7 !important;
+    }
+
+    select option {
+      background-color: #FFFFFF !important;
+      color: #15302D !important;
+    }
+
+    table tbody tr:hover {
+      background-color: rgba(0, 0, 0, 0.02) !important;
+    }
+  `}
+
+  /* PRINT STYLING */
+  @media print {
+    body { visibility: hidden !important; }
+    .no-print, .no-print * { display: none !important; }
+    .printable-area, .printable-area *,
+    #printable-invoice, #printable-invoice *,
+    #printable-sj, #printable-sj *,
+    #printable-tt, #printable-tt *,
+    #printable-so, #printable-so *,
+    #printable-po, #printable-po * {
+      visibility: visible !important;
+    }
+    .printable-area,
+    #printable-invoice, #printable-sj, #printable-tt, #printable-so, #printable-po { 
+      position: fixed !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 100% !important;
+      margin: 0 !important;
+      padding: 20px !important;
+      border: none !important; 
+      font-family: 'Inter', Arial, Helvetica, sans-serif !important; 
+      display: block !important; 
+      background: #ffffff !important;
+      box-shadow: none !important;
+      color: #000000 !important;
+    }
+    .modal-backdrop, .modal-content {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      max-height: none !important;
+      overflow: visible !important;
+    }
+  }
+`}</style>
 
       {/* HEADER HP / MOBILE NAV BAR */}
       {isMobile && (
