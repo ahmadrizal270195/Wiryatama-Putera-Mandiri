@@ -158,8 +158,9 @@ const handleClosePartialSO = (so) => {
         </div>
       </div>
 
-      {subTab === "so" && (
-  <SOTab {...{ products, customers, sos, deliveryNotes, saveSOs, saveCustomers, findName, notify, soTotal, getSOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES, handleClosePartialSO }} />
+      
+{subTab === "so" && (
+  <SOTab {...{ products, customers, sos, deliveryNotes, invoices, saveSOs, saveCustomers, findName, notify, soTotal, getSOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES, handleClosePartialSO, shippedQty }} />
 )}
       {subTab === "sj" && (
         <SJTab {...{ products, customers, sos, batches, deliveryNotes, invoices, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty, soTotal, invoiceTotal, colorConfig, uid, todayISO, fmtDate, fmtIDR, COMPANY_PROFILE }} />
@@ -175,7 +176,8 @@ const handleClosePartialSO = (so) => {
 }
 
 // --- SUB-KOMPONEN SO TAB ---
-function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers, findName, notify, soTotal, getSOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES, handleClosePartialSO }) {
+// TAMBAHKAN 'invoices' DI DALAM PARAMETER SOTAB:
+function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, saveCustomers, findName, notify, soTotal, getSOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES, handleClosePartialSO, shippedQty }) {
   const [modal, setModal] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [detailSO, setDetailSO] = useState(null);
@@ -247,21 +249,29 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
     setModal("new");
   }
 
-  function openEdit(so) {
-    if ((deliveryNotes || []).some((dn) => dn.soId === so.id)) {
-      return notify("Gagal Edit: SO ini sudah memiliki Surat Jalan. Batalkan Surat Jalan terlebih dahulu.", "danger");
-    }
-    setEditingId(so.id);
-    setSoNumber(so.soNumber);
-    setCustomerId(so.customerId);
-    setDate(so.date || todayISO());
-    setTaxType(so.taxType || "none");
-    setDiscountTypeHeader(so.discountType || "percent");
-    setDiscountPercentHeader(so.discountPercent ?? so.discount ?? 0);
-    setItems((so.items || []).map(it => ({ ...it, discountType: it.discountType || "percent", discountPercent: it.discountPercent ?? 0 })));
-    setSearchProd("");
-    setModal("edit");
+  // Gantilah fungsi openEdit di SOTab menjadi:
+function openEdit(so) {
+  // Hanya blokir edit jika SUDAH DIFAKTUR
+  if ((invoices || []).some((inv) => inv.soId === so.id)) {
+    return notify("Gagal Edit: SO ini sudah diterbitkan Faktur Penjualan.", "danger");
   }
+  
+  setEditingId(so.id);
+  setSoNumber(so.soNumber);
+  setCustomerId(so.customerId);
+  setDate(so.date || todayISO());
+  setTaxType(so.taxType || "none");
+  setDiscountTypeHeader(so.discountType || "percent");
+  setDiscountPercentHeader(so.discountPercent ?? so.discount ?? 0);
+  setItems((so.items || []).map(it => ({ 
+    ...it, 
+    discountType: it.discountType || "percent", 
+    discountPercent: it.discountPercent ?? 0,
+    minQty: shippedQty(so.id, it.productId) // Simpan batas minimal edit
+  })));
+  setSearchProd("");
+  setModal("edit");
+}
 
   function handleSelectCustomer(val) {
     if (val === "__ADD_NEW__") {
@@ -305,7 +315,29 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
     if (!soNumber.trim()) return notify("Nomor SO wajib diisi", "danger");
     if (!customerId) return notify("Pilih pelanggan", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
-    
+
+    // ============================================================
+    // VALIDASI BATAS MINIMAL QTY SAAT EDIT SO PARSIAL
+    // ============================================================
+    if (editingId) {
+      for (const it of items) {
+        const alreadyShipped = shippedQty(editingId, it.productId);
+        if (Number(it.qty) < alreadyShipped) {
+          const p = (products || []).find((x) => x.id === it.productId);
+          return notify(
+            `Gagal simpan: Qty "${p?.name || "Produk"}" minimal ${alreadyShipped} unit (jumlah yang sudah dikirim di Surat Jalan).`,
+            "danger"
+          );
+        }
+      }
+    }
+    // ============================================================
+
+    // Tentukan status SO: jika ada pengiriman parsial, kembalikan ke "open" / "partially_shipped"
+    const currentStatus = editingId 
+      ? ((deliveryNotes || []).some(dn => dn.soId === editingId) ? "partially_shipped" : "open")
+      : "open";
+
     const payload = { 
       soNumber: soNumber.trim(), 
       customerId, 
@@ -314,7 +346,8 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
       discountType: discountTypeHeader,
       discountPercent: Number(discountPercentHeader || 0), 
       items, 
-      status: "open" 
+      status: currentStatus,
+      isClosedPartial: false // Reset flag closed jika item ditambah lagi
     };
 
     if (editingId) {
@@ -372,7 +405,8 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
           {filteredAndSortedSOs.map((so) => {
             const st = getSOStatus(so);
             const s = STATUS_LABEL[st];
-            const canEditOrCancel = !(deliveryNotes || []).some((dn) => dn.soId === so.id);
+            const hasInvoice = (invoices || []).some((inv) => inv.soId === so.id);
+            const hasDeliveryNote = (deliveryNotes || []).some((dn) => dn.soId === so.id);
             return (
               <tr key={so.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
                 <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: colorConfig?.ink }}>{so.soNumber}</td>
@@ -381,10 +415,9 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
                 <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: colorConfig?.ink }}>{fmtIDR(soTotal(so))}</td>
                 <td className="px-4 py-2.5"><Badge tone={s.tone} colorConfig={colorConfig}>{s.label}</Badge></td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                  <div className="flex items-center justify-end gap-2.5">
-{/* ============================================================ */}
-    {/* TAMBAHKAN TOMBOL INI PADA SO YANG BERSTATUS SEBAGIAN DIKIRIM */}
-    {/* ============================================================ */}
+  <div className="flex items-center justify-end gap-2.5">
+    
+    {/* Tombol Selesaikan Order (Cut-Off) */}
     {st === "partially_shipped" && (
       <button
         type="button"
@@ -394,17 +427,31 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
         Selesaikan Order
       </button>
     )}
-    {/* ============================================================ */}
-                    <button onClick={() => setPrintSO(so)} className="text-xs flex items-center gap-1 font-semibold cursor-pointer" style={{ color: colorConfig?.primary }}><Printer size={13} /> Cetak SO</button>
-                    <button onClick={() => setDetailSO(so)} className="text-xs font-medium cursor-pointer" style={{ color: colorConfig?.accent }}>Detail</button>
-                    {canEditOrCancel && (
-                      <>
-                        <button onClick={() => openEdit(so)} className="text-xs font-semibold cursor-pointer" style={{ color: colorConfig?.accent }}>Edit</button>
-                        <button onClick={() => cancelSO(so)} className="text-xs cursor-pointer" style={{ color: colorConfig?.danger }}>Batalkan SO</button>
-                      </>
-                    )}
-                  </div>
-                </td>
+
+    <button onClick={() => setPrintSO(so)} className="text-xs flex items-center gap-1 font-semibold cursor-pointer" style={{ color: colorConfig?.primary }}>
+      <Printer size={13} /> Cetak SO
+    </button>
+    
+    <button onClick={() => setDetailSO(so)} className="text-xs font-medium cursor-pointer" style={{ color: colorConfig?.accent }}>
+      Detail
+    </button>
+
+    {/* Tombol EDIT: Tetap MUNCUL selama belum difaktur */}
+    {!hasInvoice && (
+      <button onClick={() => openEdit(so)} className="text-xs font-semibold cursor-pointer" style={{ color: colorConfig?.accent }}>
+        Edit
+      </button>
+    )}
+
+    {/* Tombol BATALKAN: Hanya MUNCUL jika belum ada Surat Jalan */}
+    {!hasDeliveryNote && (
+      <button onClick={() => cancelSO(so)} className="text-xs cursor-pointer" style={{ color: colorConfig?.danger }}>
+        Batalkan SO
+      </button>
+    )}
+
+  </div>
+</td>
               </tr>
             );
           })}
