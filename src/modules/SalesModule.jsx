@@ -63,22 +63,24 @@ export default function SalesView({
   }
 
   function getSOStatus(so) {
-    if ((invoices || []).some((inv) => inv.soId === so.id)) return "invoiced";
-    const dns = (deliveryNotes || []).filter((dn) => dn.soId === so.id);
-    
-    const fullyShipped = (so.items || []).every((it) => {
-      const shipped = (dns || []).reduce((s, dn) => {
-        const found = (dn.items || []).find((x) => x.productId === it.productId);
-        return s + (found ? Number(found.qty || 0) : 0);
-      }, 0);
-      return shipped >= it.qty;
-    });
+  if ((invoices || []).some((inv) => inv.soId === so.id)) return "invoiced";
+  if (so.isClosedPartial) return "ready_to_invoice"; // <-- TAMBAHKAN BARIS INI
+  
+  const dns = (deliveryNotes || []).filter((dn) => dn.soId === so.id);
+  
+  const fullyShipped = (so.items || []).every((it) => {
+    const shipped = (dns || []).reduce((s, dn) => {
+      const found = (dn.items || []).find((x) => x.productId === it.productId);
+      return s + (found ? Number(found.qty || 0) : 0);
+    }, 0);
+    return shipped >= it.qty;
+  });
 
-    if (dns.length === 0) return "open";
-    if (!fullyShipped) return "partially_shipped";
-    if (dns.some((dn) => dn.status !== "diterima")) return "shipped";
-    return "ready_to_invoice";
-  }
+  if (dns.length === 0) return "open";
+  if (!fullyShipped) return "partially_shipped";
+  if (dns.some((dn) => dn.status !== "diterima")) return "shipped";
+  return "ready_to_invoice";
+}
 
   const STATUS_LABEL = {
     open: { label: "Baru", tone: "neutral" },
@@ -94,6 +96,44 @@ export default function SalesView({
     { id: "faktur", label: `Faktur (${(invoices || []).length})` },
     { id: "retur", label: `Retur (${(returns || []).length})` },
   ];
+
+const handleClosePartialSO = (so) => {
+    if (!confirm(`Selesaikan SO ${so.soNumber}? Sisa barang yang belum dikirim akan dibatalkan otomatis agar Faktur Penjualan bisa dibuat.`)) return;
+
+    // 1. Hitung total barang yang sudah dikirim di Surat Jalan
+    const deliveredMap = {};
+    (deliveryNotes || [])
+      .filter((dn) => dn.soId === so.id && dn.status !== "batal")
+      .forEach((dn) => {
+        (dn.items || []).forEach((it) => {
+          deliveredMap[it.productId] = (deliveredMap[it.productId] || 0) + Number(it.qty || 0);
+        });
+      });
+
+    // 2. Potong qty SO sesuai jumlah barang yang terkirim
+    const updatedItems = (so.items || [])
+      .map((item) => ({
+        ...item,
+        orderedQty: item.qty,
+        qty: deliveredMap[item.productId] || 0
+      }))
+      .filter((item) => item.qty > 0);
+
+    if (updatedItems.length === 0) {
+      return notify("Tidak ada barang yang terkirim pada SO ini.", "danger");
+    }
+
+    // 3. Simpan perubahan SO
+    const updatedSOList = (sos || []).map((s) =>
+      s.id === so.id
+        ? { ...s, items: updatedItems, status: "ready_to_invoice", isClosedPartial: true }
+        : s
+    );
+
+    saveSOs(updatedSOList);
+    notify(`SO ${so.soNumber} diselesaikan! Faktur Penjualan kini sudah siap dibuat.`);
+  };
+  // ============================================================
 
   return (
     <div>
@@ -119,8 +159,8 @@ export default function SalesView({
       </div>
 
       {subTab === "so" && (
-        <SOTab {...{ products, customers, sos, deliveryNotes, saveSOs, saveCustomers, findName, notify, soTotal, getSOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES }} />
-      )}
+  <SOTab {...{ products, customers, sos, deliveryNotes, saveSOs, saveCustomers, findName, notify, soTotal, getSOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES, handleClosePartialSO }} />
+)}
       {subTab === "sj" && (
         <SJTab {...{ products, customers, sos, batches, deliveryNotes, invoices, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty, soTotal, invoiceTotal, colorConfig, uid, todayISO, fmtDate, fmtIDR, COMPANY_PROFILE }} />
       )}
@@ -135,7 +175,7 @@ export default function SalesView({
 }
 
 // --- SUB-KOMPONEN SO TAB ---
-function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers, findName, notify, soTotal, getSOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES }) {
+function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers, findName, notify, soTotal, getSOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES, handleClosePartialSO }) {
   const [modal, setModal] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [detailSO, setDetailSO] = useState(null);
@@ -342,6 +382,19 @@ function SOTab({ products, customers, sos, deliveryNotes, saveSOs, saveCustomers
                 <td className="px-4 py-2.5"><Badge tone={s.tone} colorConfig={colorConfig}>{s.label}</Badge></td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
                   <div className="flex items-center justify-end gap-2.5">
+{/* ============================================================ */}
+    {/* TAMBAHKAN TOMBOL INI PADA SO YANG BERSTATUS SEBAGIAN DIKIRIM */}
+    {/* ============================================================ */}
+    {st === "partially_shipped" && (
+      <button
+        type="button"
+        onClick={() => handleClosePartialSO(so)}
+        className="text-xs px-2 py-1 font-semibold rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 cursor-pointer"
+      >
+        Selesaikan Order
+      </button>
+    )}
+    {/* ============================================================ */}
                     <button onClick={() => setPrintSO(so)} className="text-xs flex items-center gap-1 font-semibold cursor-pointer" style={{ color: colorConfig?.primary }}><Printer size={13} /> Cetak SO</button>
                     <button onClick={() => setDetailSO(so)} className="text-xs font-medium cursor-pointer" style={{ color: colorConfig?.accent }}>Detail</button>
                     {canEditOrCancel && (

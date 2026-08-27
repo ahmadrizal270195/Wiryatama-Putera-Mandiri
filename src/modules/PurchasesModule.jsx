@@ -68,14 +68,16 @@ export default function PurchasesView({
     }, 0);
   }
 
-  function getPOStatus(po) {
-    if ((pInvoices || []).some((inv) => inv.poId === po.id)) return "invoiced";
-    const prs = (pReceipts || []).filter((pr) => pr.poId === po.id);
-    const fullyReceived = (po.items || []).every((it) => receivedQty(po.id, it.productId) >= it.qty);
-    if (prs.length === 0) return "ordered";
-    if (!fullyReceived) return "partially_received";
-    return "ready_to_invoice";
-  }
+  // KODE HASIL PERBAIKAN:
+function getPOStatus(po) {
+  if ((pInvoices || []).some((inv) => inv.poId === po.id)) return "invoiced";
+  if (po.isClosedPartial) return "ready_to_invoice"; // <-- TAMBAHKAN BARIS INI
+  const prs = (pReceipts || []).filter((pr) => pr.poId === po.id);
+  const fullyReceived = (po.items || []).every((it) => receivedQty(po.id, it.productId) >= it.qty);
+  if (prs.length === 0) return "ordered";
+  if (!fullyReceived) return "partially_received";
+  return "ready_to_invoice";
+}
 
   const STATUS_LABEL = {
     ordered: { label: "Dipesan", tone: "warn" },
@@ -91,6 +93,36 @@ export default function PurchasesView({
     { id: "retur", label: `Retur Pembelian (${(pReturns || []).length})` },
   ];
 
+const handleClosePartialPO = async (po) => {
+  if (!confirm(`Selesaikan PO ${po.poNumber}? Sisa barang yang belum diterima akan dibatalkan otomatis agar Faktur Pembelian bisa dibuat.`)) return;
+
+  // 1. Hitung total barang diterima dari BPB (pReceipts)
+  const receivedMap = {};
+  (pReceipts || [])
+    .filter((pr) => pr.poId === po.id && pr.status !== "batal")
+    .forEach((pr) => {
+      (pr.items || []).forEach((it) => {
+        receivedMap[it.productId] = (receivedMap[it.productId] || 0) + Number(it.qty || 0);
+      });
+    });
+
+  // 2. Potong qty PO sesuai jumlah barang diterima
+  const updatedItems = (po.items || [])
+    .map((item) => ({
+      ...item,
+      orderedQty: item.qty,
+      qty: receivedMap[item.productId] || 0
+    }))
+    .filter((item) => item.qty > 0);
+
+  if (updatedItems.length === 0) {
+    return notify("Tidak ada barang yang diterima pada PO ini.", "danger");
+  }
+
+  // 3. Simpan perubahan PO
+  await savePOs((pos || []).map((p) => (p.id === po.id ? { ...p, items: updatedItems, status: "ready_to_invoice", isClosedPartial: true } : p)));
+  notify(`PO ${po.poNumber} berhasil diselesaikan! Faktur Pembelian kini siap dibuat.`);
+};
   return (
     <div>
       <div className="no-print">
@@ -115,8 +147,8 @@ export default function PurchasesView({
       </div>
 
       {subTab === "po" && (
-        <POTab {...{ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, findName, notify, poTotal, getPOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE }} />
-      )}
+  <POTab {...{ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, findName, notify, poTotal, getPOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, handleClosePartialPO }} />
+)}
       {subTab === "bpb" && (
         <BPBTab {...{ products, suppliers, pos, batches, pReceipts, pInvoices, saveBatches, savePOs, savePReceipts, findName, notify, getPOStatus, receivedQty, colorConfig, uid, todayISO, fmtDate, fmtIDR }} />
       )}
@@ -131,7 +163,7 @@ export default function PurchasesView({
 }
 
 // --- SUB-KOMPONEN PO TAB ---
-function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, findName, notify, poTotal, getPOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE }) {
+function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, findName, notify, poTotal, getPOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, handleClosePartialPO }) {
   const [modal, setModal] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [detailPO, setDetailPO] = useState(null);
@@ -298,6 +330,19 @@ function POTab({ products, suppliers, pos, pReceipts, savePOs, saveSuppliers, fi
                 <td className="px-4 py-2.5"><Badge tone={s.tone} colorConfig={colorConfig}>{s.label}</Badge></td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
                   <div className="flex items-center justify-end gap-2.5">
+{/* ============================================================ */}
+    {/* TAMBAHKAN TOMBOL INI PADA PO SEBAGIAN DITERIMA */}
+    {/* ============================================================ */}
+    {st === "partially_received" && (
+      <button
+        type="button"
+        onClick={() => handleClosePartialPO(po)}
+        className="text-xs px-2 py-1 font-semibold rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 cursor-pointer"
+      >
+        Selesaikan Order
+      </button>
+    )}
+    {/* ============================================================ */}
                     <button onClick={() => setPrintPO(po)} className="text-xs flex items-center gap-1 font-semibold cursor-pointer" style={{ color: colorConfig?.primary }}>
                       <Printer size={13} /> Cetak PO
                     </button>
@@ -858,7 +903,11 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   const [modalQuickSupp, setModalQuickSupp] = useState(false);
   const [quickSuppForm, setQuickSuppForm] = useState({ name: "", npwp: "", contact: "", address: "" });
 
-  const eligiblePOs = (pos || []).filter((po) => getPOStatus(po) === "ready_to_invoice");
+  const eligiblePOs = (pos || []).filter((po) => {
+  const st = getPOStatus(po);
+  const hasReceipts = (pReceipts || []).some((pr) => pr.poId === po.id);
+  return st === "ready_to_invoice" || (st === "partially_received" && hasReceipts);
+});
 
   function openDirectModal() {
   const currentYear = new Date().getFullYear();
