@@ -998,7 +998,7 @@ const currentUser = (users || []).find((u) => (u.email || "").toLowerCase() === 
 const currentUserAccess = currentUser ? currentUser.access : ["dashboard", "products", "stock", "suppliers", "customers", "purchases", "sales", "finance", "reports", "settings"];
 
 // Filter navigasi sidebar agar menampilkan hanya modul yang diizinkan:
-const NAV = ALL_NAV.filter((n) => currentUserAccess.includes(n.id));
+const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || currentUserAccess.includes(n.id));
 
   if (loading) {
     return (
@@ -1437,17 +1437,29 @@ const NAV = ALL_NAV.filter((n) => currentUserAccess.includes(n.id));
   ) : <AccessDenied />
 )}
         {/* LAPORAN */}
-        {tab === "reports" && (
-          currentUserAccess.includes("reports") ? (
-            <ReportsView 
-              products={products} suppliers={suppliers} customers={customers} pos={pos} sos={sos} 
-              invoices={invoices} pInvoices={pInvoices} returns={returns} pReturns={pReturns} 
-              expenses={expenses} batches={batches} deliveryNotes={deliveryNotes} findName={findName} 
-              pInvoiceTotal={pInvoiceTotal} invoiceTotal={invoiceTotal} 
-              currentUserEmail={userEmail} /* <-- TAMBAHKAN BARIS INI */
-            />
-          ) : <AccessDenied />
-        )}
+{tab === "reports" && (
+  currentUserAccess.includes("reports") ? (
+    <ReportsView 
+      products={products} 
+      suppliers={suppliers} 
+      customers={customers} 
+      pos={pos} 
+      sos={sos} 
+      invoices={invoices} 
+      pInvoices={pInvoices} 
+      returns={returns} 
+      pReturns={pReturns} 
+      paymentsIn={paymentsIn} /* <-- PASTIKAN PROP INI DISERTAKAN */
+      expenses={expenses} 
+      batches={batches} 
+      deliveryNotes={deliveryNotes} 
+      findName={findName} 
+      pInvoiceTotal={pInvoiceTotal} 
+      invoiceTotal={invoiceTotal} 
+      currentUserEmail={userEmail}
+    />
+  ) : <AccessDenied />
+)}
 
         {/* PENGATURAN */}
         {tab === "settings" && (
@@ -1986,19 +1998,21 @@ function FinanceView(props) {
 }
 
 // ---------- LAPORAN BERBASIS FAKTUR & LABA RUGI PER PERIODE ----------
-function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvoices, returns, pReturns, expenses, batches, deliveryNotes, findName, pInvoiceTotal, invoiceTotal, currentUserEmail }) {
-  // Cek apakah user yang sedang login adalah Super Admin / Finance
+function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvoices, returns, pReturns, paymentsIn, expenses, batches, deliveryNotes, findName, pInvoiceTotal, invoiceTotal, currentUserEmail }) {
   const isSuperAdminOrFinance = ADMIN_FINANCE_EMAILS.includes((currentUserEmail || "").toLowerCase());
 
-  // Default tab: "pnl" untuk Admin/Finance, "sales" untuk Staff biasa
   const [subTab, setSubTab] = useState(isSuperAdminOrFinance ? "pnl" : "sales");
-
   const [start, setStart] = useState(() => {
     const d = new Date();
     d.setDate(1);
     return d.toISOString().slice(0, 10);
   });
   const [end, setEnd] = useState(todayISO());
+
+  // State Khusus Filter AR Aging
+  const [agingCust, setAgingCust] = useState("ALL");
+  const [agingBucket, setAgingBucket] = useState("ALL");
+  const [agingSearch, setAgingSearch] = useState("");
 
   function inRange(dateStr) { return dateStr >= start && dateStr <= end; }
 
@@ -2041,7 +2055,76 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
 
   function batchCost(batchId) { const b = (batches || []).find((x) => x.id === batchId); return b ? b.costPrice : 0; }
 
-  // 3. KALKULASI HPP & LABA RUGI PER PERIODE
+  // 3. KALKULASI AR AGING (UMUR PIUTANG)
+  const agingData = useMemo(() => {
+    const today = new Date(todayISO());
+
+    const raw = (invoices || []).map((inv) => {
+      const paid = (paymentsIn || [])
+        .filter((p) => p.invoiceId === inv.id)
+        .reduce((s, p) => s + Number(p.amount || 0), 0);
+
+      const ret = (returns || [])
+        .filter((r) => r.invoiceId === inv.id)
+        .reduce((s, r) => s + (r.items || []).reduce((sub, it) => sub + (it.qty * it.unitPrice), 0), 0);
+
+      const total = inv.totalAmount || inv.total || invoiceTotal(inv);
+      const sisaHutang = Math.max(0, total - paid - ret);
+
+      const invDate = new Date(inv.date || todayISO());
+      const diffDays = Math.floor((today - invDate) / (1000 * 60 * 60 * 24));
+
+      let bucket = "current";
+      if (diffDays > 90) bucket = "over90";
+      else if (diffDays > 60) bucket = "61-90";
+      else if (diffDays > 30) bucket = "31-60";
+
+      return {
+        ...inv,
+        sisaHutang,
+        ageDays: Math.max(0, diffDays),
+        bucket
+      };
+    }).filter((x) => x.sisaHutang > 0);
+
+    return raw.filter((item) => {
+      const custName = findName(customers, item.customerId).toLowerCase();
+      const invNum = (item.noFaktur || "").toLowerCase();
+      const q = agingSearch.toLowerCase();
+
+      const matchSearch = invNum.includes(q) || custName.includes(q);
+      const matchCust = agingCust === "ALL" || item.customerId === agingCust;
+      const matchBucket = agingBucket === "ALL" || item.bucket === agingBucket;
+
+      return matchSearch && matchCust && matchBucket;
+    });
+  }, [invoices, paymentsIn, returns, customers, agingCust, agingBucket, agingSearch, findName, invoiceTotal]);
+
+  const totalARAging = agingData.reduce((s, i) => s + i.sisaHutang, 0);
+
+  // Export CSV Laporan Aging
+  const exportAgingCSV = () => {
+    const headers = ["No. Faktur", "Pelanggan", "Tanggal Faktur", "Umur (Hari)", "Status Aging", "Sisa Piutang"];
+    const rows = agingData.map((d) => [
+      d.noFaktur,
+      `"${findName(customers, d.customerId)}"`,
+      fmtDate(d.date),
+      d.ageDays,
+      d.bucket === "current" ? "0-30 Hari" : d.bucket === "31-60" ? "31-60 Hari" : d.bucket === "61-90" ? "61-90 Hari" : "> 90 Hari",
+      d.sisaHutang
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Laporan_Umur_Piutang_${todayISO()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // 4. KALKULASI HPP & LABA RUGI PER PERIODE
   const pnlData = useMemo(() => {
     let grossSalesDPP = 0;
     let salesReturnsVal = 0;
@@ -2121,10 +2204,11 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
   const purchaseTotal = allPurchaseDocs.reduce((s, x) => s + x.total, 0);
   const salesTotal = allSalesDocs.reduce((s, x) => s + x.total, 0);
 
-  // Filter Sub-tab Laporan (Sembunyikan P&L untuk Staff)
+  // DAFTAR SUB-TAB LAPORAN (Termasuk AR Aging)
   const SUBNAV = [
     { id: "sales", label: "Penjualan" },
     { id: "purchases", label: "Pembelian" },
+    { id: "ar_aging", label: "Umur Piutang" },
     ...(isSuperAdminOrFinance ? [{ id: "pnl", label: "Laba Rugi (P&L)" }] : []),
   ];
 
@@ -2133,20 +2217,22 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
       <Eyebrow>Laporan Operasional & Keuangan</Eyebrow>
       <h2 className="text-xl font-semibold mb-4" style={{ color: COLOR.ink }}>Laporan Per Periode</h2>
 
-      <div className="flex items-end gap-3 mb-5 p-3 bg-white rounded-xl border no-print" style={{ borderColor: COLOR.border }}>
-        <Field label="Dari Tanggal"><TextInput type="date" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
-        <Field label="Sampai Tanggal"><TextInput type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
-        <div className="pb-3 text-xs font-mono text-teal-800 font-semibold">
-          Periode: {fmtDate(start)} s/d {fmtDate(end)}
+      {subTab !== "ar_aging" && (
+        <div className="flex items-end gap-3 mb-5 p-3 bg-white rounded-xl border no-print" style={{ borderColor: COLOR.border }}>
+          <Field label="Dari Tanggal"><TextInput type="date" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
+          <Field label="Sampai Tanggal"><TextInput type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
+          <div className="pb-3 text-xs font-mono text-teal-800 font-semibold">
+            Periode: {fmtDate(start)} s/d {fmtDate(end)}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex gap-1 mb-4 p-1 rounded-lg w-fit flex-wrap no-print" style={{ background: COLOR.primarySoft }}>
         {SUBNAV.map((s) => (
           <button
             key={s.id}
             onClick={() => setSubTab(s.id)}
-            className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+            className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer"
             style={{ background: subTab === s.id ? COLOR.primary : "transparent", color: subTab === s.id ? "#fff" : COLOR.primary }}
           >
             {s.label}
@@ -2154,7 +2240,95 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         ))}
       </div>
 
-      {/* TAB 1: LAPORAN LABA RUGI (HANYA UNTUK SUPER ADMIN / FINANCE) */}
+      {/* TAB 1: LAPORAN UMUR PIUTANG (AR AGING) */}
+      {subTab === "ar_aging" && (
+        <div className="space-y-4">
+          <Card className="no-print">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Field label="Cari Faktur / Pelanggan">
+                <TextInput
+                  placeholder="No. Faktur / Nama Pelanggan..."
+                  value={agingSearch}
+                  onChange={(e) => setAgingSearch(e.target.value)}
+                />
+              </Field>
+
+              <Field label="Filter Pelanggan">
+                <Select value={agingCust} onChange={(e) => setAgingCust(e.target.value)}>
+                  <option value="ALL">Semua Pelanggan</option>
+                  {(customers || []).map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </Select>
+              </Field>
+
+              <Field label="Filter Umur Piutang">
+                <Select value={agingBucket} onChange={(e) => setAgingBucket(e.target.value)}>
+                  <option value="ALL">Semua Umur</option>
+                  <option value="current">0 - 30 Hari (Lancar)</option>
+                  <option value="31-60">31 - 60 Hari</option>
+                  <option value="61-90">61 - 90 Hari</option>
+                  <option value="over90">&gt; 90 Hari (Perhatian)</option>
+                </Select>
+              </Field>
+            </div>
+
+            <div className="flex justify-between items-center mt-4 pt-3 border-t" style={{ borderColor: COLOR.border }}>
+              <div className="text-sm font-semibold" style={{ color: COLOR.ink }}>
+                Total Piutang Terfilter: <span className="font-mono text-teal-700">{fmtIDR(totalARAging)}</span>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={exportAgingCSV} variant="ghost">
+                  <Download size={15} /> Export CSV
+                </Button>
+                <Button onClick={() => window.print()}>
+                  <Printer size={15} /> Cetak Laporan
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="!p-0 overflow-hidden printable-area">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: COLOR.primarySoft }}>
+                  <th className="text-left px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>No. Faktur</th>
+                  <th className="text-left px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Pelanggan</th>
+                  <th className="text-left px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Tgl Faktur</th>
+                  <th className="text-center px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Umur</th>
+                  <th className="text-left px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Status Aging</th>
+                  <th className="text-right px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Sisa Piutang</th>
+                </tr>
+              </thead>
+              <tbody>
+                {agingData.map((item) => (
+                  <tr key={item.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                    <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{item.noFaktur}</td>
+                    <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(customers, item.customerId)}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(item.date)}</td>
+                    <td className="px-4 py-2.5 font-mono text-center font-bold" style={{ color: COLOR.ink }}>{item.ageDays} Hari</td>
+                    <td className="px-4 py-2.5">
+                      <Badge tone={item.bucket === "current" ? "good" : item.bucket === "over90" ? "danger" : "warn"}>
+                        {item.bucket === "current" ? "0-30 Hari" : item.bucket === "31-60" ? "31-60 Hari" : item.bucket === "61-90" ? "61-90 Hari" : "> 90 Hari"}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-right font-bold" style={{ color: COLOR.ink }}>{fmtIDR(item.sisaHutang)}</td>
+                  </tr>
+                ))}
+                {agingData.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>
+                      Tidak ada piutang yang sesuai dengan filter.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 2: LAPORAN LABA RUGI */}
       {subTab === "pnl" && isSuperAdminOrFinance && (
         <div className="space-y-4 max-w-3xl">
           <Card className="!p-6 bg-white printable-area">
@@ -2214,7 +2388,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         </div>
       )}
 
-      {/* TAB 2: LAPORAN PENJUALAN */}
+      {/* TAB 3: LAPORAN PENJUALAN */}
       {subTab === "sales" && (
         <div>
           <Card className="mb-4">
@@ -2275,7 +2449,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         </div>
       )}
 
-      {/* TAB 3: LAPORAN PEMBELIAN */}
+      {/* TAB 4: LAPORAN PEMBELIAN */}
       {subTab === "purchases" && (
         <div>
           <Card className="mb-4">
