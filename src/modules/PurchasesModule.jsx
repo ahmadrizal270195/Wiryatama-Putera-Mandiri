@@ -861,29 +861,30 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   const eligiblePOs = (pos || []).filter((po) => getPOStatus(po) === "ready_to_invoice");
 
   function openDirectModal() {
-    const currentYear = new Date().getFullYear();
-    const maxSeq = (pInvoices || []).reduce((max, inv) => {
-      const match = (inv.noFaktur || "").match(/VINV-\d{4}-(\d+)/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        return num > max ? num : max;
-      }
-      return max;
-    }, 0);
+  const currentYear = new Date().getFullYear();
+  const maxSeq = (pInvoices || []).reduce((max, inv) => {
+    const match = (inv.noFaktur || "").match(/VINV-\d{4}-(\d+)/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      return num > max ? num : max;
+    }
+    return max;
+  }, 0);
 
-    const autoFaktur = `VINV-${currentYear}-${String(nextSeq).padStart(4, "0")}`;
+  // Menggunakan maxSeq + 1 agar tidak error
+  const autoFaktur = `VINV-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`;
 
-    setNoFakturDirect(autoFaktur);
-    setSupplierId((suppliers || [])[0]?.id || "");
-    setDate(todayISO());
-    setTaxType("none");
-    setDiscountTypeHeader("percent");
-    setDiscountPercentHeader(0);
-    setItems([]);
-    setSearchProd("");
-    setEditingId(null);
-    setModalDirect(true);
-  }
+  setNoFakturDirect(autoFaktur);
+  setSupplierId((suppliers || [])[0]?.id || "");
+  setDate(todayISO());
+  setTaxType("none");
+  setDiscountTypeHeader("percent");
+  setDiscountPercentHeader(0);
+  setItems([]);
+  setSearchProd("");
+  setEditingId(null);
+  setModalDirect(true);
+}
 
   function openEditDirect(inv) {
     const paid = pInvoicePaidAmount(inv.id);
