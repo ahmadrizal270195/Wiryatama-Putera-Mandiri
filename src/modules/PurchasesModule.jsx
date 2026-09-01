@@ -1063,88 +1063,104 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   }
 
   async function submitDirectPInvoice() {
-    if (!noFakturDirect.trim()) return notify("Nomor Faktur Vendor wajib diisi", "danger");
-    if (!supplierId) return notify("Pilih supplier terlebih dahulu", "danger");
-    if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
-    
-    for (const it of items) {
-      if (!it.batchNo || !it.expiryDate) {
-        const p = (products || []).find((x) => x.id === it.productId);
-        return notify(`Lengkapi No. Batch & Exp Date untuk ${p?.name || "produk"}`, "danger");
-      }
+  if (!noFakturDirect.trim()) return notify("Nomor Faktur Vendor wajib diisi", "danger");
+  if (!supplierId) return notify("Pilih supplier terlebih dahulu", "danger");
+  if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
+  
+  for (const it of items) {
+    if (!it.batchNo || !it.expiryDate) {
+      const p = (products || []).find((x) => x.id === it.productId);
+      return notify(`Lengkapi No. Batch & Exp Date untuk ${p?.name || "produk"}`, "danger");
     }
+  }
 
-    let working = (batches || []).map((b) => ({ ...b }));
+  // 1. Ambil data batch yang ada
+  let working = (batches || []).map((b) => ({ ...b }));
 
-    if (editingId) {
-      const oldInv = (pInvoices || []).find(x => x.id === editingId);
-      if (oldInv && oldInv.isDirect) {
-        (oldInv.items || []).forEach(it => {
-          const b = working.find(x => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
-          if (b) b.qty = Math.max(0, b.qty - it.qty);
-        });
-      }
+  // 2. PERBAIKAN TOTAL: Jika sedang EDIT, hapus semua batch lama milik faktur ini
+  if (editingId) {
+    const oldInv = (pInvoices || []).find(x => x.id === editingId);
+    if (oldInv && oldInv.isDirect) {
+      // Ambil daftar batchId lama & daftar productId di faktur tersebut
+      const oldBatchIds = (oldInv.items || []).map(it => it.batchId).filter(Boolean);
+      const oldProdIds = (oldInv.items || []).map(it => it.productId);
+
+      working = working.filter(b => {
+        // Hapus jika ID batch cocok
+        if (oldBatchIds.length > 0 && oldBatchIds.includes(b.id)) return false;
+        
+        // Fallback untuk faktur lama (jika batchId kosong):
+        // Hapus batch pembelian langsung dari supplier ini dengan produk yang sama pada tanggal faktur tersebut
+        if (b.sourceType === "pembelian" && !b.poId && b.supplierId === oldInv.supplierId && oldProdIds.includes(b.productId) && b.receivedDate === oldInv.date) {
+          return false;
+        }
+        return true;
+      });
     }
+  }
 
-    const newBatches = [];
-    const invItems = [];
+  // 3. Buat batch baru hasil perbaikan Exp Date/Qty
+  const newBatches = [];
+  const invItems = [];
 
-    items.forEach((it) => {
-      const batchId = uid();
-      const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
-      const gross = it.qty * it.unitPrice;
-      const netTotal = Math.max(0, gross - discAmt);
-      const netUnitPrice = it.qty > 0 ? netTotal / it.qty : 0;
+  items.forEach((it) => {
+    const batchId = uid();
+    const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
+    const gross = it.qty * it.unitPrice;
+    const netTotal = Math.max(0, gross - discAmt);
+    const netUnitPrice = it.qty > 0 ? netTotal / it.qty : 0;
 
-      newBatches.push({
-        id: batchId,
-        productId: it.productId,
-        batchNo: it.batchNo,
-        expiryDate: it.expiryDate,
-        qty: it.qty,
-        costPrice: netUnitPrice,
-        receivedDate: date,
-        poId: null,
-        sourceType: "pembelian",
-        supplierId: supplierId
-      });
-      invItems.push({
-        productId: it.productId,
-        qty: it.qty,
-        unitPrice: it.unitPrice,
-        discountType: it.discountType || "percent",
-        discountPercent: Number(it.discountPercent || 0),
-        batchId: batchId,
-        batchNo: it.batchNo,
-        expiryDate: it.expiryDate
-      });
+    newBatches.push({
+      id: batchId,
+      productId: it.productId,
+      batchNo: it.batchNo,
+      expiryDate: it.expiryDate,
+      qty: it.qty,
+      costPrice: netUnitPrice,
+      receivedDate: date,
+      poId: null,
+      sourceType: "pembelian",
+      supplierId: supplierId
     });
 
-    await saveBatches([...working, ...newBatches]);
+    invItems.push({
+      productId: it.productId,
+      qty: it.qty,
+      unitPrice: it.unitPrice,
+      discountType: it.discountType || "percent",
+      discountPercent: Number(it.discountPercent || 0),
+      batchId: batchId, // Simpan batchId agar sinkron
+      batchNo: it.batchNo,
+      expiryDate: it.expiryDate
+    });
+  });
 
-    const payload = {
-      noFaktur: noFakturDirect.trim(), 
-      poId: null, 
-      supplierId, 
-      date, 
-      taxType, 
-      discountType: discountTypeHeader,
-      discountPercent: Number(discountPercentHeader || 0), 
-      items: invItems, 
-      isDirect: true 
-    };
+  // 4. Simpan batch yang sudah dibersihkan + batch baru
+  await saveBatches([...working, ...newBatches]);
 
-    if (editingId) {
-      await savePInvoices((pInvoices || []).map(inv => inv.id === editingId ? { ...inv, ...payload } : inv));
-      notify(`${noFakturDirect.trim()} berhasil diperbarui`);
-    } else {
-      await savePInvoices([...(pInvoices || []), { id: uid(), ...payload }]);
-      notify(`${noFakturDirect.trim()} berhasil dibuat langsung & stok bertambah`);
-    }
+  const payload = {
+    noFaktur: noFakturDirect.trim(), 
+    poId: null, 
+    supplierId, 
+    date, 
+    taxType, 
+    discountType: discountTypeHeader,
+    discountPercent: Number(discountPercentHeader || 0), 
+    items: invItems, 
+    isDirect: true 
+  };
 
-    setModalDirect(false);
-    setEditingId(null);
+  if (editingId) {
+    await savePInvoices((pInvoices || []).map(inv => inv.id === editingId ? { ...inv, ...payload } : inv));
+    notify(`${noFakturDirect.trim()} berhasil diperbarui`);
+  } else {
+    await savePInvoices([...(pInvoices || []), { id: uid(), ...payload }]);
+    notify(`${noFakturDirect.trim()} berhasil dibuat langsung & stok bertambah`);
   }
+
+  setModalDirect(false);
+  setEditingId(null);
+}
 
   async function createInvoice(po) {
     const prs = (pReceipts || []).filter((pr) => pr.poId === po.id);
