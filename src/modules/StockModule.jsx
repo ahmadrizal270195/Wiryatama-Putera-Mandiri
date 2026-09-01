@@ -1,8 +1,14 @@
 import React, { useState, useMemo, useRef } from "react";
-import { Upload, Search, Download } from "lucide-react";
+import { Upload, Search, Download, Edit2, Trash2 } from "lucide-react";
 import { Eyebrow, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 
-export default function StockView({ products, batches, saveBatches, suppliers, stockByProduct, notify, findName, colorConfig, uid, todayISO, daysUntil, urgencyOf, fmtDate, fmtIDR, CATEGORIES }) {
+export default function StockView(props) {
+  const { 
+    products, batches, saveBatches, suppliers, stockByProduct, 
+    invoices, notify, findName, colorConfig, uid, todayISO, daysUntil, 
+    urgencyOf, fmtDate, fmtIDR, CATEGORIES 
+  } = props;
+
   const [modalImport, setModalImport] = useState(false);
   const [sourceType, setSourceType] = useState("opname_awal");
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
@@ -12,6 +18,63 @@ export default function StockView({ products, batches, saveBatches, suppliers, s
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
+
+  // --- STATE PENYESUAIAN STOK BATCH (DENGAN AUDIT TRAIL) ---
+  const [editBatchModal, setEditBatchModal] = useState(null);
+  const [editQty, setEditQty] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
+
+  function openEditBatch(batch) {
+    setEditBatchModal(batch);
+    setEditQty(batch.qty);
+    setAdjustReason("");
+  }
+
+  // SIMPAN PENYESUAIAN QTY BATCH (WAJIB ALASAN)
+  async function handleSaveBatchQty() {
+    const newQty = Number(editQty);
+    if (isNaN(newQty) || newQty < 0) {
+      return notify("Jumlah stok tidak valid", "danger");
+    }
+    if (!adjustReason.trim()) {
+      return notify("Alasan penyesuaian stok wajib diisi untuk audit log!", "danger");
+    }
+
+    const updatedBatches = (batches || []).map((b) =>
+      b.id === editBatchModal.id 
+        ? { 
+            ...b, 
+            qty: newQty,
+            lastAdjustedAt: todayISO(),
+            lastAdjustedReason: adjustReason.trim()
+          } 
+        : b
+    );
+
+    await saveBatches(updatedBatches);
+    notify(`Stok batch ${editBatchModal.batchNo || "tanpa no"} disesuaikan menjadi ${newQty} (Alasan: ${adjustReason.trim()})`);
+    setEditBatchModal(null);
+    setAdjustReason("");
+  }
+
+  // HAPUS BATCH DENGAN PROTEKSI INTEGRITAS TRANSAKSI
+  async function handleDeleteBatch(batchId) {
+    // Check if batch is linked to any sales invoice items
+    const isUsedInSales = (invoices || []).some((inv) =>
+      (inv.items || []).some((it) => it.batchId === batchId)
+    );
+
+    if (isUsedInSales) {
+      return notify("Gagal Hapus: Batch ini sudah memiliki riwayat Penjualan. Silakan ubah Qty menjadi 0 jika ingin mengosongkan stok.", "danger");
+    }
+
+    if (!confirm("Yakin ingin menghapus data batch ini? Riwayat batch akan dihapus permanen.")) return;
+
+    const updatedBatches = (batches || []).filter((b) => b.id !== batchId);
+    await saveBatches(updatedBatches);
+    notify("Batch berhasil dihapus");
+    if (editBatchModal && editBatchModal.id === batchId) setEditBatchModal(null);
+  }
 
   function downloadCSVTemplate() {
     const headers = ["Nama Produk", "No Batch", "Tanggal Expiry (YYYY-MM-DD)", "Jumlah Qty", "Harga Beli per Satuan"];
@@ -219,6 +282,22 @@ export default function StockView({ products, batches, saveBatches, suppliers, s
                             >
                               {isOpname ? 'Opname' : 'Pembelian'}
                             </span>
+
+                            {/* TOMBOL EDIT & HAPUS AKSI CEPAT DENGAN AUDIT TRAIL */}
+                            <button
+                              onClick={() => openEditBatch(b)}
+                              className="ml-1 p-0.5 hover:bg-gray-200 rounded cursor-pointer text-teal-700"
+                              title="Edit / Sesuaikan Stok Batch Ini"
+                            >
+                              <Edit2 size={11} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteBatch(b.id)}
+                              className="p-0.5 hover:bg-gray-200 rounded cursor-pointer text-red-600"
+                              title="Hapus Batch Ini"
+                            >
+                              <Trash2 size={11} />
+                            </button>
                           </span>
                         );
                       })}
@@ -240,6 +319,62 @@ export default function StockView({ products, batches, saveBatches, suppliers, s
         </tbody>
       </ResponsiveTable>
 
+      {/* MODAL EDIT & PENYESUAIAN STOK BATCH (DENGAN ALASAN AUDIT) */}
+      {editBatchModal && (
+        <Modal
+          title={`Penyesuaian Stok Batch — ${editBatchModal.batchNo || "Tanpa No. Batch"}`}
+          onClose={() => setEditBatchModal(null)}
+          colorConfig={colorConfig}
+        >
+          <div className="text-xs mb-3 space-y-1" style={{ color: colorConfig?.inkSoft }}>
+            <div>Tanggal Kedaluwarsa: <span className="font-mono font-bold">{fmtDate(editBatchModal.expiryDate)}</span></div>
+            {editBatchModal.lastAdjustedAt && (
+              <div className="text-[11px] text-amber-700">
+                Terakhir disesuaikan: {fmtDate(editBatchModal.lastAdjustedAt)} ({editBatchModal.lastAdjustedReason || "-"})
+              </div>
+            )}
+          </div>
+
+          <Field label="Jumlah Stok Fisik Baru (Qty)" colorConfig={colorConfig}>
+            <TextInput
+              type="number"
+              value={editQty}
+              onChange={(e) => setEditQty(e.target.value)}
+              placeholder="0"
+              colorConfig={colorConfig}
+            />
+          </Field>
+
+          <Field label="Alasan Penyesuaian Stok (Wajib)" colorConfig={colorConfig}>
+            <TextInput
+              value={adjustReason}
+              onChange={(e) => setAdjustReason(e.target.value)}
+              placeholder="Contoh: Koreksi stok ganda / Fisik rusak / Opname fisik"
+              colorConfig={colorConfig}
+            />
+          </Field>
+
+          <div className="flex gap-2 mt-4">
+            <Button
+              onClick={() => handleDeleteBatch(editBatchModal.id)}
+              variant="danger"
+              className="w-1/3 justify-center cursor-pointer"
+              colorConfig={colorConfig}
+            >
+              Hapus Batch
+            </Button>
+            <Button
+              onClick={handleSaveBatchQty}
+              className="w-2/3 justify-center cursor-pointer"
+              colorConfig={colorConfig}
+            >
+              Simpan Penyesuaian
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* MODAL IMPORT STOK (ASLI MILIKMU) */}
       {modalImport && (
         <Modal title="Import Stok & Batch (Opname Awal / Pembelian)" onClose={() => setModalImport(false)} wide colorConfig={colorConfig}>
           <div className="space-y-4">
