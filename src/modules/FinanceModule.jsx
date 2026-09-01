@@ -14,6 +14,14 @@ const EXPENSE_CATEGORIES = [
 
 const PAYMENT_METHODS = ["Transfer Bank", "Tunai", "Giro/Cek", "Lainnya"];
 
+// Helper lokal kalkulasi diskon item jika belum di-import
+function getItemDiscountAmount(qty, unitPrice, discType, discVal) {
+  const gross = (Number(qty) || 0) * (Number(unitPrice) || 0);
+  const val = Number(discVal || 0);
+  if (discType === "amount") return Math.min(gross, val);
+  return gross * (Math.min(100, val) / 100);
+}
+
 export default function FinanceView(props) {
   const {
     pos, sos, suppliers, customers, batches, invoices, pInvoices, pReturns, returns, paymentsOut, paymentsIn, expenses,
@@ -21,7 +29,7 @@ export default function FinanceView(props) {
     arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth,
     invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount, invoiceSisa,
     pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa,
-    colorConfig, uid, todayISO, fmtDate, fmtIDR
+    colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax
   } = props;
 
   const COLOR = colorConfig || {};
@@ -66,7 +74,7 @@ export default function FinanceView(props) {
   const [expModal, setExpModal] = useState(false);
   const [expForm, setExpForm] = useState({ category: EXPENSE_CATEGORIES[0], amount: "", date: todayISO(), note: "" });
 
-  // Helper kalkulasi sisa piutang & hutang aman
+  // Helper kalkulasi sisa piutang aman
   const getInvoiceSisa = (inv) => {
     if (typeof invoiceSisa === "function") return invoiceSisa(inv);
     const total = typeof invoiceTotal === "function" ? invoiceTotal(inv) : 0;
@@ -76,14 +84,12 @@ export default function FinanceView(props) {
     return Math.max(0, total - paid - ret - dp);
   };
 
-  const getPInvoiceSisa = (inv) => {
-    if (!inv) return 0;
-    
-    // Hitung Total Tagihan Kotor
+  // HELPER KALKULASI TOTAL TAGIHAN AKURAT DI FINANCE
+  const getPInvoiceTotal = (inv) => {
+    if (!inv || !inv.items) return 0;
     const rawSubtotal = (inv.items || []).reduce((sum, it) => {
       const gross = (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
-      const discVal = Number(it.discountPercent || 0);
-      const discAmt = it.discountType === "amount" ? Math.min(gross, discVal) : gross * (Math.min(100, discVal) / 100);
+      const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
       return sum + Math.max(0, gross - discAmt);
     }, 0);
 
@@ -92,11 +98,14 @@ export default function FinanceView(props) {
       : Number(inv.discountPercent || 0);
 
     const taxInfo = typeof calcTax === "function" ? calcTax(rawSubtotal, inv.taxType || "none", effHeaderPct) : { total: rawSubtotal };
-    const total = taxInfo.total;
+    return taxInfo.total;
+  };
 
+  // HELPER KALKULASI SISA HUTANG AKURAT DI FINANCE
+  const getPInvoiceSisa = (inv) => {
+    const total = getPInvoiceTotal(inv);
     const paid = typeof pInvoicePaidAmount === "function" ? pInvoicePaidAmount(inv.id) : 0;
     const ret = typeof pInvoiceReturnedAmount === "function" ? pInvoiceReturnedAmount(inv.id) : 0;
-
     return Math.max(0, total - paid - ret);
   };
 
@@ -174,7 +183,13 @@ export default function FinanceView(props) {
   // --- FILTERED DATA SELECTIONS ---
   const invoiceARList = (invoices || []).map((inv) => ({ inv, total: invoiceTotal ? invoiceTotal(inv) : 0, sisa: getInvoiceSisa(inv) })).filter((x) => x.sisa > 0);
   const dpOnlySOList = (sos || []).filter((so) => !(invoices || []).some((inv) => inv.soId === so.id) && ((soDPAmount ? soDPAmount(so.id) : 0) > 0));
-  const pInvoiceAPList = (pInvoices || []).map((inv) => ({ inv, total: pInvoiceTotal ? pInvoiceTotal(inv) : 0, sisa: getPInvoiceSisa(inv) })).filter((x) => x.sisa > 0);
+  
+  // UPDATE MAPPING AP LIST: MENGGUNAKAN GETPINVOICETOTAL
+  const pInvoiceAPList = (pInvoices || []).map((inv) => ({ 
+    inv, 
+    total: getPInvoiceTotal(inv), 
+    sisa: getPInvoiceSisa(inv) 
+  })).filter((x) => x.sisa > 0);
 
   const filteredPaymentsIn = useMemo(() => (paymentsIn || []).filter((p) => inDateRange(p.date)), [paymentsIn, startDate, endDate]);
   const filteredPaymentsOut = useMemo(() => (paymentsOut || []).filter((p) => inDateRange(p.date)), [paymentsOut, startDate, endDate]);
@@ -320,17 +335,20 @@ export default function FinanceView(props) {
             </tr>
           </thead>
           <tbody>
-            {pInvoiceAPList.map(({ inv, total, sisa }) => (
-              <tr key={inv.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{inv.noFaktur}</td>
-                <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(suppliers, inv.supplierId)}</td>
-                <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.inkSoft }}>{fmtIDR(total)}</td>
-                <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.good }}>{fmtIDR(total - sisa)}</td>
-                <td className="px-4 py-2.5 font-mono font-medium" style={{ color: COLOR.danger }}>{fmtIDR(sisa)}</td>
-                <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(inv.date)}</td>
-                <td className="px-4 py-2.5 text-right"><button onClick={() => openPay("pInvoice", inv)} className="text-xs font-semibold cursor-pointer" style={{ color: COLOR.accent }}>Bayar Hutang</button></td>
-              </tr>
-            ))}
+            {pInvoiceAPList.map(({ inv, total, sisa }) => {
+              const paid = typeof pInvoicePaidAmount === "function" ? pInvoicePaidAmount(inv.id) : 0;
+              return (
+                <tr key={inv.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                  <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{inv.noFaktur}</td>
+                  <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(suppliers, inv.supplierId)}</td>
+                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.inkSoft }}>{fmtIDR(total)}</td>
+                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.good }}>{fmtIDR(paid)}</td>
+                  <td className="px-4 py-2.5 font-mono font-medium" style={{ color: COLOR.danger }}>{fmtIDR(sisa)}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(inv.date)}</td>
+                  <td className="px-4 py-2.5 text-right"><button onClick={() => openPay("pInvoice", inv)} className="text-xs font-semibold cursor-pointer" style={{ color: COLOR.accent }}>Bayar Hutang</button></td>
+                </tr>
+              );
+            })}
             {pInvoiceAPList.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada hutang tersisa — semua Faktur Pembelian sudah lunas.</td></tr>}
           </tbody>
         </ResponsiveTable>
