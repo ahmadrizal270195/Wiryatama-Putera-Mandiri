@@ -63,24 +63,24 @@ export default function SalesView({
   }
 
   function getSOStatus(so) {
-  if ((invoices || []).some((inv) => inv.soId === so.id)) return "invoiced";
-  if (so.isClosedPartial) return "ready_to_invoice"; // <-- TAMBAHKAN BARIS INI
-  
-  const dns = (deliveryNotes || []).filter((dn) => dn.soId === so.id);
-  
-  const fullyShipped = (so.items || []).every((it) => {
-    const shipped = (dns || []).reduce((s, dn) => {
-      const found = (dn.items || []).find((x) => x.productId === it.productId);
-      return s + (found ? Number(found.qty || 0) : 0);
-    }, 0);
-    return shipped >= it.qty;
-  });
+    if ((invoices || []).some((inv) => inv.soId === so.id)) return "invoiced";
+    if (so.isClosedPartial) return "ready_to_invoice";
+    
+    const dns = (deliveryNotes || []).filter((dn) => dn.soId === so.id);
+    
+    const fullyShipped = (so.items || []).every((it) => {
+      const shipped = (dns || []).reduce((s, dn) => {
+        const found = (dn.items || []).find((x) => x.productId === it.productId);
+        return s + (found ? Number(found.qty || 0) : 0);
+      }, 0);
+      return shipped >= it.qty;
+    });
 
-  if (dns.length === 0) return "open";
-  if (!fullyShipped) return "partially_shipped";
-  if (dns.some((dn) => dn.status !== "diterima")) return "shipped";
-  return "ready_to_invoice";
-}
+    if (dns.length === 0) return "open";
+    if (!fullyShipped) return "partially_shipped";
+    if (dns.some((dn) => dn.status !== "diterima")) return "shipped";
+    return "ready_to_invoice";
+  }
 
   const STATUS_LABEL = {
     open: { label: "Baru", tone: "neutral" },
@@ -97,10 +97,9 @@ export default function SalesView({
     { id: "retur", label: `Retur (${(returns || []).length})` },
   ];
 
-const handleClosePartialSO = (so) => {
+  const handleClosePartialSO = (so) => {
     if (!confirm(`Selesaikan SO ${so.soNumber}? Sisa barang yang belum dikirim akan dibatalkan otomatis agar Faktur Penjualan bisa dibuat.`)) return;
 
-    // 1. Hitung total barang yang sudah dikirim di Surat Jalan
     const deliveredMap = {};
     (deliveryNotes || [])
       .filter((dn) => dn.soId === so.id && dn.status !== "batal")
@@ -110,7 +109,6 @@ const handleClosePartialSO = (so) => {
         });
       });
 
-    // 2. Potong qty SO sesuai jumlah barang yang terkirim
     const updatedItems = (so.items || [])
       .map((item) => ({
         ...item,
@@ -123,7 +121,6 @@ const handleClosePartialSO = (so) => {
       return notify("Tidak ada barang yang terkirim pada SO ini.", "danger");
     }
 
-    // 3. Simpan perubahan SO
     const updatedSOList = (sos || []).map((s) =>
       s.id === so.id
         ? { ...s, items: updatedItems, status: "ready_to_invoice", isClosedPartial: true }
@@ -133,7 +130,6 @@ const handleClosePartialSO = (so) => {
     saveSOs(updatedSOList);
     notify(`SO ${so.soNumber} diselesaikan! Faktur Penjualan kini sudah siap dibuat.`);
   };
-  // ============================================================
 
   return (
     <div>
@@ -158,10 +154,9 @@ const handleClosePartialSO = (so) => {
         </div>
       </div>
 
-      
-{subTab === "so" && (
-  <SOTab {...{ products, customers, sos, deliveryNotes, invoices, saveSOs, saveCustomers, findName, notify, soTotal, getSOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES, handleClosePartialSO, shippedQty }} />
-)}
+      {subTab === "so" && (
+        <SOTab {...{ products, customers, sos, deliveryNotes, invoices, saveSOs, saveCustomers, findName, notify, soTotal, getSOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES, handleClosePartialSO, shippedQty }} />
+      )}
       {subTab === "sj" && (
         <SJTab {...{ products, customers, sos, batches, deliveryNotes, invoices, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty, soTotal, invoiceTotal, colorConfig, uid, todayISO, fmtDate, fmtIDR, COMPANY_PROFILE }} />
       )}
@@ -176,7 +171,6 @@ const handleClosePartialSO = (so) => {
 }
 
 // --- SUB-KOMPONEN SO TAB ---
-// TAMBAHKAN 'invoices' DI DALAM PARAMETER SOTAB:
 function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, saveCustomers, findName, notify, soTotal, getSOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES, handleClosePartialSO, shippedQty }) {
   const [modal, setModal] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -228,7 +222,7 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
       if (valA > valB) return sortOrder === "asc" ? 1 : -1;
       return 0;
     });
-  }, [sos, customers, searchSO, statusFilter, sortField, sortOrder, getSOStatus, soTotal]);
+  }, [sos, customers, searchSO, statusFilter, sortField, sortOrder, getSOStatus, soTotal, findName]);
 
   function openNew() {
     const currentYear = new Date().getFullYear();
@@ -249,29 +243,27 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
     setModal("new");
   }
 
-  // Gantilah fungsi openEdit di SOTab menjadi:
-function openEdit(so) {
-  // Hanya blokir edit jika SUDAH DIFAKTUR
-  if ((invoices || []).some((inv) => inv.soId === so.id)) {
-    return notify("Gagal Edit: SO ini sudah diterbitkan Faktur Penjualan.", "danger");
+  function openEdit(so) {
+    if ((invoices || []).some((inv) => inv.soId === so.id)) {
+      return notify("Gagal Edit: SO ini sudah diterbitkan Faktur Penjualan.", "danger");
+    }
+    
+    setEditingId(so.id);
+    setSoNumber(so.soNumber);
+    setCustomerId(so.customerId);
+    setDate(so.date || todayISO());
+    setTaxType(so.taxType || "none");
+    setDiscountTypeHeader(so.discountType || "percent");
+    setDiscountPercentHeader(so.discountPercent ?? so.discount ?? 0);
+    setItems((so.items || []).map(it => ({ 
+      ...it, 
+      discountType: it.discountType || "percent", 
+      discountPercent: it.discountPercent ?? 0,
+      minQty: shippedQty(so.id, it.productId)
+    })));
+    setSearchProd("");
+    setModal("edit");
   }
-  
-  setEditingId(so.id);
-  setSoNumber(so.soNumber);
-  setCustomerId(so.customerId);
-  setDate(so.date || todayISO());
-  setTaxType(so.taxType || "none");
-  setDiscountTypeHeader(so.discountType || "percent");
-  setDiscountPercentHeader(so.discountPercent ?? so.discount ?? 0);
-  setItems((so.items || []).map(it => ({ 
-    ...it, 
-    discountType: it.discountType || "percent", 
-    discountPercent: it.discountPercent ?? 0,
-    minQty: shippedQty(so.id, it.productId) // Simpan batas minimal edit
-  })));
-  setSearchProd("");
-  setModal("edit");
-}
 
   function handleSelectCustomer(val) {
     if (val === "__ADD_NEW__") {
@@ -316,9 +308,6 @@ function openEdit(so) {
     if (!customerId) return notify("Pilih pelanggan", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
 
-    // ============================================================
-    // VALIDASI BATAS MINIMAL QTY SAAT EDIT SO PARSIAL
-    // ============================================================
     if (editingId) {
       for (const it of items) {
         const alreadyShipped = shippedQty(editingId, it.productId);
@@ -331,9 +320,7 @@ function openEdit(so) {
         }
       }
     }
-    // ============================================================
 
-    // Tentukan status SO: jika ada pengiriman parsial, kembalikan ke "open" / "partially_shipped"
     const currentStatus = editingId 
       ? ((deliveryNotes || []).some(dn => dn.soId === editingId) ? "partially_shipped" : "open")
       : "open";
@@ -347,7 +334,7 @@ function openEdit(so) {
       discountPercent: Number(discountPercentHeader || 0), 
       items, 
       status: currentStatus,
-      isClosedPartial: false // Reset flag closed jika item ditambah lagi
+      isClosedPartial: false
     };
 
     if (editingId) {
@@ -415,43 +402,38 @@ function openEdit(so) {
                 <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: colorConfig?.ink }}>{fmtIDR(soTotal(so))}</td>
                 <td className="px-4 py-2.5"><Badge tone={s.tone} colorConfig={colorConfig}>{s.label}</Badge></td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
-  <div className="flex items-center justify-end gap-2.5">
-    
-    {/* Tombol Selesaikan Order (Cut-Off) */}
-    {st === "partially_shipped" && (
-      <button
-        type="button"
-        onClick={() => handleClosePartialSO(so)}
-        className="text-xs px-2 py-1 font-semibold rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 cursor-pointer"
-      >
-        Selesaikan Order
-      </button>
-    )}
+                  <div className="flex items-center justify-end gap-2.5">
+                    {st === "partially_shipped" && (
+                      <button
+                        type="button"
+                        onClick={() => handleClosePartialSO(so)}
+                        className="text-xs px-2 py-1 font-semibold rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 cursor-pointer"
+                      >
+                        Selesaikan Order
+                      </button>
+                    )}
 
-    <button onClick={() => setPrintSO(so)} className="text-xs flex items-center gap-1 font-semibold cursor-pointer" style={{ color: colorConfig?.primary }}>
-      <Printer size={13} /> Cetak SO
-    </button>
-    
-    <button onClick={() => setDetailSO(so)} className="text-xs font-medium cursor-pointer" style={{ color: colorConfig?.accent }}>
-      Detail
-    </button>
+                    <button onClick={() => setPrintSO(so)} className="text-xs flex items-center gap-1 font-semibold cursor-pointer" style={{ color: colorConfig?.primary }}>
+                      <Printer size={13} /> Cetak SO
+                    </button>
+                    
+                    <button onClick={() => setDetailSO(so)} className="text-xs font-medium cursor-pointer" style={{ color: colorConfig?.accent }}>
+                      Detail
+                    </button>
 
-    {/* Tombol EDIT: Tetap MUNCUL selama belum difaktur */}
-    {!hasInvoice && (
-      <button onClick={() => openEdit(so)} className="text-xs font-semibold cursor-pointer" style={{ color: colorConfig?.accent }}>
-        Edit
-      </button>
-    )}
+                    {!hasInvoice && (
+                      <button onClick={() => openEdit(so)} className="text-xs font-semibold cursor-pointer" style={{ color: colorConfig?.accent }}>
+                        Edit
+                      </button>
+                    )}
 
-    {/* Tombol BATALKAN: Hanya MUNCUL jika belum ada Surat Jalan */}
-    {!hasDeliveryNote && (
-      <button onClick={() => cancelSO(so)} className="text-xs cursor-pointer" style={{ color: colorConfig?.danger }}>
-        Batalkan SO
-      </button>
-    )}
-
-  </div>
-</td>
+                    {!hasDeliveryNote && (
+                      <button onClick={() => cancelSO(so)} className="text-xs cursor-pointer" style={{ color: colorConfig?.danger }}>
+                        Batalkan SO
+                      </button>
+                    )}
+                  </div>
+                </td>
               </tr>
             );
           })}
@@ -1216,7 +1198,44 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   const [modalQuickCust, setModalQuickCust] = useState(false);
   const [quickCustForm, setQuickCustForm] = useState({ name: "", type: CUSTOMER_TYPES?.[0] || "Apotek", npwp: "", contact: "", address: "" });
 
+  // STATE BARU: FILTER & SORTING FAKTUR PENJUALAN
+  const [invStatusFilter, setInvStatusFilter] = useState("ALL");
+  const [invSortBy, setInvSortBy] = useState("date_desc");
+  const [invSearch, setInvSearch] = useState("");
+
   const eligibleSOs = (sos || []).filter((so) => getSOStatus(so) === "ready_to_invoice");
+
+  // LOGIKA PEMROSESAN FILTER & SORTING
+  const processedInvoices = useMemo(() => {
+    return (invoices || [])
+      .map((inv) => {
+        const total = invoiceTotal ? invoiceTotal(inv) : 0;
+        const paid = invoicePaidAmount ? invoicePaidAmount(inv.id) : 0;
+        const ret = invoiceReturnedAmount ? invoiceReturnedAmount(inv.id) : 0;
+        const dp = inv.soId && soDPAmount ? soDPAmount(inv.soId) : 0;
+        const sisa = Math.max(0, total - ret - dp - paid);
+        const isLunas = sisa <= 0;
+        return { ...inv, sisa, total, isLunas };
+      })
+      .filter((inv) => {
+        const so = (sos || []).find((x) => x.id === inv.soId);
+        const custName = (inv.isDirect ? findName(customers, inv.customerId) : (so ? findName(customers, so.customerId) : "")).toLowerCase();
+        const matchSearch = inv.noFaktur.toLowerCase().includes(invSearch.toLowerCase()) || custName.includes(invSearch.toLowerCase());
+
+        let matchStatus = true;
+        if (invStatusFilter === "LUNAS") matchStatus = inv.isLunas;
+        if (invStatusFilter === "BELUM_LUNAS") matchStatus = !inv.isLunas;
+
+        return matchSearch && matchStatus;
+      })
+      .sort((a, b) => {
+        if (invSortBy === "date_desc") return new Date(b.date) - new Date(a.date);
+        if (invSortBy === "date_asc") return new Date(a.date) - new Date(b.date);
+        if (invSortBy === "total_desc") return b.total - a.total;
+        if (invSortBy === "total_asc") return a.total - b.total;
+        return 0;
+      });
+  }, [invoices, invSearch, invStatusFilter, invSortBy, customers, sos, invoiceTotal, invoicePaidAmount, invoiceReturnedAmount, soDPAmount, findName]);
 
   function openDirectModal() {
     const currentYear = new Date().getFullYear();
@@ -1368,6 +1387,33 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         <Button onClick={openDirectModal} colorConfig={colorConfig}><Plus size={15} /> Buat Faktur Penjualan Langsung</Button>
       </div>
 
+      {/* BARIS TOOLBAR FILTER & SORTING PENJUALAN */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 no-print">
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-1 max-w-lg">
+          <TextInput
+            placeholder="Cari No. Faktur / Pelanggan..."
+            value={invSearch}
+            onChange={(e) => setInvSearch(e.target.value)}
+            colorConfig={colorConfig}
+          />
+          <Select value={invStatusFilter} onChange={(e) => setInvStatusFilter(e.target.value)} colorConfig={colorConfig}>
+            <option value="ALL">Semua Status</option>
+            <option value="BELUM_LUNAS">Belum Lunas (Piutang)</option>
+            <option value="LUNAS">Sudah Lunas</option>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <span className="text-xs text-gray-500 whitespace-nowrap">Urutkan:</span>
+          <Select value={invSortBy} onChange={(e) => setInvSortBy(e.target.value)} colorConfig={colorConfig}>
+            <option value="date_desc">Tanggal Terbaru</option>
+            <option value="date_asc">Tanggal Terlama</option>
+            <option value="total_desc">Nominal Terbesar</option>
+            <option value="total_asc">Nominal Terkecil</option>
+          </Select>
+        </div>
+      </div>
+
       {eligibleSOs.length > 0 && (
         <Card className="mb-4 no-print" colorConfig={colorConfig}>
           <div className="text-xs font-medium mb-2" style={{ color: colorConfig?.inkSoft }}>SO siap difaktur (barang sudah diterima penuh)</div>
@@ -1389,11 +1435,11 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
           </tr>
         </thead>
         <tbody>
-          {[...(invoices || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((inv) => {
+          {processedInvoices.map((inv) => {
             const so = (sos || []).find((x) => x.id === inv.soId);
             const custName = inv.isDirect ? findName(customers, inv.customerId) : (so ? findName(customers, so.customerId) : "-");
-            const total = invoiceTotal(inv);
-            const sisa = Math.max(0, total - invoiceReturnedAmount(inv.id) - soDPAmount(inv.soId) - invoicePaidAmount(inv.id));
+            const total = inv.total;
+            const sisa = inv.sisa;
             const canEditOrCancel = invoicePaidAmount(inv.id) === 0 && !(returns || []).some((r) => r.invoiceId === inv.id);
             return (
               <tr key={inv.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
@@ -1418,6 +1464,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
               </tr>
             );
           })}
+          {processedInvoices.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: colorConfig?.inkSoft }}>Belum ada Faktur Penjualan yang sesuai.</td></tr>}
         </tbody>
       </ResponsiveTable>
 

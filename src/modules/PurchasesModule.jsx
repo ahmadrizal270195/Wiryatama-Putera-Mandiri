@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Plus, Printer, FileText, Trash2, Search } from "lucide-react";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 
@@ -95,7 +95,6 @@ export default function PurchasesView({
   const handleClosePartialPO = async (po) => {
     if (!confirm(`Selesaikan PO ${po.poNumber}? Sisa barang yang belum diterima akan dibatalkan otomatis agar Faktur Pembelian bisa dibuat.`)) return;
 
-    // 1. Hitung total barang diterima dari BPB (pReceipts)
     const receivedMap = {};
     (pReceipts || [])
       .filter((pr) => pr.poId === po.id && pr.status !== "batal")
@@ -105,7 +104,6 @@ export default function PurchasesView({
         });
       });
 
-    // 2. Potong qty PO sesuai jumlah barang diterima
     const updatedItems = (po.items || [])
       .map((item) => ({
         ...item,
@@ -118,7 +116,6 @@ export default function PurchasesView({
       return notify("Tidak ada barang yang diterima pada PO ini.", "danger");
     }
 
-    // 3. Simpan perubahan PO
     await savePOs((pos || []).map((p) => (p.id === po.id ? { ...p, items: updatedItems, status: "ready_to_invoice", isClosedPartial: true } : p)));
     notify(`PO ${po.poNumber} berhasil diselesaikan! Faktur Pembelian kini siap dibuat.`);
   };
@@ -926,11 +923,67 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   const [modalQuickSupp, setModalQuickSupp] = useState(false);
   const [quickSuppForm, setQuickSuppForm] = useState({ name: "", npwp: "", contact: "", address: "" });
 
+  // STATE BARU: FILTER & SORTING FAKTUR PEMBELIAN
+  const [pInvStatusFilter, setPInvStatusFilter] = useState("ALL");
+  const [pInvSortBy, setPInvSortBy] = useState("date_desc");
+  const [pInvSearch, setPInvSearch] = useState("");
+
   const eligiblePOs = (pos || []).filter((po) => {
     const st = getPOStatus(po);
     const hasReceipts = (pReceipts || []).some((pr) => pr.poId === po.id);
     return st === "ready_to_invoice" || (st === "partially_received" && hasReceipts);
   });
+
+// HELPER KALKULASI TOTAL TAGIHAN FAKTUR PEMBELIAN AKURAT
+  const getPInvoiceTotal = (inv) => {
+    if (!inv || !inv.items) return 0;
+
+    // 1. Hitung Subtotal Kotor Item (setelah diskon per item)
+    const rawSubtotal = (inv.items || []).reduce((sum, it) => {
+      const gross = (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
+      const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
+      return sum + Math.max(0, gross - discAmt);
+    }, 0);
+
+    // 2. Hitung Persentase Diskon Nota / Header
+    const effHeaderPct = inv.discountType === "amount" 
+      ? (rawSubtotal > 0 ? (Math.min(rawSubtotal, Number(inv.discountPercent || 0)) / rawSubtotal) * 100 : 0)
+      : Number(inv.discountPercent || 0);
+
+    // 3. Kalkulasi Pajak PPN (Non-PPN, PPN 11%, atau Include PPN)
+    const taxInfo = calcTax(rawSubtotal, inv.taxType || "none", effHeaderPct);
+    return taxInfo.total;
+  };
+
+  // LOGIKA PEMROSESAN FILTER & SORTING
+  const processedPInvoices = useMemo(() => {
+    return (pInvoices || [])
+      .map((inv) => {
+        const total = getPInvoiceTotal(inv); // <-- UBAH DI SINI (sebelumnya pInvoiceTotal(inv))
+        const paid = pInvoicePaidAmount ? pInvoicePaidAmount(inv.id) : 0;
+        const ret = pInvoiceReturnedAmount ? pInvoiceReturnedAmount(inv.id) : 0;
+        const sisa = Math.max(0, total - paid - ret);
+        const isLunas = sisa <= 0 && total > 0; // Hanya Lunas jika Total > 0
+        return { ...inv, sisa, total, isLunas };
+      })
+      .filter((inv) => {
+        const suppName = findName(suppliers, inv.supplierId).toLowerCase();
+        const matchSearch = inv.noFaktur.toLowerCase().includes(pInvSearch.toLowerCase()) || suppName.includes(pInvSearch.toLowerCase());
+
+        let matchStatus = true;
+        if (pInvStatusFilter === "LUNAS") matchStatus = inv.isLunas;
+        if (pInvStatusFilter === "BELUM_LUNAS") matchStatus = !inv.isLunas;
+
+        return matchSearch && matchStatus;
+      })
+      .sort((a, b) => {
+        if (pInvSortBy === "date_desc") return new Date(b.date) - new Date(a.date);
+        if (pInvSortBy === "date_asc") return new Date(a.date) - new Date(b.date);
+        if (pInvSortBy === "total_desc") return b.total - a.total;
+        if (pInvSortBy === "total_asc") return a.total - b.total;
+        return 0;
+      });
+  }, [pInvoices, pInvSearch, pInvStatusFilter, pInvSortBy, suppliers, pInvoiceSisa, pInvoiceTotal, findName]);
 
   function openDirectModal() {
     const currentYear = new Date().getFullYear();
@@ -1189,6 +1242,33 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         <Button onClick={openDirectModal} colorConfig={colorConfig}><Plus size={15} /> Buat Faktur Pembelian Langsung</Button>
       </div>
 
+      {/* BARIS TOOLBAR FILTER & SORTING VENDOR */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 no-print">
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-1 max-w-lg">
+          <TextInput
+            placeholder="Cari No. Faktur Vendor / Supplier..."
+            value={pInvSearch}
+            onChange={(e) => setPInvSearch(e.target.value)}
+            colorConfig={colorConfig}
+          />
+          <Select value={pInvStatusFilter} onChange={(e) => setPInvStatusFilter(e.target.value)} colorConfig={colorConfig}>
+            <option value="ALL">Semua Status</option>
+            <option value="BELUM_LUNAS">Belum Lunas (Hutang)</option>
+            <option value="LUNAS">Sudah Lunas</option>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <span className="text-xs text-gray-500 whitespace-nowrap">Urutkan:</span>
+          <Select value={pInvSortBy} onChange={(e) => setPInvSortBy(e.target.value)} colorConfig={colorConfig}>
+            <option value="date_desc">Tanggal Terbaru</option>
+            <option value="date_asc">Tanggal Terlama</option>
+            <option value="total_desc">Nominal Terbesar</option>
+            <option value="total_asc">Nominal Terkecil</option>
+          </Select>
+        </div>
+      </div>
+
       {eligiblePOs.length > 0 && (
         <Card className="mb-4 no-print" colorConfig={colorConfig}>
           <div className="text-xs font-medium mb-2" style={{ color: colorConfig?.inkSoft }}>PO Siap Difakturkan Supplier (Barang sudah diterima)</div>
@@ -1210,10 +1290,10 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
           </tr>
         </thead>
         <tbody>
-          {[...(pInvoices || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((inv) => {
+          {processedPInvoices.map((inv) => {
             const po = (pos || []).find((x) => x.id === inv.poId);
-            const total = pInvoiceTotal(inv);
-            const sisa = pInvoiceSisa(inv);
+            const total = inv.total;
+            const sisa = inv.sisa;
             const canEditOrCancel = pInvoicePaidAmount(inv.id) === 0 && !(pReturns || []).some((r) => r.pInvoiceId === inv.id);
             return (
               <tr key={inv.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
@@ -1237,7 +1317,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
               </tr>
             );
           })}
-          {(pInvoices || []).length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: colorConfig?.inkSoft }}>Belum ada Faktur Pembelian.</td></tr>}
+          {processedPInvoices.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: colorConfig?.inkSoft }}>Belum ada Faktur Pembelian yang sesuai.</td></tr>}
         </tbody>
       </ResponsiveTable>
 
@@ -1366,31 +1446,57 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       )}
 
       {detailInv && (
-        <Modal title={`Detail ${detailInv.noFaktur}`} onClose={() => setDetailInv(null)} wide colorConfig={colorConfig}>
-          <table className="w-full text-sm mb-3">
-            <thead><tr style={{ background: colorConfig?.primarySoft }}>{["Produk", "Qty", "Harga Beli", "Diskon", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: colorConfig?.primary }}>{h}</th>)}</tr></thead>
-            <tbody>
-              {(detailInv.items || []).map((it, i) => {
-                const p = (products || []).find((x) => x.id === it.productId);
-                const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
-                const gross = it.qty * it.unitPrice;
-                const lineTotal = Math.max(0, gross - discAmt);
+  <Modal title={`Detail ${detailInv.noFaktur}`} onClose={() => setDetailInv(null)} wide colorConfig={colorConfig}>
+    <table className="w-full text-sm mb-3">
+      <thead>
+        <tr style={{ background: colorConfig?.primarySoft }}>
+          {["Produk", "Qty", "Harga Beli", "Diskon", "Subtotal"].map((h) => (
+            <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: colorConfig?.primary }}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {(detailInv.items || []).map((it, i) => {
+          const p = (products || []).find((x) => x.id === it.productId);
+          const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
+          const gross = it.qty * it.unitPrice;
+          const lineTotal = Math.max(0, gross - discAmt);
 
-                return (
-                  <tr key={i} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
-                    <td className="px-3 py-2" style={{ color: colorConfig?.ink }}>{p?.name}</td>
-                    <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{it.qty} {p?.unit}</td>
-                    <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
-                    <td className="px-3 py-2 font-mono text-teal-800 font-semibold">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
-                    <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.ink }}>{fmtIDR(lineTotal)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <div className="text-right font-mono text-sm mb-2 font-bold" style={{ color: colorConfig?.ink }}>Total Tagihan: {fmtIDR(pInvoiceTotal(detailInv))}</div>
-        </Modal>
-      )}
+          return (
+            <tr key={i} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
+              <td className="px-3 py-2" style={{ color: colorConfig?.ink }}>{p?.name}</td>
+              <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{it.qty} {p?.unit}</td>
+              <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
+              <td className="px-3 py-2 font-mono text-teal-800 font-semibold">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
+              <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.ink }}>{fmtIDR(lineTotal)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+
+    {/* KODE PERBAIKAN: KALKULASI TOTAL AKURAT DENGAN TAX & DISKON */}
+    {(() => {
+      const rawSub = (detailInv.items || []).reduce((s, it) => {
+        const gross = it.qty * it.unitPrice;
+        const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
+        return s + Math.max(0, gross - discAmt);
+      }, 0);
+
+      const effPct = detailInv.discountType === "amount" 
+        ? (rawSub > 0 ? (Math.min(rawSub, Number(detailInv.discountPercent || 0)) / rawSub) * 100 : 0)
+        : Number(detailInv.discountPercent || 0);
+
+      const taxInfo = calcTax(rawSub, detailInv.taxType || "none", effPct);
+
+      return (
+        <div className="text-right font-mono text-sm mb-2 font-bold" style={{ color: colorConfig?.ink }}>
+          Total Tagihan: {fmtIDR(taxInfo.total)}
+        </div>
+      );
+    })()}
+  </Modal>
+)}
     </div>
   );
 }
