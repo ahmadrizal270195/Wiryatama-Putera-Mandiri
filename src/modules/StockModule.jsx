@@ -76,6 +76,59 @@ export default function StockView(props) {
     if (editBatchModal && editBatchModal.id === batchId) setEditBatchModal(null);
   }
 
+// FUNGSI EKSPOR DATA STOK KE CSV
+  function exportStockCSV() {
+    if (!products || products.length === 0) {
+      return notify("Tidak ada data produk untuk diekspor", "warn");
+    }
+
+    const headers = ["Nama Produk", "Kategori", "Satuan", "Total Stok", "No. Batch", "Exp Date", "Qty Batch", "Asal Stok"];
+    const rows = [];
+
+    (products || []).forEach((prod) => {
+      const prodBatches = (batches || []).filter((b) => b.productId === prod.id && b.qty > 0);
+      const totalStock = (batches || []).reduce((sum, b) => b.productId === prod.id ? sum + (Number(b.qty) || 0) : sum, 0);
+
+      if (prodBatches.length > 0) {
+        prodBatches.forEach((b) => {
+          rows.push([
+            `"${prod.name.replace(/"/g, '""')}"`,
+            `"${(prod.category || "").replace(/"/g, '""')}"`,
+            `"${prod.unit || ""}"`,
+            totalStock,
+            `"${b.batchNo || "-"}"`,
+            b.expiryDate || "-",
+            b.qty || 0,
+            b.sourceType === "opname_awal" ? "Opname Awal" : "Pembelian"
+          ]);
+        });
+      } else {
+        // Jika produk tidak punya batch aktif (stok 0)
+        rows.push([
+          `"${prod.name.replace(/"/g, '""')}"`,
+          `"${(prod.category || "").replace(/"/g, '""')}"`,
+          `"${prod.unit || ""}"`,
+          0,
+          "-",
+          "-",
+          0,
+          "-"
+        ]);
+      }
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Data_Stok_Batch_${todayISO()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    notify("Data stok berhasil diunduh!");
+  }
+
   function downloadCSVTemplate() {
     const headers = ["Nama Produk", "No Batch", "Tanggal Expiry (YYYY-MM-DD)", "Jumlah Qty", "Harga Beli per Satuan"];
     const exampleRow1 = ["Paracetamol 500mg", "BCH-2026-001", "2027-12-31", "100", "5000"];
@@ -191,9 +244,15 @@ export default function StockView(props) {
           <Eyebrow>Traceability</Eyebrow>
           <h2 className="text-xl font-semibold" style={{ color: colorConfig?.ink }}>Stok & Batch</h2>
         </div>
-        <Button onClick={() => setModalImport(true)} colorConfig={colorConfig}>
-          <Upload size={15} /> Import Stock / Opname
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* TOMBOL EKSPOR DITAMBAHKAN DI SINI */}
+          <Button onClick={exportStockCSV} variant="secondary" colorConfig={colorConfig}>
+            <Download size={15} /> Export Data Stok
+          </Button>
+          <Button onClick={() => setModalImport(true)} colorConfig={colorConfig}>
+            <Upload size={15} /> Import Stock / Opname
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
