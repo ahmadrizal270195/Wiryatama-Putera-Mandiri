@@ -46,6 +46,45 @@ function getItemDiscountAmount(qty, unitPrice, discType, discVal) {
   return gross * (Math.min(100, val) / 100);
 }
 
+// HELPER FUNGSI CETAK POP-UP MANDIRI (BYPASS MODAL FOR MULTI-PAGE PRINTING)
+function printDocumentContent(elementId, titleText) {
+  const contentElement = document.getElementById(elementId);
+  if (!contentElement) return alert("Elemen cetak tidak ditemukan!");
+
+  const printWindow = window.open("", "_blank", "width=950,height=750");
+  if (!printWindow) return alert("Pop-up diblokir oleh browser. Izinkan pop-up untuk mencetak dokumen.");
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>${titleText}</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+          @page { size: A4 portrait; margin: 12mm 10mm 12mm 10mm; }
+          body { font-family: ui-sans-serif, system-ui, sans-serif; background: #ffffff; color: #111827; margin: 0; padding: 15px; }
+          table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          thead { display: table-header-group; }
+          tfoot { display: table-footer-group; }
+          .no-print { display: none !important; }
+        </style>
+      </head>
+      <body>
+        <div>${contentElement.innerHTML}</div>
+        <script>
+          setTimeout(() => {
+            window.print();
+            window.close();
+          }, 500);
+        </script>
+      </body>
+    </html>
+  `);
+
+  printWindow.document.close();
+}
+
 export default function SalesView({
   products, customers, sos, batches, deliveryNotes, invoices, returns, paymentsIn,
   saveSOs, saveBatches, saveDeliveryNotes, saveInvoices, saveReturns, saveCustomers,
@@ -602,10 +641,13 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
         </Modal>
       )}
 
+      {/* TEMPLATE CETAK SALES ORDER (POP-UP MANDIRI CETAK MULTI-PAGE) */}
       {printSO && (
         <Modal title={`Cetak Sales Order — ${printSO.soNumber}`} onClose={() => setPrintSO(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
-            <Button onClick={() => window.print()} variant="primary" colorConfig={colorConfig}><Printer size={15} /> Cetak SO / Simpan PDF</Button>
+            <Button onClick={() => printDocumentContent("printable-so", `Sales Order - ${printSO.soNumber}`)} variant="primary" colorConfig={colorConfig}>
+              <Printer size={15} /> Cetak SO / Simpan PDF
+            </Button>
           </div>
           <div className="overflow-x-auto w-full">
             <div id="printable-so" className="p-4 sm:p-6 bg-white border rounded-xl text-xs text-gray-800 min-w-[550px] sm:min-w-0">
@@ -642,12 +684,12 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
                   <div>
                     <div className="grid grid-cols-2 gap-4 mb-6 bg-gray-50 p-3 rounded-lg border">
                       <div>
-                        <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Kepada Yth. (Pelanggan)</div>
+                        <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 font-bold">Kepada Yth. (Pelanggan)</div>
                         <div className="text-sm text-gray-900 font-bold">{cust?.name || "Pelanggan"}</div>
                         <div className="text-[11px] text-gray-600 mt-0.5">{cust?.address || "-"}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Detail Dokumen</div>
+                        <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 font-bold">Detail Dokumen</div>
                         <div><span className="text-gray-500">Tanggal Order:</span> <span className="font-mono">{fmtDate(printSO.date)}</span></div>
                       </div>
                     </div>
@@ -1021,10 +1063,13 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
         </Modal>
       )}
 
+      {/* POP-UP CETAK SURAT JALAN */}
       {printDN && (
         <Modal title={`Cetak Surat Jalan — ${printDN.noSJ}`} onClose={() => setPrintInvDN(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
-            <Button onClick={async () => { window.print(); }} variant="primary" colorConfig={colorConfig}><Printer size={15} /> Cetak Surat Jalan / PDF</Button>
+            <Button onClick={() => printDocumentContent("printable-sj", `Surat Jalan - ${printDN.noSJ}`)} variant="primary" colorConfig={colorConfig}>
+              <Printer size={15} /> Cetak Surat Jalan / PDF
+            </Button>
           </div>
           <div id="printable-sj" className="p-6 bg-white border rounded-xl text-xs text-gray-800">
             <div className="flex items-start justify-between border-b-2 pb-4 mb-4" style={{ borderColor: colorConfig?.primary }}>
@@ -1098,10 +1143,13 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
         </Modal>
       )}
 
+      {/* POP-UP CETAK TANDA TERIMA */}
       {printTT && (
         <Modal title={`Tanda Terima Dokumen — ${printTT.noSJ}`} onClose={() => setPrintTT(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
-            <Button onClick={async () => { window.print(); }} variant="primary" colorConfig={colorConfig}><Printer size={15} /> Cetak Tanda Terima / PDF</Button>
+            <Button onClick={() => printDocumentContent("printable-tt", `Tanda Terima - ${printTT.noSJ}`)} variant="primary" colorConfig={colorConfig}>
+              <Printer size={15} /> Cetak Tanda Terima / PDF
+            </Button>
           </div>
           <div id="printable-tt" className="p-6 bg-white border rounded-xl text-xs text-gray-800">
             <div className="flex items-start justify-between border-b-2 pb-4 mb-4" style={{ borderColor: colorConfig?.primary }}>
@@ -1198,14 +1246,12 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   const [modalQuickCust, setModalQuickCust] = useState(false);
   const [quickCustForm, setQuickCustForm] = useState({ name: "", type: CUSTOMER_TYPES?.[0] || "Apotek", npwp: "", contact: "", address: "" });
 
-  // STATE BARU: FILTER & SORTING FAKTUR PENJUALAN
   const [invStatusFilter, setInvStatusFilter] = useState("ALL");
   const [invSortBy, setInvSortBy] = useState("date_desc");
   const [invSearch, setInvSearch] = useState("");
 
   const eligibleSOs = (sos || []).filter((so) => getSOStatus(so) === "ready_to_invoice");
 
-  // LOGIKA PEMROSESAN FILTER & SORTING
   const processedInvoices = useMemo(() => {
     return (invoices || [])
       .map((inv) => {
@@ -1387,7 +1433,6 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         <Button onClick={openDirectModal} colorConfig={colorConfig}><Plus size={15} /> Buat Faktur Penjualan Langsung</Button>
       </div>
 
-      {/* BARIS TOOLBAR FILTER & SORTING PENJUALAN */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 no-print">
         <div className="flex items-center gap-2 w-full sm:w-auto flex-1 max-w-lg">
           <TextInput
@@ -1612,10 +1657,13 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         </Modal>
       )}
 
+      {/* POP-UP CETAK FAKTUR PENJUALAN */}
       {printInv && (
         <Modal title={`Faktur Penjualan — ${printInv.noFaktur}`} onClose={() => setPrintInv(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
-            <Button onClick={() => window.print()} variant="primary" colorConfig={colorConfig}><Printer size={15} /> Cetak Sekarang / Simpan PDF</Button>
+            <Button onClick={() => printDocumentContent("printable-invoice", `Faktur Penjualan - ${printInv.noFaktur}`)} variant="primary" colorConfig={colorConfig}>
+              <Printer size={15} /> Cetak Sekarang / Simpan PDF
+            </Button>
           </div>
           <div className="overflow-x-auto w-full">
             <div id="printable-invoice" className="p-4 sm:p-6 bg-white border rounded-xl text-xs text-gray-800 min-w-[550px] sm:min-w-0">
@@ -1659,13 +1707,13 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                   <div>
                     <div className="grid grid-cols-2 gap-4 mb-6 bg-gray-50 p-3 rounded-lg border">
                       <div>
-                        <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Kepada Yth.</div>
+                        <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 font-bold">Kepada Yth.</div>
                         <div className="text-sm text-gray-900 font-bold">{cust?.name || "Pelanggan"}</div>
                         <div className="text-[11px] text-gray-600 mt-0.5">{cust?.address || "-"}</div>
                         <div className="text-[11px] text-gray-600">{cust?.contact || "-"}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Detail Dokumen</div>
+                        <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 font-bold">Detail Dokumen</div>
                         <div><span className="text-gray-500">Tanggal Faktur:</span> <span className="font-mono">{fmtDate(printInv.date)}</span></div>
                         <div><span className="text-gray-500">No. Sales Order:</span> <span className="font-mono">{so?.soNumber || (printInv.isDirect ? "Penjualan Langsung" : "-")}</span></div>
                       </div>
@@ -1692,7 +1740,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                           return (
                             <tr key={idx} className="border-b">
                               <td className="py-2 px-2 font-mono text-gray-500">{idx + 1}</td>
-                              <td className="py-2 px-2 text-gray-900">{p?.name || "-"}</td>
+                              <td className="py-2 px-2 text-gray-900 font-bold">{p?.name || "-"}</td>
                               <td className="py-2 px-2 text-center font-mono">{it.qty} {p?.unit || "unit"}</td>
                               <td className="py-2 px-2 text-right font-mono">{fmtIDR(it.unitPrice)}</td>
                               <td className="py-2 px-2 text-center font-mono text-teal-800">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>

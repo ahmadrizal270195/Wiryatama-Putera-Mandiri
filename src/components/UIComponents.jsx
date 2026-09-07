@@ -191,16 +191,17 @@ export function ResponsiveTable({ children, minWidth = 650, colorConfig }) {
   );
 }
 
+/* MODAL TERBAIKI: MENGHILANGKAN BATAS UNTUK MODE PRINT */
 export function Modal({ title, onClose, children, wide, isSubModal = false, colorConfig }) {
   return (
     <div
-      className={`fixed inset-0 flex items-center justify-center p-4 modal-backdrop ${isSubModal ? "z-[70]" : "z-50"}`}
+      className={`fixed inset-0 flex items-center justify-center p-4 modal-backdrop ${isSubModal ? "z-[70]" : "z-50"} print:static print:p-0 print:block`}
       style={{ background: "rgba(0,0,0,0.7)" }}
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className={"rounded-2xl w-full " + (wide ? "max-w-3xl" : "max-w-md") + " max-h-[85vh] overflow-y-auto modal-content shadow-2xl"}
+        className={"rounded-2xl w-full " + (wide ? "max-w-3xl" : "max-w-md") + " max-h-[85vh] overflow-y-auto modal-content shadow-2xl print:max-h-none print:overflow-visible print:h-auto print:shadow-none print:border-none print:w-full print:max-w-none"}
         style={{ background: colorConfig?.surface || "#FFFFFF", color: colorConfig?.ink || "#15302D", border: `1px solid ${colorConfig?.border || "#E2E9E7"}` }}
       >
         <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10 no-print" style={{ background: colorConfig?.surface || "#FFFFFF", borderBottom: `1px solid ${colorConfig?.border || "#E2E9E7"}` }}>
@@ -209,7 +210,7 @@ export function Modal({ title, onClose, children, wide, isSubModal = false, colo
             <X size={18} color={colorConfig?.inkSoft || "#5C7873"} />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="p-5 print:p-0">{children}</div>
       </div>
     </div>
   );
