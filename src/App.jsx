@@ -170,6 +170,18 @@ function calcTax(rawSubtotal, taxType, discountPercentHeader = 0) {
   return { dpp: dppAfterDiscount, ppn: 0, total: dppAfterDiscount, discHeaderAmount };
 }
 
+// Konversi diskon header (bisa berupa % ATAU Rupiah) menjadi persentase efektif,
+// supaya SEMUA tempat yang menghitung total faktur/invoice (AR, AP, Dashboard,
+// Finance, Laporan Laba Rugi) memakai satu logika yang sama dan tidak lagi
+// bisa saling berbeda hasil hanya karena lupa menangani discountType "amount".
+function headerDiscountToPct(rawSubtotal, discountType, discountValue) {
+  const val = Number(discountValue || 0);
+  if (discountType === "amount") {
+    return rawSubtotal > 0 ? (Math.min(rawSubtotal, val) / rawSubtotal) * 100 : 0;
+  }
+  return val;
+}
+
 // ---------- MAIN APP ROUTER ----------
 export default function App() {
   const [user, setUser] = useState(null);
@@ -846,7 +858,18 @@ function PharmaERP({ userEmail, onLogout }) {
 
 function invoiceTotal(inv) {
   const rawSub = invoiceRawTotal(inv);
-  return calcTax(rawSub, inv?.taxType || "none", inv?.discountPercent || inv?.discount || 0).total;
+  const pct = headerDiscountToPct(rawSub, inv?.discountType, inv?.discountPercent || inv?.discount || 0);
+  return calcTax(rawSub, inv?.taxType || "none", pct).total;
+}
+
+// DPP penjualan 1 faktur SETELAH diskon per-item DAN diskon header (Diskon Nota),
+// TIDAK termasuk PPN. Ini angka yang benar dipakai sebagai "penjualan" untuk
+// perhitungan margin/laba kotor — dipakai bersama oleh Dashboard, Finance, dan
+// Laporan Laba Rugi supaya ketiganya selalu konsisten.
+function invoiceNetSalesDPP(inv) {
+  const rawSub = invoiceRawTotal(inv);
+  const pct = headerDiscountToPct(rawSub, inv?.discountType, inv?.discountPercent || inv?.discount || 0);
+  return calcTax(rawSub, inv?.taxType || "none", pct).dpp;
 }
 
   function pInvoiceRawTotal(inv) { 
@@ -858,7 +881,8 @@ function invoiceTotal(inv) {
   }
   function pInvoiceTotal(inv) { 
     const rawSub = pInvoiceRawTotal(inv);
-    return calcTax(rawSub, inv?.taxType || "none", inv?.discountPercent || inv?.discount || 0).total; 
+    const pct = headerDiscountToPct(rawSub, inv?.discountType, inv?.discountPercent || inv?.discount || 0);
+    return calcTax(rawSub, inv?.taxType || "none", pct).total; 
   }
 
   function soTotal(so) {
@@ -930,7 +954,7 @@ function invoiceTotal(inv) {
   
   const grossProfitMonth = useMemo(() => {
     return (invoices || []).filter((inv) => isThisMonth(inv.date)).reduce((s, inv) => {
-      const dppSales = invoiceRawTotal(inv);             
+      const dppSales = invoiceNetSalesDPP(inv);           
       const returAmount = invoiceReturnedAmount(inv.id); 
       const netSales = dppSales - returAmount;            
       
@@ -1736,14 +1760,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
     let totalCOGS = 0;
 
     filteredInvoices.forEach((inv) => {
-      const rawSub = (inv.items || []).reduce((s, it) => {
-        const gross = it.qty * it.unitPrice;
-        const discAmount = gross * (Number(it.discountPercent || 0) / 100);
-        return s + Math.max(0, gross - discAmount);
-      }, 0);
-      const discHeaderPct = Number(inv.discountPercent || 0);
-      const taxInfo = calcTax(rawSub, inv.taxType || "none", discHeaderPct);
-      grossSalesDPP += taxInfo.dpp;
+      grossSalesDPP += invoiceNetSalesDPP(inv);
 
       let invCogs = 0;
       if (inv.isDirect) {
