@@ -720,6 +720,12 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
         if (!rf.batchNo || !rf.expiryDate) {
           return notify("Lengkapi nomor batch dan tanggal expiry untuk semua item yang diterima", "danger");
         }
+        const it = selectedPO.items[i];
+        const remaining = Math.max(0, it.qty - receivedQty(selectedPO.id, it.productId));
+        if (Number(rf.qty) > remaining) {
+          const p = (products || []).find((x) => x.id === it.productId);
+          return notify(`${p?.name || "Produk"}: qty diterima (${rf.qty}) melebihi sisa pesanan PO (${remaining}). Periksa kembali jumlahnya.`, "danger");
+        }
       }
     }
 
