@@ -867,7 +867,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
 
     const shortages = []; const itemsWithAlloc = [];
     for (const l of lines) {
-      const avail = working.filter((b) => b.productId === l.productId && b.qty > 0).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+      const avail = working.filter((b) => b.productId === l.productId && b.qty > 0 && b.expiryDate >= todayISO()).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
       let remaining = l.qty; const allocations = [];
       for (const b of avail) {
         if (remaining <= 0) break;
@@ -1340,7 +1340,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     const shortages = []; const itemsWithAlloc = [];
     if (isDirectDoc) {
       for (const it of items) {
-        const avail = working.filter((b) => b.productId === it.productId && b.qty > 0).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+        const avail = working.filter((b) => b.productId === it.productId && b.qty > 0 && b.expiryDate >= todayISO()).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
         let remaining = it.qty; const allocations = [];
         for (const b of avail) {
           if (remaining <= 0) break;
