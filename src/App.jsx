@@ -1431,7 +1431,7 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || currentUserAccess.inclu
         paymentsOut, paymentsIn, expenses, findName, notify,
         arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth,
         invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount, invoiceSisa,
-        pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa 
+        pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa, calcTax 
       }}
       savePaymentsOut={persist.paymentsOut} 
       savePaymentsIn={persist.paymentsIn} 
