@@ -182,6 +182,39 @@ function headerDiscountToPct(rawSubtotal, discountType, discountValue) {
   return val;
 }
 
+// Menghitung cost-per-unit sebuah produk PADA SATU INVOICE TERTENTU, berdasarkan
+// batch yang BENAR-BENAR dialokasikan (allocations) saat penjualan itu terjadi.
+// Dipakai untuk HPP retur yang TIDAK di-restock ke stok (barang rusak/dimusnahkan),
+// supaya nilainya akurat sesuai batch asal penjualan -- bukan tebakan dari batch
+// pertama yang kebetulan ada di array stok saat ini (yang costnya bisa beda jauh).
+function originalSaleCostPerUnit(inv, productId, batches, deliveryNotes) {
+  const batchCostOf = (batchId) => {
+    const b = (batches || []).find((x) => x.id === batchId);
+    return b ? b.costPrice : 0;
+  };
+  let allocs = [];
+  if (inv.isDirect) {
+    const item = (inv.items || []).find((it) => it.productId === productId);
+    allocs = item?.allocations || [];
+  } else {
+    (deliveryNotes || []).filter((dn) => dn.soId === inv.soId && dn.status === "diterima")
+      .forEach((dn) => {
+        (dn.items || []).filter((it) => it.productId === productId)
+          .forEach((it) => { allocs = allocs.concat(it.allocations || []); });
+      });
+  }
+  const totalQty = allocs.reduce((s, a) => s + (Number(a.qty) || 0), 0);
+  if (totalQty > 0) {
+    const totalCost = allocs.reduce((s, a) => s + (Number(a.qty) || 0) * batchCostOf(a.batchId), 0);
+    return totalCost / totalQty;
+  }
+  // Fallback kalau data alokasi historis tidak ditemukan (kasus lama/edge case):
+  // pakai RATA-RATA cost dari semua batch produk ini, bukan cuma batch pertama.
+  const matchingBatches = (batches || []).filter((b) => b.productId === productId);
+  if (matchingBatches.length === 0) return 0;
+  return matchingBatches.reduce((s, b) => s + (Number(b.costPrice) || 0), 0) / matchingBatches.length;
+}
+
 // ---------- MAIN APP ROUTER ----------
 export default function App() {
   const [user, setUser] = useState(null);
@@ -930,8 +963,8 @@ function invoiceNetSalesDPP(inv) {
             returnedCOGS += rb.qty * batchCost(rb.batchId);
           });
         } else {
-          const avgCost = (batches || []).filter(b => b.productId === it.productId)[0]?.costPrice || 0;
-          returnedCOGS += it.qty * avgCost;
+          const costPerUnit = originalSaleCostPerUnit(inv, it.productId, batches, deliveryNotes);
+          returnedCOGS += it.qty * costPerUnit;
         }
       });
     });
@@ -1780,8 +1813,8 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
           if (it.restockedBatches && it.restockedBatches.length > 0) {
             it.restockedBatches.forEach((rb) => { retCogs += rb.qty * batchCost(rb.batchId); });
           } else {
-            const avgCost = (batches || []).filter(b => b.productId === it.productId)[0]?.costPrice || 0;
-            retCogs += it.qty * avgCost;
+            const costPerUnit = originalSaleCostPerUnit(inv, it.productId, batches, deliveryNotes);
+            retCogs += it.qty * costPerUnit;
           }
         });
       });
