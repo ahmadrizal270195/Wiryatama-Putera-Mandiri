@@ -1487,7 +1487,7 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || currentUserAccess.inclu
       deliveryNotes={deliveryNotes} 
       findName={findName} 
       pInvoiceTotal={pInvoiceTotal} 
-      invoiceTotal={invoiceTotal} 
+      invoiceTotal={invoiceTotal} invoiceNetSalesDPP={invoiceNetSalesDPP}
       currentUserEmail={userEmail}
     />
   ) : <AccessDenied />
@@ -1627,7 +1627,7 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
 
 
 // ---------- LAPORAN BERBASIS FAKTUR & LABA RUGI PER PERIODE ----------
-function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvoices, returns, pReturns, paymentsIn, expenses, batches, deliveryNotes, findName, pInvoiceTotal, invoiceTotal, currentUserEmail }) {
+function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvoices, returns, pReturns, paymentsIn, expenses, batches, deliveryNotes, findName, pInvoiceTotal, invoiceTotal, invoiceNetSalesDPP, currentUserEmail }) {
   const isSuperAdminOrFinance = ADMIN_FINANCE_EMAILS.includes((currentUserEmail || "").toLowerCase());
 
   const [subTab, setSubTab] = useState(isSuperAdminOrFinance ? "pnl" : "sales");
