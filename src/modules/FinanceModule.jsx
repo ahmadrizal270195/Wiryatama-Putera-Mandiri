@@ -127,6 +127,30 @@ export default function FinanceView(props) {
     const amt = Number(payForm.amount) || 0;
     if (amt <= 0) return notify("Jumlah pembayaran harus lebih dari 0", "danger");
 
+    // Validasi supaya pembayaran tidak bisa melebihi sisa tagihan (mencegah salah ketik/salah input)
+    if (payModal.kind === "invoice") {
+      const sisa = getInvoiceSisa(payModal.doc);
+      if (amt > sisa) return notify(`Jumlah melebihi sisa piutang (${fmtIDR(sisa)}). Periksa kembali nominalnya.`, "danger");
+    }
+    if (payModal.kind === "pInvoice") {
+      const sisa = getPInvoiceSisa(payModal.doc);
+      if (amt > sisa) return notify(`Jumlah melebihi sisa hutang (${fmtIDR(sisa)}). Periksa kembali nominalnya.`, "danger");
+    }
+    if (payModal.kind === "edit-in" && payModal.pay.invoiceId) {
+      const inv = (invoices || []).find((i) => i.id === payModal.pay.invoiceId);
+      if (inv) {
+        const sisaExcludingThis = getInvoiceSisa(inv) + (Number(payModal.pay.amount) || 0);
+        if (amt > sisaExcludingThis) return notify(`Jumlah melebihi sisa piutang (${fmtIDR(sisaExcludingThis)}). Periksa kembali nominalnya.`, "danger");
+      }
+    }
+    if (payModal.kind === "edit-out" && payModal.pay.pInvoiceId) {
+      const inv = (pInvoices || []).find((i) => i.id === payModal.pay.pInvoiceId);
+      if (inv) {
+        const sisaExcludingThis = getPInvoiceSisa(inv) + (Number(payModal.pay.amount) || 0);
+        if (amt > sisaExcludingThis) return notify(`Jumlah melebihi sisa hutang (${fmtIDR(sisaExcludingThis)}). Periksa kembali nominalnya.`, "danger");
+      }
+    }
+
     if (payModal.kind === "edit-in") {
       const updated = (paymentsIn || []).map((p) => (p.id === payModal.pay.id ? { ...p, amount: amt, date: payForm.date, method: payForm.method, note: payForm.note } : p));
       await savePaymentsIn(updated);
