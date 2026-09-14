@@ -98,7 +98,7 @@ export default function FinanceView(props) {
       : Number(inv.discountPercent || 0);
 
     const taxInfo = typeof calcTax === "function" ? calcTax(rawSubtotal, inv.taxType || "none", effHeaderPct) : { total: rawSubtotal };
-    return taxInfo.total;
+    return taxInfo.total + (Number(inv.ongkir) || 0);
   };
 
   // HELPER KALKULASI SISA HUTANG AKURAT DI FINANCE
