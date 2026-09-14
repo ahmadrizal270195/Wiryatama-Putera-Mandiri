@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import { loadKey, saveKey } from "./storage";
+import { loadKey, saveKey, deleteKey } from "./storage";
 import {
   LayoutDashboard, Package, Truck, Users, ShoppingCart, ClipboardList,
   AlertTriangle, Plus, X, Trash2, Search, Boxes, ArrowUpRight, ArrowDownRight,
@@ -135,6 +135,8 @@ const KEYS = {
   invoices: "erp-invoices",
   returns: "erp-returns",
   users: "erp-users",
+  settings: "erp-app-settings",
+  autoBackupPrefix: "erp-auto-backup-",
 };
 
 const EXPENSE_CATEGORIES = [
@@ -821,10 +823,48 @@ function PharmaERP({ userEmail, onLogout }) {
   }
 }
 
+  // ---------- CADANGAN DATA OTOMATIS ----------
+  // Karena Firebase project ini masih di plan Spark (gratis, tanpa Cloud Functions),
+  // "otomatis" di sini berarti: dicek & dijalankan di browser siapa pun yang login
+  // dan membuka aplikasi, maksimal 1x per hari. Bukan backup yang jalan di server
+  // tanpa ada yang buka aplikasi -- itu baru bisa kalau upgrade ke plan Blaze.
+  const AUTO_BACKUP_KEYS = [
+    KEYS.products, KEYS.suppliers, KEYS.customers, KEYS.batches,
+    KEYS.pos, KEYS.pReceipts, KEYS.pInvoices, KEYS.pReturns,
+    KEYS.sos, KEYS.paymentsOut, KEYS.paymentsIn, KEYS.expenses,
+    KEYS.deliveryNotes, KEYS.invoices, KEYS.returns, KEYS.users
+  ];
+  const MAX_AUTO_BACKUPS = 7; // simpan 7 cadangan harian terakhir, yang lebih lama otomatis dihapus
+
+  async function checkAndRunAutoBackup() {
+    try {
+      const raw = await loadKey(KEYS.settings);
+      const settings = (raw && !Array.isArray(raw)) ? raw : { autoBackupEnabled: false, lastAutoBackupAt: null, backupDates: [] };
+      if (!settings.autoBackupEnabled) return;
+      if (settings.lastAutoBackupAt === todayISO()) return; // sudah backup hari ini
+
+      const data = {};
+      for (const k of AUTO_BACKUP_KEYS) data[k] = await loadKey(k);
+      await saveKey(KEYS.autoBackupPrefix + todayISO(), { savedAt: new Date().toISOString(), data });
+
+      const prevDates = Array.isArray(settings.backupDates) ? settings.backupDates : [];
+      const newDates = [...prevDates.filter((d) => d !== todayISO()), todayISO()];
+      const toDelete = newDates.length > MAX_AUTO_BACKUPS ? newDates.slice(0, newDates.length - MAX_AUTO_BACKUPS) : [];
+      for (const d of toDelete) await deleteKey(KEYS.autoBackupPrefix + d);
+      const keptDates = newDates.slice(-MAX_AUTO_BACKUPS);
+
+      await saveKey(KEYS.settings, { ...settings, lastAutoBackupAt: todayISO(), backupDates: keptDates });
+      console.log(`Cadangan otomatis tersimpan untuk ${todayISO()}`);
+    } catch (e) {
+      console.error("Gagal menjalankan cadangan otomatis:", e);
+    }
+  }
+
   useEffect(() => {
     (async () => {
       await refreshAll();
       setLoading(false);
+      checkAndRunAutoBackup();
     })();
   }, []);
 
@@ -892,7 +932,7 @@ function PharmaERP({ userEmail, onLogout }) {
 function invoiceTotal(inv) {
   const rawSub = invoiceRawTotal(inv);
   const pct = headerDiscountToPct(rawSub, inv?.discountType, inv?.discountPercent || inv?.discount || 0);
-  return calcTax(rawSub, inv?.taxType || "none", pct).total;
+  return calcTax(rawSub, inv?.taxType || "none", pct).total + (Number(inv?.ongkir) || 0);
 }
 
 // DPP penjualan 1 faktur SETELAH diskon per-item DAN diskon header (Diskon Nota),
@@ -915,7 +955,7 @@ function invoiceNetSalesDPP(inv) {
   function pInvoiceTotal(inv) { 
     const rawSub = pInvoiceRawTotal(inv);
     const pct = headerDiscountToPct(rawSub, inv?.discountType, inv?.discountPercent || inv?.discount || 0);
-    return calcTax(rawSub, inv?.taxType || "none", pct).total; 
+    return calcTax(rawSub, inv?.taxType || "none", pct).total + (Number(inv?.ongkir) || 0); 
   }
 
   function soTotal(so) {
@@ -1836,10 +1876,16 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
       }
     });
 
+    // Ongkir dari Faktur Pembelian sengaja TIDAK masuk HPP (biar cost produk tetap murni
+    // harga barang), tapi tetap dihitung sebagai beban operasional periode berjalan.
+    const ongkirPembelian = (pInvoices || []).filter((pi) => inRange(pi.date))
+      .reduce((s, pi) => s + (Number(pi.ongkir) || 0), 0);
+    periodExpenses += ongkirPembelian;
+
     const netProfit = grossProfit - periodExpenses;
 
-    return { grossSalesDPP, salesReturnsVal, netSales, totalCOGS, grossProfit, periodExpenses, netProfit };
-  }, [filteredInvoices, returns, deliveryNotes, batches, expenses, start, end]);
+    return { grossSalesDPP, salesReturnsVal, netSales, totalCOGS, grossProfit, periodExpenses, ongkirPembelian, netProfit };
+  }, [filteredInvoices, returns, deliveryNotes, batches, expenses, pInvoices, start, end]);
 
   function aggregateByProduct(docs) {
     const map = {};
@@ -2030,9 +2076,15 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
               </div>
 
               <div className="flex justify-between py-1.5 border-b text-gray-700 pl-4">
-                <span>(-) Total Beban Operasional (Expenses)</span>
-                <span className="text-red-600">- {fmtIDR(pnlData.periodExpenses)}</span>
+                <span>(-) Beban Operasional Lainnya</span>
+                <span className="text-red-600">- {fmtIDR(pnlData.periodExpenses - pnlData.ongkirPembelian)}</span>
               </div>
+              {pnlData.ongkirPembelian > 0 && (
+                <div className="flex justify-between py-1.5 border-b text-gray-700 pl-4">
+                  <span>(-) Ongkir Pembelian (dari Faktur Pembelian)</span>
+                  <span className="text-red-600">- {fmtIDR(pnlData.ongkirPembelian)}</span>
+                </div>
+              )}
 
               <div className={`flex justify-between py-3 border-b-2 text-base font-extrabold px-3 rounded mt-4 ${pnlData.netProfit >= 0 ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900'}`}>
                 <span>Laba / (Rugi) Bersih Operasional</span>
@@ -2194,6 +2246,51 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail }
 
   // State File Restore
   const restoreInputRef = useRef(null);
+
+  // State Cadangan Data Otomatis
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
+  const [autoBackupInfo, setAutoBackupInfo] = useState({ lastAutoBackupAt: null, backupDates: [] });
+  const [savingAutoBackup, setSavingAutoBackup] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const raw = await loadKey(KEYS.settings);
+      const settings = (raw && !Array.isArray(raw)) ? raw : {};
+      setAutoBackupEnabled(!!settings.autoBackupEnabled);
+      setAutoBackupInfo({ lastAutoBackupAt: settings.lastAutoBackupAt || null, backupDates: settings.backupDates || [] });
+    })();
+  }, []);
+
+  async function toggleAutoBackup() {
+    setSavingAutoBackup(true);
+    try {
+      const raw = await loadKey(KEYS.settings);
+      const settings = (raw && !Array.isArray(raw)) ? raw : {};
+      const next = !autoBackupEnabled;
+      await saveKey(KEYS.settings, { ...settings, autoBackupEnabled: next });
+      setAutoBackupEnabled(next);
+      notify(next ? "Cadangan data otomatis diaktifkan (maks. 1x/hari, dicek saat ada yang membuka aplikasi)" : "Cadangan data otomatis dinonaktifkan");
+    } catch (e) {
+      console.error(e);
+      notify("Gagal mengubah pengaturan cadangan otomatis", "danger");
+    } finally {
+      setSavingAutoBackup(false);
+    }
+  }
+
+  async function restoreFromAutoBackup(dateKey) {
+    if (!confirm(`PERINGATAN: Ini akan menimpa seluruh data ERP saat ini dengan cadangan otomatis tanggal ${dateKey}. Lanjutkan?`)) return;
+    try {
+      const backup = await loadKey(KEYS.autoBackupPrefix + dateKey);
+      if (!backup || !backup.data) return notify("Cadangan tidak ditemukan atau rusak", "danger");
+      for (const [key, val] of Object.entries(backup.data)) await saveKey(key, val);
+      if (refreshAll) await refreshAll();
+      notify(`Berhasil restore dari cadangan otomatis tanggal ${dateKey}`);
+    } catch (e) {
+      console.error(e);
+      notify("Gagal restore dari cadangan otomatis", "danger");
+    }
+  }
 
   const MODULE_LIST = [
     { id: "dashboard", label: "Dashboard Ringkasan" },
@@ -2657,6 +2754,46 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail }
       {/* TAB 4: BACKUP & RESTORE (SUPER ADMIN) */}
       {subTab === "backup" && isSuperAdmin && (
         <div className="space-y-4 max-w-3xl">
+          <Card className="!p-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-bold text-sm text-teal-900 mb-1 uppercase tracking-wide">
+                  Cadangan Data Otomatis
+                </div>
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  Kalau aktif, aplikasi otomatis menyimpan salinan seluruh data ERP ke Firestore setiap ada yang membuka aplikasi (maksimal 1x per hari, 7 hari terakhir disimpan). Ini bukan pengganti unduh backup manual, cuma jaring pengaman tambahan.
+                </p>
+                {autoBackupInfo.lastAutoBackupAt && (
+                  <p className="text-xs text-gray-500 mt-2">Cadangan terakhir: {fmtDate ? fmtDate(autoBackupInfo.lastAutoBackupAt) : autoBackupInfo.lastAutoBackupAt}</p>
+                )}
+              </div>
+              <button
+                onClick={toggleAutoBackup}
+                disabled={savingAutoBackup}
+                className="shrink-0 w-11 h-6 rounded-full transition-colors relative"
+                style={{ background: autoBackupEnabled ? "#16a34a" : "#d1d5db" }}
+              >
+                <span
+                  className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform"
+                  style={{ transform: autoBackupEnabled ? "translateX(22px)" : "translateX(2px)" }}
+                />
+              </button>
+            </div>
+
+            {autoBackupInfo.backupDates && autoBackupInfo.backupDates.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <div className="text-xs font-semibold text-gray-500 mb-2 uppercase">Cadangan otomatis tersedia</div>
+                <div className="flex flex-wrap gap-2">
+                  {[...autoBackupInfo.backupDates].reverse().map((d) => (
+                    <Button key={d} variant="secondary" onClick={() => restoreFromAutoBackup(d)}>
+                      Restore {fmtDate ? fmtDate(d) : d}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Card>
+
           <Card className="!p-6">
             <div className="font-bold text-sm text-teal-900 mb-2 uppercase tracking-wide">
               Unduh Backup Database (1-Click Download)
