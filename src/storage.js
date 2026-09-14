@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "./firebase";
 
 // Semua data ERP disimpan sebagai satu dokumen per "key" di koleksi "erp_data".
@@ -24,5 +24,13 @@ export async function saveKey(key, value) {
     });
   } catch (e) {
     console.error("Gagal menyimpan data:", key, e);
+  }
+}
+
+export async function deleteKey(key) {
+  try {
+    await deleteDoc(doc(db, "erp_data", key));
+  } catch (e) {
+    console.error("Gagal menghapus data:", key, e);
   }
 }
