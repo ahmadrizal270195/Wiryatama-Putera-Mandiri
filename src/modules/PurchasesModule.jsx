@@ -923,6 +923,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   const [taxType, setTaxType] = useState("none");
   const [discountTypeHeader, setDiscountTypeHeader] = useState("percent");
   const [discountPercentHeader, setDiscountPercentHeader] = useState(0);
+  const [ongkir, setOngkir] = useState(0);
   const [items, setItems] = useState([]);
   const [searchProd, setSearchProd] = useState("");
 
@@ -958,7 +959,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
     // 3. Kalkulasi Pajak PPN (Non-PPN, PPN 11%, atau Include PPN)
     const taxInfo = calcTax(rawSubtotal, inv.taxType || "none", effHeaderPct);
-    return taxInfo.total;
+    return taxInfo.total + (Number(inv.ongkir) || 0);
   };
 
   // LOGIKA PEMROSESAN FILTER & SORTING
@@ -1010,6 +1011,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     setTaxType("none");
     setDiscountTypeHeader("percent");
     setDiscountPercentHeader(0);
+    setOngkir(0);
     setItems([]);
     setSearchProd("");
     setEditingId(null);
@@ -1028,6 +1030,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     setTaxType(inv.taxType || "none");
     setDiscountTypeHeader(inv.discountType || "percent");
     setDiscountPercentHeader(inv.discountPercent || 0);
+    setOngkir(inv.ongkir || 0);
     setItems((inv.items || []).map(it => ({ ...it, discountType: it.discountType || "percent", discountPercent: it.discountPercent || 0 })));
     setSearchProd("");
     setModalDirect(true);
@@ -1152,6 +1155,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     taxType, 
     discountType: discountTypeHeader,
     discountPercent: Number(discountPercentHeader || 0), 
+    ongkir: Number(ongkir || 0),
     items: invItems, 
     isDirect: true 
   };
@@ -1201,6 +1205,9 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     const inputFaktur = prompt("Masukkan Nomor Faktur Vendor / Supplier:", defaultNo);
     if (!inputFaktur) return;
 
+    const inputOngkir = prompt("Biaya ongkir tambahan di faktur ini (Rp, kosongkan/0 jika tidak ada):", "0");
+    const ongkirVal = Number(inputOngkir) || 0;
+
     await savePInvoices([...(pInvoices || []), { 
       id: uid(), 
       noFaktur: inputFaktur.trim(), 
@@ -1210,6 +1217,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       taxType: po.taxType || "none", 
       discountType: po.discountType || "percent",
       discountPercent: Number(po.discountPercent || 0),
+      ongkir: ongkirVal,
       items: invItems 
     }]);
     notify(`${inputFaktur.trim()} berhasil diterbitkan`);
@@ -1360,7 +1368,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-3 gap-3 mb-3">
             <Field label="Opsi PPN (Pajak)" colorConfig={colorConfig}>
               <Select value={taxType} onChange={(e) => setTaxType(e.target.value)} colorConfig={colorConfig}>
                 <option value="none">Non-PPN (Tanpa Pajak)</option>
@@ -1377,6 +1385,10 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
                 onValueChange={setDiscountPercentHeader}
                 colorConfig={colorConfig}
               />
+            </Field>
+
+            <Field label="Biaya Ongkir (Rp)" colorConfig={colorConfig}>
+              <TextInput type="number" value={ongkir} onChange={(e) => setOngkir(e.target.value)} placeholder="0" colorConfig={colorConfig} />
             </Field>
           </div>
 
@@ -1450,7 +1462,8 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
               {Number(discountPercentHeader) > 0 && <div>Diskon Nota: <span className="font-mono font-semibold text-red-600">- {fmtIDR(directTax.discHeaderAmount)}</span></div>}
               <div>DPP: <span className="font-mono font-semibold">{fmtIDR(directTax.dpp)}</span></div>
               {taxType !== "none" && <div>PPN (11%): <span className="font-mono font-semibold text-teal-700">{fmtIDR(directTax.ppn)}</span></div>}
-              <div className="font-bold text-sm text-gray-900 mt-1">Total Tagihan: <span className="font-mono">{fmtIDR(directTax.total)}</span></div>
+              {Number(ongkir) > 0 && <div>Ongkir: <span className="font-mono font-semibold">{fmtIDR(Number(ongkir))}</span></div>}
+              <div className="font-bold text-sm text-gray-900 mt-1">Total Tagihan: <span className="font-mono">{fmtIDR(directTax.total + (Number(ongkir) || 0))}</span></div>
             </div>
             <Button onClick={submitDirectPInvoice} colorConfig={colorConfig}>{editingId ? "Simpan Perubahan Faktur" : "Simpan Faktur Pembelian & Tambah Stok"}</Button>
           </div>
@@ -1510,10 +1523,12 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         : Number(detailInv.discountPercent || 0);
 
       const taxInfo = calcTax(rawSub, detailInv.taxType || "none", effPct);
+      const ongkirVal = Number(detailInv.ongkir) || 0;
 
       return (
-        <div className="text-right font-mono text-sm mb-2 font-bold" style={{ color: colorConfig?.ink }}>
-          Total Tagihan: {fmtIDR(taxInfo.total)}
+        <div className="text-right font-mono text-sm mb-2" style={{ color: colorConfig?.ink }}>
+          {ongkirVal > 0 && <div className="font-normal">Ongkir: {fmtIDR(ongkirVal)}</div>}
+          <div className="font-bold">Total Tagihan: {fmtIDR(taxInfo.total + ongkirVal)}</div>
         </div>
       );
     })()}
