@@ -1240,6 +1240,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   const [taxType, setTaxType] = useState("none");
   const [discountTypeHeader, setDiscountTypeHeader] = useState("percent");
   const [discountPercentHeader, setDiscountPercentHeader] = useState(0);
+  const [ongkir, setOngkir] = useState(0);
   const [items, setItems] = useState([]);
   const [searchProd, setSearchProd] = useState("");
 
@@ -1291,7 +1292,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     }, 0);
 
     setNoFakturDirect(`INV-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`);
-    setCustomerId((customers || [])[0]?.id || ""); setDate(todayISO()); setTaxType("none"); setDiscountTypeHeader("percent"); setDiscountPercentHeader(0); setItems([]); setSearchProd(""); setEditingId(null); setIsEditingFromSO(false); setModalDirect(true);
+    setCustomerId((customers || [])[0]?.id || ""); setDate(todayISO()); setTaxType("none"); setDiscountTypeHeader("percent"); setDiscountPercentHeader(0); setOngkir(0); setItems([]); setSearchProd(""); setEditingId(null); setIsEditingFromSO(false); setModalDirect(true);
   }
 
   function openEditInvoice(inv) {
@@ -1299,7 +1300,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     if ((returns || []).some((r) => r.invoiceId === inv.id)) return notify("Gagal Edit: Faktur ini memiliki transaksi retur. Batalkan retur terlebih dahulu.", "danger");
 
     const so = (sos || []).find((s) => s.id === inv.soId);
-    setEditingId(inv.id); setIsEditingFromSO(!inv.isDirect); setNoFakturDirect(inv.noFaktur); setCustomerId(inv.isDirect ? inv.customerId : so?.customerId || ""); setDate(inv.date || todayISO()); setTaxType(inv.taxType || "none"); setDiscountTypeHeader(inv.discountType || "percent"); setDiscountPercentHeader(inv.discountPercent || inv.discount || 0); setItems((inv.items || []).map(it => ({ ...it, discountType: it.discountType || "percent", discountPercent: it.discountPercent || 0 }))); setSearchProd(""); setModalDirect(true);
+    setEditingId(inv.id); setIsEditingFromSO(!inv.isDirect); setNoFakturDirect(inv.noFaktur); setCustomerId(inv.isDirect ? inv.customerId : so?.customerId || ""); setDate(inv.date || todayISO()); setTaxType(inv.taxType || "none"); setDiscountTypeHeader(inv.discountType || "percent"); setDiscountPercentHeader(inv.discountPercent || inv.discount || 0); setOngkir(inv.ongkir || 0); setItems((inv.items || []).map(it => ({ ...it, discountType: it.discountType || "percent", discountPercent: it.discountPercent || 0 }))); setSearchProd(""); setModalDirect(true);
   }
 
   function handleSelectCustomer(val) {
@@ -1364,6 +1365,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       taxType, 
       discountType: discountTypeHeader,
       discountPercent: Number(discountPercentHeader || 0), 
+      ongkir: Number(ongkir || 0),
       items: itemsWithAlloc 
     };
 
@@ -1396,7 +1398,10 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     const inputFaktur = prompt("Masukkan Nomor Faktur Penjualan / Pajak:", `INV-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`);
     if (!inputFaktur) return;
 
-    await saveInvoices([...(invoices || []), { id: uid(), noFaktur: inputFaktur.trim(), soId: so.id, customerId: so.customerId, date: todayISO(), taxType: so.taxType || "none", discountType: so.discountType || "percent", discountPercent: Number(so.discountPercent || 0), items: invItems }]);
+    const inputOngkir = prompt("Biaya ongkir tambahan ke customer (Rp, kosongkan/0 jika tidak ada):", "0");
+    const ongkirVal = Number(inputOngkir) || 0;
+
+    await saveInvoices([...(invoices || []), { id: uid(), noFaktur: inputFaktur.trim(), soId: so.id, customerId: so.customerId, date: todayISO(), taxType: so.taxType || "none", discountType: so.discountType || "percent", discountPercent: Number(so.discountPercent || 0), ongkir: ongkirVal, items: invItems }]);
     notify(`${inputFaktur.trim()} dibuat`);
   }
 
@@ -1526,7 +1531,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
             <Field label="Tanggal Faktur" colorConfig={colorConfig}><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} colorConfig={colorConfig} /></Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-3 gap-3 mb-3">
             <Field label="Opsi PPN (Pajak)" colorConfig={colorConfig}>
               <Select value={taxType} onChange={(e) => setTaxType(e.target.value)} colorConfig={colorConfig}>
                 <option value="none">Non-PPN (Tanpa Pajak)</option>
@@ -1542,6 +1547,9 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                 onValueChange={setDiscountPercentHeader}
                 colorConfig={colorConfig}
               />
+            </Field>
+            <Field label="Biaya Ongkir (Rp)" colorConfig={colorConfig}>
+              <TextInput type="number" value={ongkir} onChange={(e) => setOngkir(e.target.value)} placeholder="0" colorConfig={colorConfig} />
             </Field>
           </div>
 
@@ -1611,7 +1619,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
               {Number(discountPercentHeader) > 0 && <div>Diskon Nota: <span className="font-mono font-semibold text-red-600">- {fmtIDR(directTax.discHeaderAmount)}</span></div>}
               <div>DPP: <span className="font-mono font-semibold">{fmtIDR(directTax.dpp)}</span></div>
               {taxType !== "none" && <div>PPN (11%): <span className="font-mono font-semibold text-teal-700">{fmtIDR(directTax.ppn)}</span></div>}
-              <div className="font-bold text-sm text-gray-900 mt-1">Total Faktur: <span className="font-mono">{fmtIDR(directTax.total)}</span></div>
+              {Number(ongkir) > 0 && <div>Ongkir: <span className="font-mono font-semibold">{fmtIDR(Number(ongkir))}</span></div>}
+              <div className="font-bold text-sm text-gray-900 mt-1">Total Faktur: <span className="font-mono">{fmtIDR(directTax.total + (Number(ongkir) || 0))}</span></div>
             </div>
             <Button onClick={submitDirectInvoice} colorConfig={colorConfig}>{editingId ? "Simpan Perubahan Faktur" : "Simpan Faktur & Potong Stok FEFO"}</Button>
           </div>
@@ -1701,7 +1710,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                   : Number(printInv.discountPercent || 0);
 
                 const taxInfo = calcTax(rawSub, printInv.taxType || "none", effPct);
-                const sisa = Math.max(0, taxInfo.total - ret - dp - paid);
+                const ongkirVal = Number(printInv.ongkir) || 0;
+                const sisa = Math.max(0, taxInfo.total + ongkirVal - ret - dp - paid);
 
                 return (
                   <div>
@@ -1766,6 +1776,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                         {taxInfo.discHeaderAmount > 0 && <div className="flex justify-between py-1 border-b text-red-600"><span>Diskon Nota</span><span className="font-mono font-bold">- {fmtIDR(taxInfo.discHeaderAmount)}</span></div>}
                         <div className="flex justify-between py-1 border-b"><span className="text-gray-600">DPP</span><span className="font-mono font-bold">{fmtIDR(taxInfo.dpp)}</span></div>
                         {taxInfo.ppn > 0 && <div className="flex justify-between py-1 border-b text-teal-800"><span>PPN (11%)</span><span className="font-mono font-bold">{fmtIDR(taxInfo.ppn)}</span></div>}
+                        {ongkirVal > 0 && <div className="flex justify-between py-1 border-b"><span className="text-gray-600">Ongkir</span><span className="font-mono font-bold">{fmtIDR(ongkirVal)}</span></div>}
                         {dp > 0 && <div className="flex justify-between py-1 border-b text-emerald-700"><span>Potongan DP</span><span className="font-mono font-bold">- {fmtIDR(dp)}</span></div>}
                         {ret > 0 && <div className="flex justify-between py-1 border-b text-red-600"><span>Potongan Retur</span><span className="font-mono font-bold">- {fmtIDR(ret)}</span></div>}
                         {paid > 0 && <div className="flex justify-between py-1 border-b text-blue-700"><span>Telah Dibayar</span><span className="font-mono font-bold">- {fmtIDR(paid)}</span></div>}
