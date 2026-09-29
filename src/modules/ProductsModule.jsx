@@ -1,19 +1,53 @@
 import React, { useState, useMemo } from "react";
 import { Plus, Search } from "lucide-react";
 import { Eyebrow, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
+import { qaClassOf, QA_CLASSES } from "../qa";
 
 const CATEGORIES = ["Dental Material", "Alat Kesehatan", "Obat Generik", "Obat Paten", "Consumables"];
+
+// Badge penanggung jawab CDOB (APJ untuk obat, PJT untuk alkes)
+function PJBadge({ product, colorConfig }) {
+  const cls = qaClassOf(product);
+  const manual = product.qaClass === "obat" || product.qaClass === "alkes";
+  const isObat = cls === "obat";
+  const fg = isObat ? (colorConfig?.warn || "#C97F1E") : (colorConfig?.accent || "#1B6B6E");
+  const bg = isObat ? (colorConfig?.warnSoft || "#FBF1E1") : (colorConfig?.primarySoft || "#E8F0EF");
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap" style={{ background: bg, color: fg }}
+      title={manual ? "Diatur manual di produk ini" : "Otomatis dari kategori"}>
+      {QA_CLASSES[cls].role} {QA_CLASSES[cls].label}{manual ? " · manual" : ""}
+    </span>
+  );
+}
 
 export default function ProductsView({ products, save, stockByProduct, notify, colorConfig, uid, fmtIDR }) {
   const [modal, setModal] = useState(null);
   const [q, setQ] = useState("");
-  const [form, setForm] = useState({ name: "", category: CATEGORIES[0], unit: "box", sellPrice: "", minStock: "" });
+  const [form, setForm] = useState({ name: "", category: CATEGORIES[0], unit: "box", sellPrice: "", minStock: "", qaClass: "" });
+  const [pjFilter, setPjFilter] = useState("ALL"); // ALL | obat | alkes | manual
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const [sortField, setSortField] = useState("name");
   const [sortOrder, setSortOrder] = useState("asc");
 
-  function openNew() { setForm({ name: "", category: CATEGORIES[0], unit: "box", sellPrice: "", minStock: "" }); setModal("new"); }
-  function openEdit(p) { setForm(p); setModal(p.id); }
+  function openNew() { setForm({ name: "", category: CATEGORIES[0], unit: "box", sellPrice: "", minStock: "", qaClass: "" }); setModal("new"); }
+  function openEdit(p) { setForm({ qaClass: "", ...p }); setModal(p.id); }
+
+  // Ubah kelas CDOB banyak produk sekaligus ("" = otomatis ikut kategori)
+  async function bulkSetClass(qaClass) {
+    if (selected.size === 0) return;
+    const label = qaClass ? `${QA_CLASSES[qaClass].label} (${QA_CLASSES[qaClass].role})` : "Otomatis (ikut kategori)";
+    if (!confirm(`Ubah penanggung jawab ${selected.size} produk menjadi ${label}?\n\nTransaksi yang sudah dibuat tidak ikut berubah. Aturan baru berlaku untuk transaksi berikutnya.`)) return;
+    setBulkBusy(true);
+    try {
+      await save((products || []).map((p) => (selected.has(p.id) ? { ...p, qaClass } : p)));
+      notify(`${selected.size} produk diubah ke ${label}`);
+      setSelected(new Set());
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   async function submit() {
     if (!form.name.trim()) return notify("Nama produk wajib diisi", "danger");
@@ -44,8 +78,10 @@ export default function ProductsView({ products, save, stockByProduct, notify, c
 
   const sortedAndFiltered = useMemo(() => {
     let list = (products || []).filter((p) => 
-      p.name.toLowerCase().includes(q.toLowerCase()) || 
-      p.category.toLowerCase().includes(q.toLowerCase())
+      (p.name.toLowerCase().includes(q.toLowerCase()) || 
+      (p.category || "").toLowerCase().includes(q.toLowerCase())) &&
+      (pjFilter === "ALL" ||
+        (pjFilter === "manual" ? (p.qaClass === "obat" || p.qaClass === "alkes") : qaClassOf(p) === pjFilter))
     );
 
     return list.sort((a, b) => {
@@ -65,7 +101,30 @@ export default function ProductsView({ products, save, stockByProduct, notify, c
       if (valA > valB) return sortOrder === "asc" ? 1 : -1;
       return 0;
     });
-  }, [products, q, sortField, sortOrder, stockByProduct]);
+  }, [products, q, sortField, sortOrder, stockByProduct, pjFilter]);
+
+  const pjCounts = useMemo(() => {
+    const c = { ALL: 0, obat: 0, alkes: 0, manual: 0 };
+    for (const p of products || []) {
+      c.ALL++;
+      c[qaClassOf(p)]++;
+      if (p.qaClass === "obat" || p.qaClass === "alkes") c.manual++;
+    }
+    return c;
+  }, [products]);
+
+  const allVisibleSelected = sortedAndFiltered.length > 0 && sortedAndFiltered.every((p) => selected.has(p.id));
+  function toggleOne(id) {
+    const next = new Set(selected);
+    next.has(id) ? next.delete(id) : next.add(id);
+    setSelected(next);
+  }
+  function toggleAllVisible() {
+    const next = new Set(selected);
+    if (allVisibleSelected) sortedAndFiltered.forEach((p) => next.delete(p.id));
+    else sortedAndFiltered.forEach((p) => next.add(p.id));
+    setSelected(next);
+  }
 
   function renderSortIcon(field) {
     if (sortField !== field) return <span className="opacity-30 ml-1">↕</span>;
@@ -78,16 +137,46 @@ export default function ProductsView({ products, save, stockByProduct, notify, c
         <div><Eyebrow>Master data</Eyebrow><h2 className="text-xl font-semibold" style={{ color: colorConfig?.ink }}>Produk</h2></div>
         <Button onClick={openNew} colorConfig={colorConfig}><Plus size={15} /> Tambah Produk</Button>
       </div>
-      <div className="relative mb-3 max-w-xs">
-        <Search size={14} className="absolute left-3 top-2.5" color={colorConfig?.inkSoft} />
-        <TextInput placeholder="Cari produk / kategori..." value={q} onChange={(e) => setQ(e.target.value)} className="pl-8" colorConfig={colorConfig} />
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="relative w-full sm:w-72">
+          <Search size={14} className="absolute left-3 top-2.5" color={colorConfig?.inkSoft} />
+          <TextInput placeholder="Cari produk / kategori..." value={q} onChange={(e) => setQ(e.target.value)} className="pl-8" colorConfig={colorConfig} />
+        </div>
+        <div className="flex gap-1 flex-wrap">
+          {[
+            { id: "ALL", label: "Semua" },
+            { id: "obat", label: "APJ Obat" },
+            { id: "alkes", label: "PJT Alkes" },
+            { id: "manual", label: "Diatur manual" },
+          ].map((f) => (
+            <button key={f.id} onClick={() => setPjFilter(f.id)} className="px-2.5 py-1 rounded-md text-xs font-medium border"
+              style={{ background: pjFilter === f.id ? colorConfig?.primary : "transparent", color: pjFilter === f.id ? "#fff" : colorConfig?.inkSoft, borderColor: pjFilter === f.id ? colorConfig?.primary : colorConfig?.border }}>
+              {f.label} ({pjCounts[f.id]})
+            </button>
+          ))}
+        </div>
       </div>
+
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3 rounded-lg px-3 py-2 text-xs" style={{ background: colorConfig?.primarySoft, color: colorConfig?.ink }}>
+          <b>{selected.size} produk dipilih</b>
+          <span style={{ color: colorConfig?.inkSoft }}>Ubah penanggung jawab jadi:</span>
+          <button disabled={bulkBusy} onClick={() => bulkSetClass("obat")} className="px-2.5 py-1 rounded-md font-semibold text-white disabled:opacity-50" style={{ background: colorConfig?.warn || "#C97F1E" }}>Obat (APJ)</button>
+          <button disabled={bulkBusy} onClick={() => bulkSetClass("alkes")} className="px-2.5 py-1 rounded-md font-semibold text-white disabled:opacity-50" style={{ background: colorConfig?.accent || "#1B6B6E" }}>Alkes (PJT)</button>
+          <button disabled={bulkBusy} onClick={() => bulkSetClass("")} className="px-2.5 py-1 rounded-md font-semibold border disabled:opacity-50" style={{ borderColor: colorConfig?.border, color: colorConfig?.ink }}>Otomatis</button>
+          <button onClick={() => setSelected(new Set())} className="ml-auto underline" style={{ color: colorConfig?.inkSoft }}>Batal pilih</button>
+        </div>
+      )}
       
-      <ResponsiveTable minWidth={750} colorConfig={colorConfig}>
+      <ResponsiveTable minWidth={900} colorConfig={colorConfig}>
         <thead>
           <tr style={{ background: colorConfig?.primarySoft }}>
+            <th className="pl-4 pr-1 py-2 w-8">
+              <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} title="Pilih semua yang tampil" style={{ accentColor: colorConfig?.primary }} />
+            </th>
             <th onClick={() => handleSort("name")} className="text-left px-4 py-2 font-semibold text-xs uppercase tracking-wide cursor-pointer select-none" style={{ color: colorConfig?.primary }}>Nama {renderSortIcon("name")}</th>
             <th onClick={() => handleSort("category")} className="text-left px-4 py-2 font-semibold text-xs uppercase tracking-wide cursor-pointer select-none" style={{ color: colorConfig?.primary }}>Kategori {renderSortIcon("category")}</th>
+            <th className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: colorConfig?.primary }}>Penanggung Jawab</th>
             <th className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: colorConfig?.primary }}>Satuan</th>
             <th className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: colorConfig?.primary }}>Harga Jual</th>
             <th className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: colorConfig?.primary }}>Min Stok</th>
@@ -99,9 +188,13 @@ export default function ProductsView({ products, save, stockByProduct, notify, c
           {sortedAndFiltered.map((p) => {
             const s = stockByProduct[p.id] || { qty: 0 };
             return (
-              <tr key={p.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
+              <tr key={p.id} style={{ borderTop: `1px solid ${colorConfig?.border}`, background: selected.has(p.id) ? colorConfig?.primarySoft : undefined }}>
+                <td className="pl-4 pr-1 py-2.5">
+                  <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleOne(p.id)} style={{ accentColor: colorConfig?.primary }} />
+                </td>
                 <td className="px-4 py-2.5 font-medium" style={{ color: colorConfig?.ink }}>{p.name}</td>
                 <td className="px-4 py-2.5" style={{ color: colorConfig?.inkSoft }}>{p.category}</td>
+                <td className="px-4 py-2.5"><PJBadge product={p} colorConfig={colorConfig} /></td>
                 <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{p.unit}</td>
                 <td className="px-4 py-2.5 font-mono" style={{ color: colorConfig?.ink }}>{fmtIDR(p.sellPrice)}</td>
                 <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{p.minStock}</td>
@@ -115,7 +208,7 @@ export default function ProductsView({ products, save, stockByProduct, notify, c
               </tr>
             );
           })}
-          {sortedAndFiltered.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: colorConfig?.inkSoft }}>Belum ada produk yang cocok.</td></tr>}
+          {sortedAndFiltered.length === 0 && <tr><td colSpan={9} className="text-center py-8 text-sm" style={{ color: colorConfig?.inkSoft }}>Belum ada produk yang cocok.</td></tr>}
         </tbody>
       </ResponsiveTable>
 
@@ -126,6 +219,16 @@ export default function ProductsView({ products, save, stockByProduct, notify, c
             <Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} colorConfig={colorConfig}>
               {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </Select>
+          </Field>
+          <Field label="Penanggung jawab (Kelas CDOB)" colorConfig={colorConfig}>
+            <Select value={form.qaClass || ""} onChange={(e) => setForm({ ...form, qaClass: e.target.value })} colorConfig={colorConfig}>
+              <option value="">Otomatis ikut kategori · saat ini {QA_CLASSES[qaClassOf({ category: form.category })].role} {QA_CLASSES[qaClassOf({ category: form.category })].label}</option>
+              <option value="obat">Obat · direview APJ</option>
+              <option value="alkes">Alkes · direview PJT</option>
+            </Select>
+            <p className="text-[11px] mt-1" style={{ color: colorConfig?.inkSoft }}>
+              Pakai ini kalau produknya obat tapi masuk kategori Dental Material (mis. anestesi lokal).
+            </p>
           </Field>
           <Field label="Satuan (mis. box, strip, pcs)" colorConfig={colorConfig}><TextInput value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} colorConfig={colorConfig} /></Field>
           <Field label="Harga jual (per satuan)" colorConfig={colorConfig}><TextInput type="number" value={form.sellPrice} onChange={(e) => setForm({ ...form, sellPrice: e.target.value })} colorConfig={colorConfig} /></Field>
