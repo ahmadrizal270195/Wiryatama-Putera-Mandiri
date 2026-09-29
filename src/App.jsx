@@ -5,7 +5,8 @@ import {
   LayoutDashboard, Package, Truck, Users, ShoppingCart, ClipboardList,
   AlertTriangle, Plus, X, Trash2, Search, Boxes, ArrowUpRight, ArrowDownRight,
   Loader2, Calendar, Printer, Wallet, Receipt, CreditCard, PiggyBank, BarChart3,
-  FileText, LogOut, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare, ShieldAlert, Download, Upload
+  FileText, LogOut, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare, ShieldAlert, Download, Upload,
+  Moon, Database, SlidersHorizontal, ChevronDown
 } from "lucide-react";
 import { 
   auth, 
@@ -738,6 +739,11 @@ function PharmaERP({ userEmail, onLogout }) {
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem("erp-theme") === "dark";
   });
+
+  const setThemeMode = (dark) => {
+    setIsDarkMode(dark);
+    localStorage.setItem("erp-theme", dark ? "dark" : "light");
+  };
 
   const toggleTheme = () => {
     setIsDarkMode((prev) => {
@@ -1638,6 +1644,7 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || currentUserAccess.inclu
             <SettingsView 
               notify={notify} refreshAll={refreshAll} users={users} 
               saveUsers={persist.users} currentUserEmail={userEmail}
+              isDarkMode={isDarkMode} onThemeChange={setThemeMode}
             />
           ) : <AccessDenied />
         )}
@@ -2287,7 +2294,12 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
 }
 
 // ---------- SETTINGS VIEW COMPONENT WITH CHANGE PASSWORD & ACCESS CONTROL ----------
-function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail }) {
+// Unduh backup .json & restore manual disembunyikan dari tampilan (fungsinya tetap ada).
+// Ganti ke true kalau suatu saat mau dimunculkan lagi.
+const SHOW_MANUAL_BACKUP_RESTORE = false;
+
+function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, isDarkMode = false, onThemeChange }) {
+  const PC = getCOLOR(isDarkMode); // warna panel preferensi, ikut mode terang/gelap
   // Cek apakah user yang sedang login adalah Super Admin / Finance
   const isSuperAdmin = typeof ADMIN_FINANCE_EMAILS !== "undefined" && ADMIN_FINANCE_EMAILS.includes((currentUserEmail || "").toLowerCase());
 
@@ -2539,7 +2551,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail }
     { id: "company", label: "Profil & Legalitas PBF" },
     { id: "finance", label: "Pajak & Rekening Bank" },
     { id: "users", label: "Pengguna & Hak Akses" },
-    { id: "backup", label: "Backup & Restore Data" },
+    { id: "backup", label: "Master Preferences" },
   ] : [
     { id: "users", label: "Profil Saya & Keamanan" },
   ];
@@ -2819,7 +2831,71 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail }
 
       {/* TAB 4: BACKUP & RESTORE (SUPER ADMIN) */}
       {subTab === "backup" && isSuperAdmin && (
-        <div className="space-y-4 max-w-3xl">
+        <div className="space-y-4">
+          {/* PREFERENSI SISTEM & KEAMANAN DATA (gaya WHISys) */}
+          <div className="rounded-xl p-5" style={{ background: PC.surface, border: `1px solid ${PC.border}`, color: PC.ink }}>
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal size={16} style={{ color: PC.primary }} />
+              <div className="font-semibold text-sm" style={{ color: PC.ink }}>Preferensi Sistem & Keamanan Data</div>
+            </div>
+            <p className="text-xs mt-0.5" style={{ color: PC.inkSoft }}>Pengaturan tema bawaan serta cadangan database harian.</p>
+            <div className="my-4" style={{ borderTop: `1px solid ${PC.border}` }} />
+
+            <div className="space-y-3">
+              {/* Tema tampilan bawaan */}
+              <div className="flex items-center justify-between gap-4 rounded-xl px-4 py-3.5" style={{ background: PC.bg, border: `1px solid ${PC.border}` }}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Moon size={16} style={{ color: PC.primary }} className="shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold" style={{ color: PC.ink }}>Tema Tampilan Bawaan</div>
+                    <div className="text-xs" style={{ color: PC.inkSoft }}>Pilih tampilan awal saat aplikasi dibuka.</div>
+                  </div>
+                </div>
+                <div className="relative shrink-0">
+                  <select
+                    value={isDarkMode ? "dark" : "light"}
+                    onChange={(e) => {
+                      const dark = e.target.value === "dark";
+                      if (onThemeChange) onThemeChange(dark);
+                      notify(dark ? "Tema bawaan diubah ke Dark Mode" : "Tema bawaan diubah ke Light Mode");
+                    }}
+                    className="appearance-none bg-transparent text-xs font-medium pr-6 pl-2 py-1 cursor-pointer outline-none"
+                    style={{ color: PC.ink }}
+                  >
+                    <option value="light" style={{ color: "#15302D" }}>Light Mode (Terang)</option>
+                    <option value="dark" style={{ color: "#15302D" }}>Dark Mode (Gelap)</option>
+                  </select>
+                  <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: PC.ink }} />
+                </div>
+              </div>
+
+              {/* Cadangan data otomatis */}
+              <div className="flex items-center justify-between gap-4 rounded-xl px-4 py-3.5" style={{ background: PC.bg, border: `1px solid ${PC.border}` }}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Database size={16} style={{ color: PC.primary }} className="shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold" style={{ color: PC.ink }}>Cadangan Data Otomatis</div>
+                    <div className="text-xs" style={{ color: PC.inkSoft }}>
+                      Simpan salinan data Firestore secara berkala ke cloud backup (1x sehari, 7 hari terakhir).
+                      {autoBackupEnabled && autoBackupInfo.lastAutoBackupAt && (
+                        <> Terakhir: {fmtDate ? fmtDate(autoBackupInfo.lastAutoBackupAt) : autoBackupInfo.lastAutoBackupAt}.</>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={autoBackupEnabled}
+                  disabled={savingAutoBackup}
+                  onChange={toggleAutoBackup}
+                  className="shrink-0 w-4 h-4 cursor-pointer"
+                  style={{ accentColor: PC.primary }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {SHOW_MANUAL_BACKUP_RESTORE && (<>
           <Card className="!p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -2885,6 +2961,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail }
               <Upload size={15} /> Impor & Restore Database JSON
             </Button>
           </Card>
+          </>)}
         </div>
       )}
     </div>
