@@ -10,7 +10,7 @@ import {
   AlertTriangle, Plus, X, Trash2, Search, Boxes, ArrowUpRight, ArrowDownRight,
   Loader2, Calendar, Printer, Wallet, Receipt, CreditCard, PiggyBank, BarChart3,
   FileText, LogOut, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare, ShieldAlert, Download, Upload,
-  Moon, Database, SlidersHorizontal, ChevronDown
+  Moon, Database, SlidersHorizontal, ChevronDown, ClipboardCheck
 } from "lucide-react";
 import { 
   auth, 
@@ -28,6 +28,8 @@ import StockView from "./modules/StockModule";
 import PurchasesView from "./modules/PurchasesModule";
 import SalesView from "./modules/SalesModule";
 import FinanceView from "./modules/FinanceModule";
+import QAView from "./modules/QAModule";
+import { myClasses } from "./qa";
 
 const THEME = {
   light: {
@@ -140,6 +142,7 @@ const KEYS = {
   invoices: "erp-invoices",
   returns: "erp-returns",
   users: "erp-users",
+  qaOfficers: "erp-qa-officers",
   settings: "erp-app-settings",
   autoBackupPrefix: "erp-auto-backup-",
 };
@@ -151,7 +154,7 @@ const AUTO_BACKUP_RESTORE_KEYS = [
   KEYS.products, KEYS.suppliers, KEYS.customers, KEYS.batches,
   KEYS.pos, KEYS.pReceipts, KEYS.pInvoices, KEYS.pReturns,
   KEYS.sos, KEYS.paymentsOut, KEYS.paymentsIn, KEYS.expenses,
-  KEYS.deliveryNotes, KEYS.invoices, KEYS.returns, KEYS.users,
+  KEYS.deliveryNotes, KEYS.invoices, KEYS.returns, KEYS.users, KEYS.qaOfficers,
 ];
 function autoBackupDocKey(dateKey, key) {
   return `${KEYS.autoBackupPrefix}${dateKey}__${key}`;
@@ -809,6 +812,7 @@ function PharmaERP({ userEmail, onLogout }) {
   const [syncState, setSyncState] = useState("ok");
   const navigate = useNavigate();
   const [users, setUsers] = useState([]);
+  const [qaOfficers, setQaOfficers] = useState([]);
 
   const idleTimerRef = useRef(null);
 
@@ -881,7 +885,7 @@ function PharmaERP({ userEmail, onLogout }) {
     KEYS.products, KEYS.suppliers, KEYS.customers, KEYS.batches,
     KEYS.pos, KEYS.pReceipts, KEYS.pInvoices, KEYS.pReturns,
     KEYS.sos, KEYS.paymentsOut, KEYS.paymentsIn, KEYS.expenses,
-    KEYS.deliveryNotes, KEYS.invoices, KEYS.returns, KEYS.users
+    KEYS.deliveryNotes, KEYS.invoices, KEYS.returns, KEYS.users, KEYS.qaOfficers
   ];
   const MAX_AUTO_BACKUPS = 7; // simpan 7 cadangan harian terakhir, yang lebih lama otomatis dihapus
 
@@ -932,7 +936,7 @@ function PharmaERP({ userEmail, onLogout }) {
       [KEYS.pInvoices, setPInvoices], [KEYS.pReturns, setPReturns], [KEYS.sos, setSOs],
       [KEYS.paymentsOut, setPaymentsOut], [KEYS.paymentsIn, setPaymentsIn], [KEYS.expenses, setExpenses],
       [KEYS.deliveryNotes, setDeliveryNotes], [KEYS.invoices, setInvoices], [KEYS.returns, setReturns],
-      [KEYS.users, setUsers],
+      [KEYS.users, setUsers], [KEYS.qaOfficers, setQaOfficers],
     ];
     const unsubs = pairs.map(([key, setter]) =>
       subscribeList(
@@ -995,6 +999,7 @@ function PharmaERP({ userEmail, onLogout }) {
     invoices: async (list) => { setInvoices(list); return saveList(KEYS.invoices, invoices, list); },
     returns: async (list) => { setReturns(list); return saveList(KEYS.returns, returns, list); },
     users: async (list) => { setUsers(list); return saveList(KEYS.users, users, list); },
+    qaOfficers: async (list) => { setQaOfficers(list); return saveList(KEYS.qaOfficers, qaOfficers, list); },
   };
 
   const stockByProduct = useMemo(() => {
@@ -1164,7 +1169,8 @@ function invoiceNetSalesDPP(inv) {
 }, [expenses]);
 
   function allocateFEFO(productId, qty) {
-    const avail = (batches || []).filter((b) => b.productId === productId && b.qty > 0).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+    // Batch karantina (penerimaan belum disetujui APJ/PJT) tidak boleh disalurkan.
+    const avail = (batches || []).filter((b) => b.productId === productId && b.qty > 0 && !b.quarantine).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
     let remaining = qty;
     const allocations = [];
     for (const b of avail) {
@@ -1186,6 +1192,7 @@ function invoiceNetSalesDPP(inv) {
   { id: "sales", label: "Penjualan", icon: ShoppingCart, requiresFinance: false },
   { id: "finance", label: "Finance", icon: Wallet, requiresFinance: true },
   { id: "reports", label: "Laporan", icon: BarChart3, requiresFinance: false },
+  { id: "qa", label: "APJ / PJT", icon: ClipboardCheck, requiresFinance: false },
   { id: "settings", label: "Pengaturan", icon: ShieldCheck, requiresFinance: true },
 ];
 
@@ -1193,7 +1200,7 @@ function invoiceNetSalesDPP(inv) {
 const currentUser = (users || []).find((u) => (u.email || "").toLowerCase() === (userEmail || "").toLowerCase());
 
 // Ambil daftar aksesnya (jika tidak ditemukan/admin, berikan akses penuh):
-const FULL_ACCESS = ["dashboard", "products", "stock", "suppliers", "customers", "purchases", "sales", "finance", "reports", "settings"];
+const FULL_ACCESS = ["dashboard", "products", "stock", "suppliers", "customers", "purchases", "sales", "finance", "reports", "qa", "settings"];
 const isHardAdmin = ADMIN_FINANCE_EMAILS.includes((userEmail || "").toLowerCase());
 // Setelah migrasi, email yang tidak terdaftar di daftar pengguna TIDAK lagi dapat akses penuh.
 const currentUserAccess = currentUser
@@ -1201,7 +1208,10 @@ const currentUserAccess = currentUser
   : (isHardAdmin || getStorageMode() !== "v2" ? FULL_ACCESS : ["dashboard"]);
 
 // Filter navigasi sidebar agar menampilkan hanya modul yang diizinkan:
-const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || currentUserAccess.includes(n.id));
+// APJ / PJT yang terdaftar otomatis bisa buka menu review walau belum diberi akses "qa".
+const isQAOfficer = myClasses(qaOfficers, userEmail).length > 0;
+const canOpenQA = currentUserAccess.includes("qa") || isQAOfficer || isHardAdmin;
+const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpenQA : currentUserAccess.includes(n.id)));
 
   if (loading) {
     return (
@@ -1670,6 +1680,21 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || currentUserAccess.inclu
     />
   ) : <AccessDenied />
 )}
+
+        {/* REVIEW APJ / PJT (CDOB) */}
+        {tab === "qa" && (
+          canOpenQA ? (
+            <QAView
+              products={products} customers={customers} suppliers={suppliers}
+              sos={sos} pos={pos} invoices={invoices} pReceipts={pReceipts} pInvoices={pInvoices} batches={batches}
+              officers={qaOfficers} saveOfficers={persist.qaOfficers} users={users}
+              saveSOs={persist.sos} savePOs={persist.pos} saveInvoices={persist.invoices}
+              savePReceipts={persist.pReceipts} savePInvoices={persist.pInvoices} saveBatches={persist.batches}
+              userEmail={userEmail} canManage={isHardAdmin || currentUserAccess.includes("settings")}
+              findName={findName} notify={notify} colorConfig={COLOR} fmtDate={fmtDate} uid={uid}
+            />
+          ) : <AccessDenied />
+        )}
 
         {/* PENGATURAN */}
         {tab === "settings" && (
@@ -2447,6 +2472,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
     { id: "sales", label: "Modul Penjualan (SO/SJ)" },
     { id: "finance", label: "Modul Finance & Kas" },
     { id: "reports", label: "Laporan & Laba Rugi" },
+    { id: "qa", label: "Review APJ / PJT (CDOB)" },
     { id: "settings", label: "Menu Pengaturan (Settings)" },
   ];
 
@@ -2561,7 +2587,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
         KEYS.products, KEYS.suppliers, KEYS.customers, KEYS.batches,
         KEYS.pos, KEYS.pReceipts, KEYS.pInvoices, KEYS.pReturns,
         KEYS.sos, KEYS.paymentsOut, KEYS.paymentsIn, KEYS.expenses,
-        KEYS.deliveryNotes, KEYS.invoices, KEYS.returns, KEYS.users
+        KEYS.deliveryNotes, KEYS.invoices, KEYS.returns, KEYS.users, KEYS.qaOfficers
       ];
 
       const backupData = { exportDate: new Date().toISOString(), company: companyForm, data: {} };

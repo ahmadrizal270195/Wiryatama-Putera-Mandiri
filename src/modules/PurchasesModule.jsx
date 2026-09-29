@@ -1,5 +1,12 @@
 import React, { useState, useMemo } from "react";
 import { Plus, Printer, FileText, Trash2, Search } from "lucide-react";
+import { newReview, isCleared, blockedReason, QABadge, reviewState } from "../qa";
+
+// Review APJ/PJT diulang kalau isi barang berubah (produk, qty, batch, ED).
+function itemsChanged(oldItems, newItems) {
+  const sig = (arr) => JSON.stringify((arr || []).map((it) => [it.productId, Number(it.qty) || 0, it.batchNo || "", it.expiryDate || ""]).sort());
+  return sig(oldItems) !== sig(newItems);
+}
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 
 // Helper Input Diskon Dwi-Mode (% / Rp)
@@ -302,11 +309,14 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
     };
 
     if (editingId) {
-      await savePOs((pos || []).map(p => p.id === editingId ? { ...p, ...payload } : p));
-      notify(`${poNumber.trim()} berhasil diperbarui`);
+      const oldPO = (pos || []).find((p) => p.id === editingId);
+      const changed = !oldPO || itemsChanged(oldPO.items, items);
+      const qaPatch = changed ? { qaReview: newReview(items, products) } : {};
+      await savePOs((pos || []).map(p => p.id === editingId ? { ...p, ...payload, ...qaPatch } : p));
+      notify(`${poNumber.trim()} berhasil diperbarui${changed ? " · menunggu review APJ/PJT ulang" : ""}`);
     } else {
-      await savePOs([...(pos || []), { id: uid(), ...payload }]);
-      notify(`${poNumber.trim()} dibuat`);
+      await savePOs([...(pos || []), { id: uid(), ...payload, qaReview: newReview(items, products) }]);
+      notify(`${poNumber.trim()} dibuat · menunggu review APJ/PJT`);
     }
     setModal(null);
     setEditingId(null);
@@ -349,7 +359,12 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
                 <td className="px-4 py-2.5" style={{ color: colorConfig?.ink }}>{findName(suppliers, po.supplierId)}</td>
                 <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(po.date)}</td>
                 <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: colorConfig?.ink }}>{fmtIDR(poTotal(po))}</td>
-                <td className="px-4 py-2.5"><Badge tone={s.tone} colorConfig={colorConfig}>{s.label}</Badge></td>
+                <td className="px-4 py-2.5">
+                  <div className="flex flex-col items-start gap-1">
+                    <Badge tone={s.tone} colorConfig={colorConfig}>{s.label}</Badge>
+                    <QABadge doc={po} colorConfig={colorConfig} compact />
+                  </div>
+                </td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
                   <div className="flex items-center justify-end gap-2.5">
                     {st === "partially_received" && (
@@ -680,7 +695,9 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
   const [date, setDate] = useState(todayISO());
   const [receiveForm, setReceiveForm] = useState({});
 
-  const eligiblePOs = (pos || []).filter((po) => ["ordered", "partially_received"].includes(getPOStatus(po)));
+  // CDOB: barang hanya bisa diterima dari PO yang sudah disetujui APJ/PJT.
+  const eligiblePOs = (pos || []).filter((po) => ["ordered", "partially_received"].includes(getPOStatus(po)) && isCleared(po));
+  const heldPOs = (pos || []).filter((po) => ["ordered", "partially_received"].includes(getPOStatus(po)) && !isCleared(po)).length;
   const selectedPO = (pos || []).find((x) => x.id === poId);
 
   function openNew() {
@@ -714,6 +731,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
   async function submitBPB() {
     if (!noBPB.trim()) return notify("Nomor BPB wajib diisi", "danger");
     if (!selectedPO) return notify("Pilih PO terlebih dahulu", "danger");
+    if (!isCleared(selectedPO)) return notify(blockedReason(selectedPO, `PO ${selectedPO.poNumber}`), "danger");
     for (let i = 0; i < (selectedPO.items || []).length; i++) {
       const rf = receiveForm[i];
       if (rf && Number(rf.qty) > 0) {
@@ -731,6 +749,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
 
     const newBatches = [];
     const receivedItems = [];
+    const receiptId = uid(); // dipakai untuk menautkan batch karantina ke BPB ini
 
     (selectedPO.items || []).forEach((it, i) => {
       const rf = receiveForm[i];
@@ -747,7 +766,9 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
           receivedDate: date,
           poId: selectedPO.id,
           sourceType: "pembelian",
-          supplierId: selectedPO.supplierId
+          supplierId: selectedPO.supplierId,
+          quarantine: true, // karantina sampai APJ/PJT menyetujui penerimaan
+          qaDocId: receiptId
         });
         receivedItems.push({
           productId: it.productId,
@@ -763,8 +784,8 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
     if (receivedItems.length === 0) return notify("Isi jumlah barang yang diterima", "danger");
 
     await saveBatches([...(batches || []), ...newBatches]);
-    await savePReceipts([...(pReceipts || []), { id: uid(), noBPB: noBPB.trim(), poId: selectedPO.id, date, items: receivedItems }]);
-    notify(`${noBPB.trim()} berhasil disimpan, stok batch bertambah`);
+    await savePReceipts([...(pReceipts || []), { id: receiptId, noBPB: noBPB.trim(), poId: selectedPO.id, date, items: receivedItems, qaReview: newReview(receivedItems, products) }]);
+    notify(`${noBPB.trim()} disimpan · batch masuk KARANTINA sampai disetujui APJ/PJT`);
     setModal(null);
   }
 
@@ -798,6 +819,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
   return (
     <div>
       <div className="flex justify-end mb-3 no-print">
+        {heldPOs > 0 && <span className="text-xs mr-3" style={{ color: colorConfig?.warn }}>{heldPOs} PO belum bisa diterima (menunggu / ditolak APJ-PJT)</span>}
         <Button onClick={openNew} disabled={eligiblePOs.length === 0} colorConfig={colorConfig}><Plus size={15} /> Penerimaan Barang (BPB)</Button>
       </div>
 
@@ -813,7 +835,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
             const canCancel = !(pInvoices || []).some((inv) => inv.poId === pr.poId);
             return (
               <tr key={pr.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
-                <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: colorConfig?.ink }}>{pr.noBPB}</td>
+                <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: colorConfig?.ink }}>{pr.noBPB}<div className="mt-1 font-sans"><QABadge doc={pr} colorConfig={colorConfig} compact /></div></td>
                 <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{po?.poNumber}</td>
                 <td className="px-4 py-2.5" style={{ color: colorConfig?.ink }}>{po ? findName(suppliers, po.supplierId) : "-"}</td>
                 <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(pr.date)}</td>
@@ -1108,6 +1130,13 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     }
   }
 
+  // CDOB: pembelian langsung = penerimaan barang, wajib review APJ/PJT.
+  const oldInvQA = editingId ? (pInvoices || []).find((x) => x.id === editingId) : null;
+  const keepReview = !!oldInvQA && !itemsChanged(oldInvQA.items, items);
+  const qaReview = keepReview ? oldInvQA.qaReview : newReview(items, products);
+  const needQuarantine = !isCleared({ qaReview });
+  const invId = editingId || uid();
+
   // 3. Buat batch baru hasil perbaikan Exp Date/Qty
   const newBatches = [];
   const invItems = [];
@@ -1129,7 +1158,9 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       receivedDate: date,
       poId: null,
       sourceType: "pembelian",
-      supplierId: supplierId
+      supplierId: supplierId,
+      quarantine: needQuarantine,
+      qaDocId: invId
     });
 
     invItems.push({
@@ -1157,15 +1188,16 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     discountPercent: Number(discountPercentHeader || 0), 
     ongkir: Number(ongkir || 0),
     items: invItems, 
-    isDirect: true 
+    isDirect: true,
+    ...(qaReview ? { qaReview } : {})
   };
 
   if (editingId) {
     await savePInvoices((pInvoices || []).map(inv => inv.id === editingId ? { ...inv, ...payload } : inv));
-    notify(`${noFakturDirect.trim()} berhasil diperbarui`);
+    notify(`${noFakturDirect.trim()} berhasil diperbarui${needQuarantine ? " · batch karantina menunggu review APJ/PJT" : ""}`);
   } else {
-    await savePInvoices([...(pInvoices || []), { id: uid(), ...payload }]);
-    notify(`${noFakturDirect.trim()} berhasil dibuat langsung & stok bertambah`);
+    await savePInvoices([...(pInvoices || []), { id: invId, ...payload }]);
+    notify(`${noFakturDirect.trim()} dibuat · batch masuk KARANTINA sampai disetujui APJ/PJT`);
   }
 
   setModalDirect(false);
@@ -1327,7 +1359,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
             const canEditOrCancel = pInvoicePaidAmount(inv.id) === 0 && !(pReturns || []).some((r) => r.pInvoiceId === inv.id);
             return (
               <tr key={inv.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
-                <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: colorConfig?.ink }}>{inv.noFaktur}</td>
+                <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: colorConfig?.ink }}>{inv.noFaktur}<div className="mt-1 font-sans"><QABadge doc={inv} colorConfig={colorConfig} compact /></div></td>
                 <td className="px-4 py-2.5"><Badge tone={inv.isDirect ? "warn" : "neutral"} colorConfig={colorConfig}>{inv.isDirect ? "Langsung" : po?.poNumber || "PO"}</Badge></td>
                 <td className="px-4 py-2.5" style={{ color: colorConfig?.ink }}>{findName(suppliers, inv.supplierId)}</td>
                 <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(inv.date)}</td>

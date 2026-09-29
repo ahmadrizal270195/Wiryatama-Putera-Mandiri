@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Wallet, CreditCard, Receipt, PiggyBank, Plus, Calendar, Filter } from "lucide-react";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
+import { isCleared, blockedReason } from "../qa";
 
 const EXPENSE_CATEGORIES = [
   "Sewa Gudang (Bulanan)",
@@ -115,6 +116,8 @@ export default function FinanceView(props) {
     else if (kind === "dp") amount = 0;
     else if (kind === "pInvoice") amount = getPInvoiceSisa(doc);
     setPayForm({ amount, date: todayISO(), method: PAYMENT_METHODS[0], note: "" });
+    // CDOB: faktur langsung yang masih menunggu / ditolak APJ-PJT belum boleh ditagih.
+    if (kind === "invoice" && doc && !isCleared(doc)) return notify(blockedReason(doc, `Faktur ${doc.noFaktur}`), "danger");
     setPayModal({ kind, doc });
   }
 

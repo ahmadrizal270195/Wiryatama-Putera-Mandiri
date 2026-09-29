@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Plus, Search, Printer, FileText, Trash2 } from "lucide-react";
+import { newReview, isCleared, blockedReason, QABadge, reviewState, qaSignatureText } from "../qa";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 
 // Helper Input Diskon Dwi-Mode (% / Rp)
@@ -47,6 +48,12 @@ function getItemDiscountAmount(qty, unitPrice, discType, discVal) {
 }
 
 // HELPER FUNGSI CETAK POP-UP MANDIRI (BYPASS MODAL FOR MULTI-PAGE PRINTING)
+// Review APJ/PJT diulang kalau isi barang (produk / qty) berubah.
+function itemsChanged(oldItems, newItems) {
+  const sig = (arr) => JSON.stringify((arr || []).map((it) => [it.productId, Number(it.qty) || 0]).sort());
+  return sig(oldItems) !== sig(newItems);
+}
+
 function printDocumentContent(elementId, titleText) {
   const contentElement = document.getElementById(elementId);
   if (!contentElement) return alert("Elemen cetak tidak ditemukan!");
@@ -377,11 +384,14 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
     };
 
     if (editingId) {
-      await saveSOs((sos || []).map(s => s.id === editingId ? { ...s, ...payload } : s));
-      notify(`${soNumber.trim()} berhasil diperbarui`);
+      const oldSO = (sos || []).find((s) => s.id === editingId);
+      // Isi barang berubah -> wajib review ulang. SO lama (sebelum CDOB) ikut masuk review kalau diubah isinya.
+      const qaReview = !oldSO || itemsChanged(oldSO.items, items) ? newReview(items, products) : oldSO.qaReview;
+      await saveSOs((sos || []).map(s => s.id === editingId ? { ...s, ...payload, ...(qaReview ? { qaReview } : {}) } : s));
+      notify(`${soNumber.trim()} berhasil diperbarui${qaReview && oldSO && qaReview !== oldSO.qaReview ? " · menunggu review APJ/PJT ulang" : ""}`);
     } else {
-      await saveSOs([...(sos || []), { id: uid(), ...payload }]);
-      notify(`${soNumber.trim()} dibuat`);
+      await saveSOs([...(sos || []), { id: uid(), ...payload, qaReview: newReview(items, products) }]);
+      notify(`${soNumber.trim()} dibuat · menunggu review APJ/PJT`);
     }
     setModal(null); setEditingId(null);
   }
@@ -439,7 +449,12 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
                 <td className="px-4 py-2.5" style={{ color: colorConfig?.ink }}>{findName(customers, so.customerId)}</td>
                 <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(so.date)}</td>
                 <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: colorConfig?.ink }}>{fmtIDR(soTotal(so))}</td>
-                <td className="px-4 py-2.5"><Badge tone={s.tone} colorConfig={colorConfig}>{s.label}</Badge></td>
+                <td className="px-4 py-2.5">
+                  <div className="flex flex-col items-start gap-1">
+                    <Badge tone={s.tone} colorConfig={colorConfig}>{s.label}</Badge>
+                    <QABadge doc={so} colorConfig={colorConfig} compact />
+                  </div>
+                </td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
                   <div className="flex items-center justify-end gap-2.5">
                     {st === "partially_shipped" && (
@@ -781,6 +796,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
   const eligibleSOs = useMemo(() => {
     if (!sos || !Array.isArray(sos)) return [];
     return sos.filter((so) => {
+      if (!isCleared(so)) return false; // CDOB: SO wajib disetujui APJ/PJT dulu
       const hasInvoice = (invoices || []).some((inv) => inv.soId === so.id || inv.soNumber === so.soNumber);
       if (hasInvoice) return false;
       return (so.items || []).some((it) => {
@@ -837,6 +853,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
   async function submitSJ() {
     if (!noSJ.trim()) return notify("Nomor Surat Jalan wajib diisi", "danger");
     if (!selectedSO) return notify("Pilih SO terlebih dahulu", "danger");
+    if (!isCleared(selectedSO)) return notify(blockedReason(selectedSO, `SO ${selectedSO.soNumber}`), "danger");
 
     let working = (batches || []).map((b) => ({ ...b }));
     if (editingId) {
@@ -867,7 +884,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
 
     const shortages = []; const itemsWithAlloc = [];
     for (const l of lines) {
-      const avail = working.filter((b) => b.productId === l.productId && b.qty > 0 && b.expiryDate >= todayISO()).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+      const avail = working.filter((b) => b.productId === l.productId && b.qty > 0 && !b.quarantine && b.expiryDate >= todayISO()).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
       let remaining = l.qty; const allocations = [];
       for (const b of avail) {
         if (remaining <= 0) break;
@@ -947,7 +964,11 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
 
   return (
     <div>
-      <div className="flex justify-end mb-3 no-print">
+      <div className="flex items-center justify-end gap-3 mb-3 no-print">
+        {(() => {
+          const held = (sos || []).filter((so) => reviewState(so) === "pending" || reviewState(so) === "rejected").length;
+          return held > 0 ? <span className="text-xs" style={{ color: colorConfig?.warn }}>{held} SO belum bisa dikirim (menunggu / ditolak APJ-PJT)</span> : null;
+        })()}
         <Button onClick={openNew} disabled={eligibleSOs.length === 0} colorConfig={colorConfig}><Plus size={15} /> Buat Surat Jalan</Button>
       </div>
       
@@ -1341,7 +1362,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     const shortages = []; const itemsWithAlloc = [];
     if (isDirectDoc) {
       for (const it of items) {
-        const avail = working.filter((b) => b.productId === it.productId && b.qty > 0 && b.expiryDate >= todayISO()).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+        const avail = working.filter((b) => b.productId === it.productId && b.qty > 0 && !b.quarantine && b.expiryDate >= todayISO()).sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
         let remaining = it.qty; const allocations = [];
         for (const b of avail) {
           if (remaining <= 0) break;
@@ -1370,11 +1391,13 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     };
 
     if (editingId) {
-      await saveInvoices((invoices || []).map(inv => inv.id === editingId ? { ...inv, ...payload } : inv));
-      notify(`${noFakturDirect.trim()} berhasil diperbarui`);
+      let qaPatch = {};
+      if (isDirectDoc && (!oldInvObj || itemsChanged(oldInvObj.items, items))) qaPatch = { qaReview: newReview(items, products) };
+      await saveInvoices((invoices || []).map(inv => inv.id === editingId ? { ...inv, ...payload, ...qaPatch } : inv));
+      notify(`${noFakturDirect.trim()} berhasil diperbarui${qaPatch.qaReview ? " · menunggu review APJ/PJT ulang" : ""}`);
     } else {
-      await saveInvoices([...(invoices || []), { id: uid(), ...payload, soId: null, isDirect: true }]);
-      notify(`${noFakturDirect.trim()} dibuat langsung & stok FEFO terpotong`);
+      await saveInvoices([...(invoices || []), { id: uid(), ...payload, soId: null, isDirect: true, qaReview: newReview(items, products) }]);
+      notify(`${noFakturDirect.trim()} dibuat & stok FEFO terpotong · menunggu review APJ/PJT sebelum bisa dicetak`);
     }
     setModalDirect(false); setEditingId(null); setIsEditingFromSO(false);
   }
@@ -1494,14 +1517,19 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
             return (
               <tr key={inv.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
                 <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: colorConfig?.ink }}>{inv.noFaktur}</td>
-                <td className="px-4 py-2.5"><Badge tone={inv.isDirect ? "warn" : "neutral"} colorConfig={colorConfig}>{inv.isDirect ? "Langsung" : so?.soNumber || "SO"}</Badge></td>
+                <td className="px-4 py-2.5">
+                  <div className="flex flex-col items-start gap-1">
+                    <Badge tone={inv.isDirect ? "warn" : "neutral"} colorConfig={colorConfig}>{inv.isDirect ? "Langsung" : so?.soNumber || "SO"}</Badge>
+                    <QABadge doc={inv} colorConfig={colorConfig} compact />
+                  </div>
+                </td>
                 <td className="px-4 py-2.5" style={{ color: colorConfig?.ink }}>{custName}</td>
                 <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(inv.date)}</td>
                 <td className="px-4 py-2.5 font-mono" style={{ color: colorConfig?.ink }}>{fmtIDR(total)}</td>
                 <td className="px-4 py-2.5"><Badge tone={sisa > 0 ? "warn" : "good"} colorConfig={colorConfig}>{sisa > 0 ? fmtIDR(sisa) : "Lunas"}</Badge></td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
                   <div className="flex items-center justify-end gap-2">
-                    <button onClick={() => setPrintInv(inv)} className="text-xs flex items-center gap-1 font-semibold cursor-pointer" style={{ color: colorConfig?.primary }}><Printer size={13} /> Cetak</button>
+                    <button onClick={() => (isCleared(inv) ? setPrintInv(inv) : notify(blockedReason(inv, `Faktur ${inv.noFaktur}`), "danger"))} className="text-xs flex items-center gap-1 font-semibold cursor-pointer" style={{ color: isCleared(inv) ? colorConfig?.primary : colorConfig?.inkSoft }}><Printer size={13} /> Cetak</button>
                     <button onClick={() => setDetailInv(inv)} className="text-xs font-medium cursor-pointer" style={{ color: colorConfig?.accent }}>Detail</button>
                     {canEditOrCancel && (
                       <>

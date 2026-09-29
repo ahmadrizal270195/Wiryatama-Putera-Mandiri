@@ -331,6 +331,9 @@ export default function StockView(props) {
                             <span className="batch-no font-bold" style={{ color: colorConfig?.primary }}>{b.batchNo}</span>
                             <span className="batch-qty" style={{ color: colorConfig?.ink }}>({b.qty} {p.unit})</span>
                             <span className="batch-exp" style={{ color: colorConfig?.inkSoft }}>exp {fmtDate(b.expiryDate)}</span>
+                            {b.quarantine && (
+                              <span className="font-sans font-bold px-1.5 rounded" title="Menunggu persetujuan APJ/PJT, belum bisa disalurkan" style={{ background: colorConfig?.warnSoft || "#FBF1E1", color: colorConfig?.warn || "#C97F1E" }}>KARANTINA</span>
+                            )}
                             <span style={{ color: u.color }} className="font-bold">· {u.label}</span>
                             <span 
                               className="text-[9px] px-1.5 py-0.5 rounded font-bold"
