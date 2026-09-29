@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import { loadKey, saveKey, deleteKey } from "./storage";
+import { loadKey, saveKey, deleteKey, subscribeKey } from "./storage";
 import {
   LayoutDashboard, Package, Truck, Users, ShoppingCart, ClipboardList,
   AlertTriangle, Plus, X, Trash2, Search, Boxes, ArrowUpRight, ArrowDownRight,
@@ -138,6 +138,35 @@ const KEYS = {
   settings: "erp-app-settings",
   autoBackupPrefix: "erp-auto-backup-",
 };
+
+// ---------- HELPER CADANGAN OTOMATIS (format per jenis data) ----------
+// Format baru: erp-auto-backup-2026-09-29__erp-products, dst (satu dokumen per jenis data).
+// Format lama: erp-auto-backup-2026-09-29 berisi { data: {...semua...} } -- tetap bisa di-restore.
+const AUTO_BACKUP_RESTORE_KEYS = [
+  KEYS.products, KEYS.suppliers, KEYS.customers, KEYS.batches,
+  KEYS.pos, KEYS.pReceipts, KEYS.pInvoices, KEYS.pReturns,
+  KEYS.sos, KEYS.paymentsOut, KEYS.paymentsIn, KEYS.expenses,
+  KEYS.deliveryNotes, KEYS.invoices, KEYS.returns, KEYS.users,
+];
+function autoBackupDocKey(dateKey, key) {
+  return `${KEYS.autoBackupPrefix}${dateKey}__${key}`;
+}
+async function loadAutoBackup(dateKey, keys) {
+  const legacy = await loadKey(KEYS.autoBackupPrefix + dateKey);
+  if (legacy && !Array.isArray(legacy) && legacy.data) return legacy.data;
+  const data = {};
+  let found = false;
+  for (const k of keys) {
+    const val = await loadKey(autoBackupDocKey(dateKey, k));
+    data[k] = val;
+    if (Array.isArray(val) ? val.length > 0 : !!val) found = true;
+  }
+  return found ? data : null;
+}
+async function deleteAutoBackup(dateKey, keys) {
+  await deleteKey(KEYS.autoBackupPrefix + dateKey); // format lama, kalau ada
+  for (const k of keys) await deleteKey(autoBackupDocKey(dateKey, k));
+}
 
 const EXPENSE_CATEGORIES = [
   "Sewa Gudang (Bulanan)",
@@ -843,14 +872,21 @@ function PharmaERP({ userEmail, onLogout }) {
       if (!settings.autoBackupEnabled) return;
       if (settings.lastAutoBackupAt === todayISO()) return; // sudah backup hari ini
 
-      const data = {};
-      for (const k of AUTO_BACKUP_KEYS) data[k] = await loadKey(k);
-      await saveKey(KEYS.autoBackupPrefix + todayISO(), { savedAt: new Date().toISOString(), data });
+      // Disimpan PER JENIS DATA (satu dokumen per key), bukan digabung jadi satu dokumen.
+      // Firestore membatasi 1 MB per dokumen -- kalau digabung, backup bakal gagal duluan
+      // begitu total data membesar.
+      let allOk = true;
+      for (const k of AUTO_BACKUP_KEYS) {
+        const val = await loadKey(k);
+        const ok = await saveKey(autoBackupDocKey(todayISO(), k), val);
+        if (!ok) allOk = false;
+      }
+      if (!allOk) throw new Error("Sebagian cadangan otomatis gagal disimpan");
 
       const prevDates = Array.isArray(settings.backupDates) ? settings.backupDates : [];
       const newDates = [...prevDates.filter((d) => d !== todayISO()), todayISO()];
       const toDelete = newDates.length > MAX_AUTO_BACKUPS ? newDates.slice(0, newDates.length - MAX_AUTO_BACKUPS) : [];
-      for (const d of toDelete) await deleteKey(KEYS.autoBackupPrefix + d);
+      for (const d of toDelete) await deleteAutoBackup(d, AUTO_BACKUP_KEYS);
       const keptDates = newDates.slice(-MAX_AUTO_BACKUPS);
 
       await saveKey(KEYS.settings, { ...settings, lastAutoBackupAt: todayISO(), backupDates: keptDates });
@@ -868,9 +904,39 @@ function PharmaERP({ userEmail, onLogout }) {
     })();
   }, []);
 
+  // Sinkron realtime (onSnapshot) -- pengganti polling tiap 5 detik yang boros kuota.
   useEffect(() => {
-    const interval = setInterval(refreshAll, 5000);
-    return () => clearInterval(interval);
+    const pairs = [
+      [KEYS.products, setProducts], [KEYS.suppliers, setSuppliers], [KEYS.customers, setCustomers],
+      [KEYS.batches, setBatches], [KEYS.pos, setPOs], [KEYS.pReceipts, setPReceipts],
+      [KEYS.pInvoices, setPInvoices], [KEYS.pReturns, setPReturns], [KEYS.sos, setSOs],
+      [KEYS.paymentsOut, setPaymentsOut], [KEYS.paymentsIn, setPaymentsIn], [KEYS.expenses, setExpenses],
+      [KEYS.deliveryNotes, setDeliveryNotes], [KEYS.invoices, setInvoices], [KEYS.returns, setReturns],
+      [KEYS.users, setUsers],
+    ];
+    const unsubs = pairs.map(([key, setter]) =>
+      subscribeKey(
+        key,
+        (next) => {
+          setter((prev) => (JSON.stringify(prev) !== JSON.stringify(next) ? next : prev));
+          setLastSync(Date.now());
+          setSyncState("ok");
+        },
+        () => setSyncState("error")
+      )
+    );
+    return () => unsubs.forEach((u) => u());
+  }, []);
+
+  // Kalau ada data yang gagal disimpan ke Firestore, kasih tahu user (dulu cuma diam di console).
+  useEffect(() => {
+    const onSaveError = () => {
+      setSyncState("error");
+      setToast({ msg: "Data GAGAL tersimpan ke server. Cek koneksi internet, lalu ulangi input terakhir.", tone: "danger" });
+      setTimeout(() => setToast(null), 8000);
+    };
+    window.addEventListener("erp-save-error", onSaveError);
+    return () => window.removeEventListener("erp-save-error", onSaveError);
   }, []);
 
   function notify(msg, tone = "good") {
@@ -2281,9 +2347,9 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail }
   async function restoreFromAutoBackup(dateKey) {
     if (!confirm(`PERINGATAN: Ini akan menimpa seluruh data ERP saat ini dengan cadangan otomatis tanggal ${dateKey}. Lanjutkan?`)) return;
     try {
-      const backup = await loadKey(KEYS.autoBackupPrefix + dateKey);
-      if (!backup || !backup.data) return notify("Cadangan tidak ditemukan atau rusak", "danger");
-      for (const [key, val] of Object.entries(backup.data)) await saveKey(key, val);
+      const data = await loadAutoBackup(dateKey, AUTO_BACKUP_RESTORE_KEYS);
+      if (!data) return notify("Cadangan tidak ditemukan atau rusak", "danger");
+      for (const [key, val] of Object.entries(data)) await saveKey(key, val);
       if (refreshAll) await refreshAll();
       notify(`Berhasil restore dari cadangan otomatis tanggal ${dateKey}`);
     } catch (e) {
