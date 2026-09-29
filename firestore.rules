@@ -1,20 +1,61 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Versi awal (test mode / cepat jalan): siapa saja yang punya link bisa baca+tulis.
-    // Cocok untuk internal tool yang linknya tidak disebar luas, TAPI tidak aman
-    // untuk data sensitif jika link bocor.
+
+    // Super admin: harus SAMA dengan ADMIN_FINANCE_EMAILS di src/App.jsx
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email.lower() in [
+          "ahmadrizal270195@gmail.com",
+          "wawakhayrani@gmail.com",
+          "admin@wiryatamaputera.co.id"
+        ];
+    }
+    function signedIn() { return request.auth != null; }
+    // Staf = login DAN terdaftar di menu Pengguna (erp_users/{email})
+    function isMember() {
+      return isAdmin()
+        || (signedIn() && exists(/databases/$(database)/documents/erp_users/$(request.auth.token.email.lower())));
+    }
+    function migrated() {
+      return exists(/databases/$(database)/documents/erp_meta/schema)
+        && get(/databases/$(database)/documents/erp_meta/schema).data.version >= 2;
+    }
+
+    // Penanda format data (dibaca sebelum login untuk tahu mode penyimpanan)
+    match /erp_meta/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Daftar pengguna & hak akses: cuma super admin yang boleh ubah
+    match /erp_users/{email} {
+      allow read: if isMember();
+      allow write: if isAdmin();
+    }
+
+    // Data ERP format baru (dipecah per bagian)
+    match /erp_store/{key} {
+      allow read: if key == "erp-products" || isMember();
+      allow write: if isMember();
+      match /shards/{shardId} {
+        allow read: if key == "erp-products" || isMember();
+        allow write: if isMember();
+      }
+    }
+
+    // Data format lama. Setelah migrasi cuma bisa dibaca (jadi cadangan),
+    // kecuali pengaturan aplikasi yang masih disimpan di sini.
     match /erp_data/{docId} {
-      allow read, write: if true;
+      allow read: if docId == "erp-products" || (signedIn() && (!migrated() || isMember()));
+      allow write: if signedIn() && (!migrated() || (docId == "erp-app-settings" && isMember()));
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
 
-// Setelah admin login diaktifkan (lihat README bagian "Menambahkan Login"),
-// ganti blok di atas menjadi:
-//
-// match /erp_data/{docId} {
-//   allow read, write: if request.auth != null;
-// }
-//
-// supaya hanya user yang sudah login (email/password) yang bisa akses data.
+// Tetap matikan pendaftaran akun di:
+// Firebase Console -> Authentication -> Settings -> User actions -> "Enable create (sign-up)".

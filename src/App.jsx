@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import { loadKey, saveKey, deleteKey, subscribeKey } from "./storage";
+import {
+  loadKey, saveKey, deleteKey,
+  loadList, subscribeList, saveList, writeWholeList, deleteList,
+  getStorageMode, watchSchema, migrateToV2,
+} from "./storage";
 import {
   LayoutDashboard, Package, Truck, Users, ShoppingCart, ClipboardList,
   AlertTriangle, Plus, X, Trash2, Search, Boxes, ArrowUpRight, ArrowDownRight,
@@ -153,20 +157,30 @@ function autoBackupDocKey(dateKey, key) {
   return `${KEYS.autoBackupPrefix}${dateKey}__${key}`;
 }
 async function loadAutoBackup(dateKey, keys) {
+  const hasData = (v) => (Array.isArray(v) ? v.length > 0 : !!v);
+  // 1) Format terbaru (ikut mode penyimpanan aktif)
+  let data = {};
+  let found = false;
+  for (const k of keys) {
+    const val = await loadList(autoBackupDocKey(dateKey, k));
+    data[k] = val;
+    if (hasData(val)) found = true;
+  }
+  if (found) return data;
+  // 2) Cadangan lama yang masih tersimpan di erp_data
   const legacy = await loadKey(KEYS.autoBackupPrefix + dateKey);
   if (legacy && !Array.isArray(legacy) && legacy.data) return legacy.data;
-  const data = {};
-  let found = false;
+  data = {};
   for (const k of keys) {
     const val = await loadKey(autoBackupDocKey(dateKey, k));
     data[k] = val;
-    if (Array.isArray(val) ? val.length > 0 : !!val) found = true;
+    if (hasData(val)) found = true;
   }
   return found ? data : null;
 }
 async function deleteAutoBackup(dateKey, keys) {
-  await deleteKey(KEYS.autoBackupPrefix + dateKey); // format lama, kalau ada
-  for (const k of keys) await deleteKey(autoBackupDocKey(dateKey, k));
+  for (const k of keys) await deleteList(autoBackupDocKey(dateKey, k));
+  if (getStorageMode() !== "v2") await deleteKey(KEYS.autoBackupPrefix + dateKey); // format paling lama
 }
 
 const EXPENSE_CATEGORIES = [
@@ -293,7 +307,7 @@ function PublicLandingPage({ isLoggedIn }) {
 
   useEffect(() => {
     (async () => {
-      const p = await loadKey(KEYS.products);
+      const p = await loadList(KEYS.products);
       setProducts(p || []);
     })();
   }, []);
@@ -822,11 +836,11 @@ function PharmaERP({ userEmail, onLogout }) {
   setSyncState("syncing");
   try {
     const [p, s, c, b, po, pr, pi, pret, so, pout, pin, exp, dn, inv, ret, usr] = await Promise.all([
-      loadKey(KEYS.products), loadKey(KEYS.suppliers), loadKey(KEYS.customers),
-      loadKey(KEYS.batches), loadKey(KEYS.pos), loadKey(KEYS.pReceipts), loadKey(KEYS.pInvoices), loadKey(KEYS.pReturns), loadKey(KEYS.sos),
-      loadKey(KEYS.paymentsOut), loadKey(KEYS.paymentsIn), loadKey(KEYS.expenses),
-      loadKey(KEYS.deliveryNotes), loadKey(KEYS.invoices), loadKey(KEYS.returns),
-      loadKey(KEYS.users)
+      loadList(KEYS.products), loadList(KEYS.suppliers), loadList(KEYS.customers),
+      loadList(KEYS.batches), loadList(KEYS.pos), loadList(KEYS.pReceipts), loadList(KEYS.pInvoices), loadList(KEYS.pReturns), loadList(KEYS.sos),
+      loadList(KEYS.paymentsOut), loadList(KEYS.paymentsIn), loadList(KEYS.expenses),
+      loadList(KEYS.deliveryNotes), loadList(KEYS.invoices), loadList(KEYS.returns),
+      loadList(KEYS.users)
     ]);
 
     const swap = (setter) => (next) => setter((prev) => (JSON.stringify(prev) !== JSON.stringify(next) ? next : prev));
@@ -847,7 +861,7 @@ function PharmaERP({ userEmail, onLogout }) {
         { id: "3", email: "admin@wiryatamaputera.co.id", name: "Admin Finance", role: "finance", access: ["dashboard", "products", "customers", "sales", "finance", "reports"] }
       ];
       swap(setUsers)(defaultUsers);
-      saveKey(KEYS.users, defaultUsers); // Langsung simpan default ke storage agar panggilan berikutnya terbaca
+      if (getStorageMode() !== "v2") saveKey(KEYS.users, defaultUsers); // Langsung simpan default ke storage agar panggilan berikutnya terbaca
     }
 
     setLastSync(Date.now());
@@ -883,8 +897,8 @@ function PharmaERP({ userEmail, onLogout }) {
       // begitu total data membesar.
       let allOk = true;
       for (const k of AUTO_BACKUP_KEYS) {
-        const val = await loadKey(k);
-        const ok = await saveKey(autoBackupDocKey(todayISO(), k), val);
+        const val = await loadList(k);
+        const ok = await writeWholeList(autoBackupDocKey(todayISO(), k), val);
         if (!ok) allOk = false;
       }
       if (!allOk) throw new Error("Sebagian cadangan otomatis gagal disimpan");
@@ -921,7 +935,7 @@ function PharmaERP({ userEmail, onLogout }) {
       [KEYS.users, setUsers],
     ];
     const unsubs = pairs.map(([key, setter]) =>
-      subscribeKey(
+      subscribeList(
         key,
         (next) => {
           setter((prev) => (JSON.stringify(prev) !== JSON.stringify(next) ? next : prev));
@@ -932,6 +946,18 @@ function PharmaERP({ userEmail, onLogout }) {
       )
     );
     return () => unsubs.forEach((u) => u());
+  }, []);
+
+  // Kalau admin baru saja menjalankan migrasi, tab yang masih pakai format lama wajib dimuat ulang.
+  useEffect(() => {
+    if (getStorageMode() === "v2") return;
+    const unsub = watchSchema((version) => {
+      if (version >= 2) {
+        alert("Sistem baru saja diperbarui ke format data baru. Halaman akan dimuat ulang.");
+        window.location.reload();
+      }
+    });
+    return () => unsub();
   }, []);
 
   // Kalau ada data yang gagal disimpan ke Firestore, kasih tahu user (dulu cuma diam di console).
@@ -950,23 +976,25 @@ function PharmaERP({ userEmail, onLogout }) {
     setTimeout(() => setToast(null), 3000);
   }
 
+  // Tiap simpan mengirim perubahan relatif terhadap daftar yang sedang dilihat layar
+  // (state di render ini), bukan menimpa seluruh daftar.
   const persist = {
-    products: async (list) => { setProducts(list); await saveKey(KEYS.products, list); },
-    suppliers: async (list) => { setSuppliers(list); await saveKey(KEYS.suppliers, list); },
-    customers: async (list) => { setCustomers(list); await saveKey(KEYS.customers, list); },
-    batches: async (list) => { setBatches(list); await saveKey(KEYS.batches, list); },
-    pos: async (list) => { setPOs(list); await saveKey(KEYS.pos, list); },
-    pReceipts: async (list) => { setPReceipts(list); await saveKey(KEYS.pReceipts, list); },
-    pInvoices: async (list) => { setPInvoices(list); await saveKey(KEYS.pInvoices, list); },
-    pReturns: async (list) => { setPReturns(list); await saveKey(KEYS.pReturns, list); },
-    sos: async (list) => { setSOs(list); await saveKey(KEYS.sos, list); },
-    paymentsOut: async (list) => { setPaymentsOut(list); await saveKey(KEYS.paymentsOut, list); },
-    paymentsIn: async (list) => { setPaymentsIn(list); await saveKey(KEYS.paymentsIn, list); },
-    expenses: async (list) => { setExpenses(list); await saveKey(KEYS.expenses, list); },
-    deliveryNotes: async (list) => { setDeliveryNotes(list); await saveKey(KEYS.deliveryNotes, list); },
-    invoices: async (list) => { setInvoices(list); await saveKey(KEYS.invoices, list); },
-    returns: async (list) => { setReturns(list); await saveKey(KEYS.returns, list); },
-    users: async (list) => { setUsers(list); await saveKey(KEYS.users, list); },
+    products: async (list) => { setProducts(list); return saveList(KEYS.products, products, list); },
+    suppliers: async (list) => { setSuppliers(list); return saveList(KEYS.suppliers, suppliers, list); },
+    customers: async (list) => { setCustomers(list); return saveList(KEYS.customers, customers, list); },
+    batches: async (list) => { setBatches(list); return saveList(KEYS.batches, batches, list); },
+    pos: async (list) => { setPOs(list); return saveList(KEYS.pos, pos, list); },
+    pReceipts: async (list) => { setPReceipts(list); return saveList(KEYS.pReceipts, pReceipts, list); },
+    pInvoices: async (list) => { setPInvoices(list); return saveList(KEYS.pInvoices, pInvoices, list); },
+    pReturns: async (list) => { setPReturns(list); return saveList(KEYS.pReturns, pReturns, list); },
+    sos: async (list) => { setSOs(list); return saveList(KEYS.sos, sos, list); },
+    paymentsOut: async (list) => { setPaymentsOut(list); return saveList(KEYS.paymentsOut, paymentsOut, list); },
+    paymentsIn: async (list) => { setPaymentsIn(list); return saveList(KEYS.paymentsIn, paymentsIn, list); },
+    expenses: async (list) => { setExpenses(list); return saveList(KEYS.expenses, expenses, list); },
+    deliveryNotes: async (list) => { setDeliveryNotes(list); return saveList(KEYS.deliveryNotes, deliveryNotes, list); },
+    invoices: async (list) => { setInvoices(list); return saveList(KEYS.invoices, invoices, list); },
+    returns: async (list) => { setReturns(list); return saveList(KEYS.returns, returns, list); },
+    users: async (list) => { setUsers(list); return saveList(KEYS.users, users, list); },
   };
 
   const stockByProduct = useMemo(() => {
@@ -1165,7 +1193,12 @@ function invoiceNetSalesDPP(inv) {
 const currentUser = (users || []).find((u) => (u.email || "").toLowerCase() === (userEmail || "").toLowerCase());
 
 // Ambil daftar aksesnya (jika tidak ditemukan/admin, berikan akses penuh):
-const currentUserAccess = currentUser ? currentUser.access : ["dashboard", "products", "stock", "suppliers", "customers", "purchases", "sales", "finance", "reports", "settings"];
+const FULL_ACCESS = ["dashboard", "products", "stock", "suppliers", "customers", "purchases", "sales", "finance", "reports", "settings"];
+const isHardAdmin = ADMIN_FINANCE_EMAILS.includes((userEmail || "").toLowerCase());
+// Setelah migrasi, email yang tidak terdaftar di daftar pengguna TIDAK lagi dapat akses penuh.
+const currentUserAccess = currentUser
+  ? (currentUser.access || [])
+  : (isHardAdmin || getStorageMode() !== "v2" ? FULL_ACCESS : ["dashboard"]);
 
 // Filter navigasi sidebar agar menampilkan hanya modul yang diizinkan:
 const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || currentUserAccess.includes(n.id));
@@ -2325,6 +2358,40 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
   // State File Restore
   const restoreInputRef = useRef(null);
 
+  // State Migrasi Format Data
+  const [migrating, setMigrating] = useState(false);
+  const [migrateMsg, setMigrateMsg] = useState("");
+  const storageMode = getStorageMode();
+
+  async function runMigration() {
+    if (!confirm(
+      "MIGRASI KE FORMAT DATA BARU\n\n" +
+      "Jalankan saat tidak ada staf yang sedang input data.\n\n" +
+      "Langkahnya:\n1. Backup .json otomatis diunduh ke komputer ini\n2. Semua data disalin ke format baru\n3. Hasilnya diverifikasi, kalau beda migrasi dibatalkan\n\n" +
+      "Data lama TIDAK dihapus. Lanjutkan?"
+    )) return;
+    setMigrating(true);
+    try {
+      setMigrateMsg("Mengunduh backup...");
+      const ok = await downloadFullBackup();
+      if (!ok) throw new Error("Backup gagal diunduh, migrasi dibatalkan.");
+      const report = await migrateToV2(AUTO_BACKUP_RESTORE_KEYS, setMigrateMsg);
+      const fixes = report.filter((r) => r.noId || r.dup).map((r) => `${r.key}: ${r.noId} tanpa ID/email, ${r.dup} duplikat`);
+      const total = report.reduce((s, r) => s + r.count, 0);
+      alert(
+        `Migrasi selesai. ${total} data dipindahkan dan sudah diverifikasi.` +
+        (fixes.length ? `\n\nCatatan perbaikan otomatis:\n${fixes.join("\n")}` : "") +
+        "\n\nHalaman akan dimuat ulang."
+      );
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+      setMigrateMsg("");
+      notify(e?.message || "Migrasi gagal. Data lama masih utuh.", "danger");
+      setMigrating(false);
+    }
+  }
+
   // State Cadangan Data Otomatis
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
   const [autoBackupInfo, setAutoBackupInfo] = useState({ lastAutoBackupAt: null, backupDates: [] });
@@ -2361,7 +2428,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
     try {
       const data = await loadAutoBackup(dateKey, AUTO_BACKUP_RESTORE_KEYS);
       if (!data) return notify("Cadangan tidak ditemukan atau rusak", "danger");
-      for (const [key, val] of Object.entries(data)) await saveKey(key, val);
+      for (const [key, val] of Object.entries(data)) await writeWholeList(key, val);
       if (refreshAll) await refreshAll();
       notify(`Berhasil restore dari cadangan otomatis tanggal ${dateKey}`);
     } catch (e) {
@@ -2498,7 +2565,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
       ];
 
       const backupData = { exportDate: new Date().toISOString(), company: companyForm, data: {} };
-      for (const k of keys) backupData.data[k] = await loadKey(k);
+      for (const k of keys) backupData.data[k] = await loadList(k);
 
       const jsonStr = JSON.stringify(backupData, null, 2);
       const blob = new Blob([jsonStr], { type: "application/json" });
@@ -2512,9 +2579,11 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
       URL.revokeObjectURL(url);
 
       notify("Backup seluruh database ERP berhasil diunduh!");
+      return true;
     } catch (e) {
       console.error(e);
       notify("Gagal mengunduh backup database", "danger");
+      return false;
     }
   }
 
@@ -2529,7 +2598,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
         if (!imported.data) return notify("Format file backup JSON tidak valid!", "danger");
         if (!confirm("PERINGATAN: Meng-import file backup akan menimpa seluruh data ERP saat ini. Lanjutkan?")) return;
 
-        for (const [key, val] of Object.entries(imported.data)) await saveKey(key, val);
+        for (const [key, val] of Object.entries(imported.data)) await writeWholeList(key, val);
 
         if (imported.company) {
           localStorage.setItem("erp-company-profile", JSON.stringify(imported.company));
@@ -2891,6 +2960,36 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
                   className="shrink-0 w-4 h-4 cursor-pointer"
                   style={{ accentColor: PC.primary }}
                 />
+              </div>
+
+              {/* Format penyimpanan data */}
+              <div className="flex items-center justify-between gap-4 rounded-xl px-4 py-3.5" style={{ background: PC.bg, border: `1px solid ${storageMode === "v2" ? PC.border : PC.warn}` }}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <ShieldCheck size={16} style={{ color: storageMode === "v2" ? PC.primary : PC.warn }} className="shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold" style={{ color: PC.ink }}>Format Penyimpanan Data</div>
+                    <div className="text-xs" style={{ color: PC.inkSoft }}>
+                      {storageMode === "v2"
+                        ? "Format baru aktif. Data dipecah otomatis dan input bersamaan tidak saling menimpa."
+                        : migrating
+                          ? migrateMsg || "Memproses..."
+                          : "Masih format lama (batas 1 MB per jenis data, input bersamaan bisa saling menimpa). Jalankan di luar jam kerja."}
+                    </div>
+                  </div>
+                </div>
+                {storageMode === "v2" ? (
+                  <span className="shrink-0 text-xs font-semibold" style={{ color: PC.primary }}>Format Baru</span>
+                ) : (
+                  <button
+                    onClick={runMigration}
+                    disabled={migrating}
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                    style={{ background: PC.primary }}
+                  >
+                    {migrating ? <Loader2 size={13} className="animate-spin" /> : <Database size={13} />}
+                    {migrating ? "Memigrasi..." : "Migrasi Sekarang"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
