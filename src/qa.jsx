@@ -42,10 +42,22 @@ export function requiredClasses(items, products) {
   return ["obat", "alkes"].filter((c) => set.has(c));
 }
 
+// User yang sedang login (di-set dari App.jsx), dicatat sebagai pengaju transaksi.
+let CURRENT_USER = { email: "", name: "" };
+export function setCurrentUser(u) {
+  CURRENT_USER = { email: String(u?.email || "").toLowerCase(), name: u?.name || u?.email || "" };
+}
+
 // Bikin data review baru (semua kategori yang terlibat = menunggu).
+// Dipanggil saat transaksi dibuat atau isinya diubah -> pengubah terakhir = pengaju.
 export function newReview(items, products) {
   const required = requiredClasses(items, products);
-  const review = { required, createdAt: new Date().toISOString() };
+  const review = {
+    required,
+    createdAt: new Date().toISOString(),
+    createdBy: CURRENT_USER.email,
+    createdByName: CURRENT_USER.name,
+  };
   for (const c of required) review[c] = { status: "pending" };
   return review;
 }
@@ -97,11 +109,20 @@ export function applyDecision(doc, cls, status, officer, note) {
         byName: officer.name || officer.email || "",
         officerId: officer.id || null,
         license: officer.sipa || "",
+        // Persetujuan oleh wakil dicatat "a.n." penanggung jawab utama
+        delegate: !!officer.delegate,
+        onBehalfOf: officer.delegate ? onBehalfOfFor(officer, cls) : "",
         at: new Date().toISOString(),
         note: note || "",
       },
     },
   };
+}
+
+// Pembuat / pengubah terakhir transaksi tidak boleh menyetujui transaksinya sendiri.
+export function isOwnSubmission(doc, email) {
+  const by = String(doc?.qaReview?.createdBy || "").toLowerCase();
+  return !!by && by === String(email || "").toLowerCase();
 }
 
 // Petugas aktif & masih berlaku untuk email yang sedang login.
@@ -112,11 +133,36 @@ export function officerStatus(o, today = new Date().toISOString().slice(0, 10)) 
   return "ok";
 }
 
+// qaClass petugas: "obat" | "alkes" | "both" (khusus wakil yang mewakili APJ & PJT sekaligus)
+export function officerCovers(o, cls) {
+  return o && (o.qaClass === cls || o.qaClass === "both");
+}
+
+export function officerRoleLabel(o) {
+  if (!o) return "";
+  const base = o.qaClass === "both" ? "APJ & PJT" : `${QA_CLASSES[o.qaClass]?.role || ""} ${QA_CLASSES[o.qaClass]?.label || ""}`.trim();
+  return o.delegate ? `Wakil ${base}` : base;
+}
+
+// Penanggung jawab utama didahulukan; wakil dipakai kalau akun ini memang terdaftar sebagai wakil.
 export function myOfficerFor(officers, email, cls) {
   const e = String(email || "").toLowerCase();
-  return (officers || []).find(
-    (o) => o.qaClass === cls && String(o.email || "").toLowerCase() === e && officerStatus(o) === "ok"
-  ) || null;
+  const mine = (officers || []).filter(
+    (o) => officerCovers(o, cls) && String(o.email || "").toLowerCase() === e && officerStatus(o) === "ok"
+  );
+  return mine.find((o) => !o.delegate) || mine[0] || null;
+}
+
+// Wakil "APJ & PJT sekaligus" menyimpan nama yang diwakili per kategori.
+export function onBehalfOfFor(o, cls) {
+  if (!o || !o.delegate) return "";
+  return (cls === "obat" ? o.onBehalfOfObat : cls === "alkes" ? o.onBehalfOfAlkes : "") || o.onBehalfOf || "";
+}
+
+// Nama yang ditampilkan untuk sebuah keputusan: "Nama" atau "Nama (a.n. APJ X)"
+export function decisionByText(d) {
+  if (!d || !d.byName) return "";
+  return d.delegate ? `${d.byName} (a.n. ${d.onBehalfOf || "penanggung jawab"})` : d.byName;
 }
 
 export function myClasses(officers, email) {
@@ -143,7 +189,7 @@ export function QABadge({ doc, colorConfig, compact = false }) {
       style={{ background: bg, color: fg, borderColor: fg + "33" }}
       title={r.required.map((c) => {
         const d = r[c] || {};
-        return `${QA_CLASSES[c].role} ${QA_CLASSES[c].label}: ${d.status || "pending"}${d.byName ? " oleh " + d.byName : ""}${d.note ? " (" + d.note + ")" : ""}`;
+        return `${QA_CLASSES[c].role} ${QA_CLASSES[c].label}: ${d.status || "pending"}${d.byName ? " oleh " + decisionByText(d) : ""}${d.note ? " (" + d.note + ")" : ""}`;
       }).join("\n")}
     >
       {text}
@@ -157,6 +203,6 @@ export function qaSignatureText(doc, fmtDate = (d) => d) {
   if (!r || !r.required?.length) return "";
   return r.required
     .filter((c) => r[c]?.status === "approved")
-    .map((c) => `${QA_CLASSES[c].role} ${QA_CLASSES[c].label}: ${r[c].byName}${r[c].license ? " (" + r[c].license + ")" : ""}, ${fmtDate((r[c].at || "").slice(0, 10))}`)
+    .map((c) => `${QA_CLASSES[c].role} ${QA_CLASSES[c].label}: ${decisionByText(r[c])}${r[c].license ? " (" + r[c].license + ")" : ""}, ${fmtDate((r[c].at || "").slice(0, 10))}`)
     .join("  |  ");
 }

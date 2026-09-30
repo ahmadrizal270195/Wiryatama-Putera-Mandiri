@@ -29,7 +29,7 @@ import PurchasesView from "./modules/PurchasesModule";
 import SalesView from "./modules/SalesModule";
 import FinanceView from "./modules/FinanceModule";
 import QAView from "./modules/QAModule";
-import { myClasses } from "./qa";
+import { myClasses, setCurrentUser } from "./qa";
 
 const THEME = {
   light: {
@@ -1209,6 +1209,8 @@ const currentUserAccess = currentUser
 
 // Filter navigasi sidebar agar menampilkan hanya modul yang diizinkan:
 // APJ / PJT yang terdaftar otomatis bisa buka menu review walau belum diberi akses "qa".
+// Dipakai qa.jsx untuk mencatat siapa yang mengajukan transaksi (anti approve sendiri).
+setCurrentUser({ email: userEmail, name: currentUser?.name || userEmail });
 const isQAOfficer = myClasses(qaOfficers, userEmail).length > 0;
 const canOpenQA = currentUserAccess.includes("qa") || isQAOfficer || isHardAdmin;
 const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpenQA : currentUserAccess.includes(n.id)));
