@@ -42,22 +42,10 @@ export function requiredClasses(items, products) {
   return ["obat", "alkes"].filter((c) => set.has(c));
 }
 
-// User yang sedang login (di-set dari App.jsx), dicatat sebagai pengaju transaksi.
-let CURRENT_USER = { email: "", name: "" };
-export function setCurrentUser(u) {
-  CURRENT_USER = { email: String(u?.email || "").toLowerCase(), name: u?.name || u?.email || "" };
-}
-
 // Bikin data review baru (semua kategori yang terlibat = menunggu).
-// Dipanggil saat transaksi dibuat atau isinya diubah -> pengubah terakhir = pengaju.
 export function newReview(items, products) {
   const required = requiredClasses(items, products);
-  const review = {
-    required,
-    createdAt: new Date().toISOString(),
-    createdBy: CURRENT_USER.email,
-    createdByName: CURRENT_USER.name,
-  };
+  const review = { required, createdAt: new Date().toISOString() };
   for (const c of required) review[c] = { status: "pending" };
   return review;
 }
@@ -117,12 +105,6 @@ export function applyDecision(doc, cls, status, officer, note) {
       },
     },
   };
-}
-
-// Pembuat / pengubah terakhir transaksi tidak boleh menyetujui transaksinya sendiri.
-export function isOwnSubmission(doc, email) {
-  const by = String(doc?.qaReview?.createdBy || "").toLowerCase();
-  return !!by && by === String(email || "").toLowerCase();
 }
 
 // Petugas aktif & masih berlaku untuk email yang sedang login.

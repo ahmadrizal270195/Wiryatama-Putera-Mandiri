@@ -3,7 +3,7 @@ import { Plus, Search, CheckCircle2, XCircle, Clock, ShieldCheck, AlertTriangle,
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import {
   QA_CLASSES, qaClassOf, reviewState, applyDecision, myOfficerFor, officerStatus, QABadge,
-  officerRoleLabel, decisionByText, onBehalfOfFor, isOwnSubmission,
+  officerRoleLabel, decisionByText, onBehalfOfFor,
 } from "../qa";
 
 const FLOW_KEY = "erp-qa-flow-open";
@@ -165,8 +165,6 @@ function QueueTab(props) {
     if (status === "rejected" && !note.trim()) return notify("Alasan penolakan wajib diisi (untuk catatan audit)", "danger");
     const officer = myOfficerFor(officers, userEmail, cls);
     if (!officer) return notify(`Akun Anda bukan ${QA_CLASSES[cls].role} aktif untuk kategori ${QA_CLASSES[cls].label}`, "danger");
-    const latest = (saverOf[row.kind][0] || []).find((d) => d.id === row.doc.id) || row.doc;
-    if (isOwnSubmission(latest, userEmail)) return notify("Tidak bisa menyetujui / menolak transaksi yang Anda ajukan sendiri. Minta APJ / PJT / wakil lain.", "danger");
     setBusy(true);
     try {
       const [list, save] = saverOf[row.kind];
@@ -227,7 +225,7 @@ function QueueTab(props) {
         <div className="space-y-3">
           {rows.map((r) => (
             <ReviewCard key={r.kind + r.doc.id} r={r} products={products} c={c} fmtDate={fmtDate}
-              mineClasses={mineClasses} userEmail={userEmail} onDecide={(cls, status) => { setNote(""); setDecide({ row: r, cls, status }); }} />
+              mineClasses={mineClasses} onDecide={(cls, status) => { setNote(""); setDecide({ row: r, cls, status }); }} />
           ))}
         </div>
       )}
@@ -255,10 +253,9 @@ function QueueTab(props) {
   );
 }
 
-function ReviewCard({ r, products, c, fmtDate, mineClasses, onDecide, userEmail }) {
+function ReviewCard({ r, products, c, fmtDate, mineClasses, onDecide }) {
   const rv = r.doc.qaReview;
   const items = r.doc.items || [];
-  const own = isOwnSubmission(r.doc, userEmail);
   return (
     <Card colorConfig={c}>
       <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
@@ -266,7 +263,6 @@ function ReviewCard({ r, products, c, fmtDate, mineClasses, onDecide, userEmail 
           <div className="text-[11px] uppercase font-semibold tracking-wide" style={{ color: c.inkSoft }}>{r.kindLabel}</div>
           <div className="font-mono font-semibold text-sm" style={{ color: c.ink }}>{r.no || "-"}</div>
           <div className="text-xs" style={{ color: c.inkSoft }}>{r.party} · {fmtDate(r.doc.date)}</div>
-          {rv.createdByName && <div className="text-[11px] mt-0.5" style={{ color: c.inkSoft }}>Diajukan oleh {rv.createdByName}</div>}
         </div>
         <QABadge doc={r.doc} colorConfig={c} />
       </div>
@@ -302,12 +298,7 @@ function ReviewCard({ r, products, c, fmtDate, mineClasses, onDecide, userEmail 
                   {decisionByText(d)} · {d.at ? new Date(d.at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }) : ""}{d.note ? ` · "${d.note}"` : ""}
                 </div>
               )}
-              {canAct && own && (
-                <div className="text-[11px] font-semibold rounded-md px-2 py-1.5" style={{ background: c.warnSoft, color: c.warn }}>
-                  Transaksi ini Anda ajukan sendiri, jadi harus disetujui APJ / PJT / wakil lain.
-                </div>
-              )}
-              {canAct && !own && (
+              {canAct && (
                 <div className="flex gap-2">
                   {d.status !== "approved" && (
                     <button onClick={() => onDecide(cls, "approved")} className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-md text-white" style={{ background: c.good }}>Setujui</button>
@@ -352,11 +343,7 @@ function HistoryTab(props) {
         {rows.map((r, i) => (
           <tr key={i} style={{ borderTop: `1px solid ${c.border}` }}>
             <td className="px-3 py-2 text-xs font-mono" style={{ color: c.inkSoft }}>{new Date(r.d.at).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })}</td>
-            <td className="px-3 py-2 text-xs" style={{ color: c.ink }}>
-              <div className="font-mono font-semibold">{r.no}</div>
-              <div style={{ color: c.inkSoft }}>{r.kindLabel}</div>
-              {r.doc.qaReview.createdByName && <div className="text-[10px]" style={{ color: c.inkSoft }}>Diajukan: {r.doc.qaReview.createdByName}</div>}
-            </td>
+            <td className="px-3 py-2 text-xs" style={{ color: c.ink }}><div className="font-mono font-semibold">{r.no}</div><div style={{ color: c.inkSoft }}>{r.kindLabel}</div></td>
             <td className="px-3 py-2 text-xs" style={{ color: c.ink }}>{r.party}</td>
             <td className="px-3 py-2 text-xs" style={{ color: c.ink }}>{QA_CLASSES[r.cls].role} {QA_CLASSES[r.cls].label}</td>
             <td className="px-3 py-2"><Badge tone={r.d.status === "approved" ? "good" : "danger"} colorConfig={c}>{r.d.status === "approved" ? "Disetujui" : "Ditolak"}</Badge></td>
