@@ -85,19 +85,49 @@ function getPaper() {
   return PAPER_OPTIONS.find((p) => p.id === id) || PAPER_OPTIONS[0];
 }
 
-function PaperSelect() {
-  const [val, setVal] = useState(() => getPaper().id);
-  return (
-    <select
-      value={val}
-      onChange={(e) => { setVal(e.target.value); try { localStorage.setItem(PAPER_KEY, e.target.value); } catch (_) { /* abaikan */ } }}
-      title="Ukuran kertas cetak"
-      className="rounded-lg border px-2 py-1.5 text-xs cursor-pointer mr-2"
-      style={{ background: "#fff", color: "#111", borderColor: "#CBD5E1" }}
-    >
-      {PAPER_OPTIONS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-    </select>
-  );
+// Jendela kecil "Pilih ukuran kertas" yang muncul setiap kali klik Cetak.
+// Dibuat langsung pakai DOM supaya bisa dipanggil dari tombol mana pun tanpa state tambahan.
+function choosePaperAndPrint(elementId, titleText) {
+  const choices = PAPER_OPTIONS.filter((p) => p.id !== "a4");
+  const last = getPaper().id;
+  const overlay = document.createElement("div");
+  overlay.setAttribute("role", "dialog");
+  overlay.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;font-family:ui-sans-serif,system-ui,sans-serif";
+  const box = document.createElement("div");
+  box.style.cssText = "background:#fff;color:#111;border-radius:14px;padding:20px;width:100%;max-width:420px;box-shadow:0 20px 50px rgba(0,0,0,.35)";
+  box.innerHTML = `
+    <div style="font-weight:700;font-size:16px;margin-bottom:4px">Pilih ukuran kertas</div>
+    <div style="font-size:12px;color:#555;margin-bottom:14px">${titleText}</div>
+    <div data-list style="display:flex;flex-direction:column;gap:8px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
+      <button data-a4 style="background:none;border:none;color:#0E4749;font-size:12px;text-decoration:underline;cursor:pointer;padding:0">Pakai A4 (printer biasa / PDF)</button>
+      <button data-cancel style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer">Batal</button>
+    </div>`;
+  const list = box.querySelector("[data-list]");
+  const sizes = { continuous: '9,5" x 11"', half: '9,5" x 5,5" (setengah)' };
+  const notes = { continuous: "Satu lembar penuh continuous form", half: "Setengah lembar, format rapat seperti Excel" };
+  choices.forEach((p) => {
+    const b = document.createElement("button");
+    const active = p.id === last;
+    b.style.cssText = `text-align:left;border:2px solid ${active ? "#0E4749" : "#cbd5e1"};background:${active ? "#E8F0EF" : "#fff"};border-radius:10px;padding:10px 12px;cursor:pointer`;
+    b.innerHTML = `<div style="font-weight:700;font-size:15px">${sizes[p.id]}</div><div style="font-size:12px;color:#555">${notes[p.id]}${active ? " · terakhir dipakai" : ""}</div>`;
+    b.onclick = () => go(p.id);
+    list.appendChild(b);
+  });
+  function close() { overlay.remove(); document.removeEventListener("keydown", onKey); }
+  function go(id) {
+    try { localStorage.setItem(PAPER_KEY, id); } catch (_) { /* abaikan */ }
+    close();
+    printDocumentContent(elementId, titleText);
+  }
+  function onKey(e) { if (e.key === "Escape") close(); }
+  box.querySelector("[data-cancel]").onclick = close;
+  box.querySelector("[data-a4]").onclick = () => go("a4");
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  document.addEventListener("keydown", onKey);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  setTimeout(() => list.querySelector("button")?.focus(), 0);
 }
 
 function printDocumentContent(elementId, titleText) {
@@ -684,9 +714,8 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
       {printSO && (
         <Modal title={`Cetak Sales Order — ${printSO.soNumber}`} onClose={() => setPrintSO(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
-            <PaperSelect />
 
-            <Button onClick={() => printDocumentContent("printable-so", `Sales Order - ${printSO.soNumber}`)} variant="primary" colorConfig={colorConfig}>
+            <Button onClick={() => choosePaperAndPrint("printable-so", `Sales Order - ${printSO.soNumber}`)} variant="primary" colorConfig={colorConfig}>
               <Printer size={15} /> Cetak SO / Simpan PDF
             </Button>
           </div>
@@ -1116,9 +1145,8 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
       {printDN && (
         <Modal title={`Cetak Surat Jalan — ${printDN.noSJ}`} onClose={() => setPrintInvDN(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
-            <PaperSelect />
 
-            <Button onClick={() => printDocumentContent("printable-sj", `Surat Jalan - ${printDN.noSJ}`)} variant="primary" colorConfig={colorConfig}>
+            <Button onClick={() => choosePaperAndPrint("printable-sj", `Surat Jalan - ${printDN.noSJ}`)} variant="primary" colorConfig={colorConfig}>
               <Printer size={15} /> Cetak Surat Jalan / PDF
             </Button>
           </div>
@@ -1198,9 +1226,8 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
       {printTT && (
         <Modal title={`Tanda Terima Dokumen — ${printTT.noSJ}`} onClose={() => setPrintTT(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
-            <PaperSelect />
 
-            <Button onClick={() => printDocumentContent("printable-tt", `Tanda Terima - ${printTT.noSJ}`)} variant="primary" colorConfig={colorConfig}>
+            <Button onClick={() => choosePaperAndPrint("printable-tt", `Tanda Terima - ${printTT.noSJ}`)} variant="primary" colorConfig={colorConfig}>
               <Printer size={15} /> Cetak Tanda Terima / PDF
             </Button>
           </div>
@@ -1683,9 +1710,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       {printInv && (
         <Modal title={`Faktur Penjualan — ${printInv.noFaktur}`} onClose={() => setPrintInv(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
-            <PaperSelect />
 
-            <Button onClick={() => printDocumentContent("printable-invoice", `Faktur Penjualan - ${printInv.noFaktur}`)} variant="primary" colorConfig={colorConfig}>
+            <Button onClick={() => choosePaperAndPrint("printable-invoice", `Faktur Penjualan - ${printInv.noFaktur}`)} variant="primary" colorConfig={colorConfig}>
               <Printer size={15} /> Cetak Sekarang / Simpan PDF
             </Button>
           </div>
