@@ -57,12 +57,56 @@ function itemsChanged(oldItems, newItems) {
   return sig(oldItems) !== sig(newItems);
 }
 
+// ---------------------------------------------------------------------
+//  CETAK DOKUMEN (dioptimalkan untuk printer dot matrix / continuous form)
+//  - Semua teks & garis dipaksa HITAM pekat (abu-abu/hijau jadi titik jarang di dot matrix)
+//  - Font Arial ukuran normal, tanpa latar berwarna
+//  - Ukuran kertas bisa dipilih: continuous 9,5 x 11 in, setengah (9,5 x 5,5 in), atau A4
+// ---------------------------------------------------------------------
+const PAPER_KEY = "erp-print-paper";
+const PAPER_OPTIONS = [
+  { id: "continuous", label: "Continuous Form 9,5 x 11 in", css: "9.5in 11in", margin: "6mm 8mm" },
+  { id: "half", label: "Setengah Continuous 9,5 x 5,5 in", css: "9.5in 5.5in", margin: "4mm 8mm",
+    // versi rapat supaya muat setengah halaman (kayak format Excel)
+    extra: `
+      body { font-size: 9pt !important; }
+      .text-\\[9px\\], .text-\\[10px\\], .text-\\[11px\\], .text-xs { font-size: 8.5pt !important; line-height: 1.2 !important; }
+      .text-sm { font-size: 9.5pt !important; } .text-base, .text-lg, .text-xl { font-size: 11pt !important; }
+      [class*="mt-"], [class*="pt-"], [class*="mb-"], [class*="pb-"] { margin-top: 2px !important; margin-bottom: 2px !important; padding-top: 1px !important; padding-bottom: 1px !important; }
+      .mb-12 { margin-bottom: 26px !important; }
+      table th, table td { padding: 1px 4px !important; }
+      img { max-height: 30px !important; }
+    ` },
+  { id: "a4", label: "A4 (printer biasa / PDF)", css: "A4 portrait", margin: "12mm 10mm" },
+];
+function getPaper() {
+  let id = "continuous";
+  try { id = localStorage.getItem(PAPER_KEY) || "continuous"; } catch (_) { /* abaikan */ }
+  return PAPER_OPTIONS.find((p) => p.id === id) || PAPER_OPTIONS[0];
+}
+
+function PaperSelect() {
+  const [val, setVal] = useState(() => getPaper().id);
+  return (
+    <select
+      value={val}
+      onChange={(e) => { setVal(e.target.value); try { localStorage.setItem(PAPER_KEY, e.target.value); } catch (_) { /* abaikan */ } }}
+      title="Ukuran kertas cetak"
+      className="rounded-lg border px-2 py-1.5 text-xs cursor-pointer mr-2"
+      style={{ background: "#fff", color: "#111", borderColor: "#CBD5E1" }}
+    >
+      {PAPER_OPTIONS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+    </select>
+  );
+}
+
 function printDocumentContent(elementId, titleText) {
   const contentElement = document.getElementById(elementId);
   if (!contentElement) return alert("Elemen cetak tidak ditemukan!");
 
   const printWindow = window.open("", "_blank", "width=950,height=750");
   if (!printWindow) return alert("Pop-up diblokir oleh browser. Izinkan pop-up untuk mencetak dokumen.");
+  const paper = getPaper();
 
   printWindow.document.write(`
     <!DOCTYPE html>
@@ -71,13 +115,44 @@ function printDocumentContent(elementId, titleText) {
         <title>${titleText}</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
-          @page { size: A4 portrait; margin: 12mm 10mm 12mm 10mm; }
-          body { font-family: ui-sans-serif, system-ui, sans-serif; background: #ffffff; color: #111827; margin: 0; padding: 15px; }
+          @page { size: ${paper.css}; margin: ${paper.margin}; }
+          html, body { background: #fff !important; }
+          body { font-family: Arial, Helvetica, sans-serif !important; color: #000 !important; margin: 0; padding: 0; font-size: 11pt; }
+
+          /* 1. Semua teks, garis, ikon jadi hitam pekat; tanpa latar & bayangan */
+          *, *::before, *::after {
+            color: #000 !important;
+            border-color: #000 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            text-shadow: none !important;
+            opacity: 1 !important;
+          }
+          svg, svg * { stroke: #000 !important; }
+
+          /* 2. Font jelas & tidak kekecilan */
+          .font-mono, code, pre { font-family: Arial, Helvetica, sans-serif !important; }
+          .text-\\[9px\\], .text-\\[10px\\], .text-\\[11px\\], .text-xs { font-size: 10pt !important; line-height: 1.3 !important; }
+          .text-sm { font-size: 11pt !important; }
+          .text-base { font-size: 12pt !important; }
+          .text-lg, .text-xl { font-size: 14pt !important; }
+          .font-semibold, .font-bold, th { font-weight: 700 !important; }
+
+          /* 3. Tabel bergaris hitam seperti Excel */
           table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
+          table th, table td { border: 1px solid #000 !important; padding: 2px 5px !important; }
           tr { page-break-inside: avoid; page-break-after: auto; }
           thead { display: table-header-group; }
           tfoot { display: table-footer-group; }
+
+          /* 4. Rapikan: tanpa sudut membulat, logo hitam putih, ruang kosong dikurangi */
+          [class*="rounded"] { border-radius: 0 !important; }
+          img { filter: grayscale(100%) contrast(180%); max-height: 42px !important; }
+          [class*="min-w-"] { min-width: 0 !important; }
+          .p-4, .sm\\:p-6, .p-3 { padding: 4px !important; }
+          .mb-6 { margin-bottom: 8px !important; }
           .no-print { display: none !important; }
+          ${paper.extra || ""}
         </style>
       </head>
       <body>
@@ -86,7 +161,7 @@ function printDocumentContent(elementId, titleText) {
           setTimeout(() => {
             window.print();
             window.close();
-          }, 500);
+          }, 900);
         </script>
       </body>
     </html>
@@ -609,6 +684,8 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
       {printSO && (
         <Modal title={`Cetak Sales Order — ${printSO.soNumber}`} onClose={() => setPrintSO(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
+            <PaperSelect />
+
             <Button onClick={() => printDocumentContent("printable-so", `Sales Order - ${printSO.soNumber}`)} variant="primary" colorConfig={colorConfig}>
               <Printer size={15} /> Cetak SO / Simpan PDF
             </Button>
@@ -1039,6 +1116,8 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
       {printDN && (
         <Modal title={`Cetak Surat Jalan — ${printDN.noSJ}`} onClose={() => setPrintInvDN(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
+            <PaperSelect />
+
             <Button onClick={() => printDocumentContent("printable-sj", `Surat Jalan - ${printDN.noSJ}`)} variant="primary" colorConfig={colorConfig}>
               <Printer size={15} /> Cetak Surat Jalan / PDF
             </Button>
@@ -1119,6 +1198,8 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
       {printTT && (
         <Modal title={`Tanda Terima Dokumen — ${printTT.noSJ}`} onClose={() => setPrintTT(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
+            <PaperSelect />
+
             <Button onClick={() => printDocumentContent("printable-tt", `Tanda Terima - ${printTT.noSJ}`)} variant="primary" colorConfig={colorConfig}>
               <Printer size={15} /> Cetak Tanda Terima / PDF
             </Button>
@@ -1602,6 +1683,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       {printInv && (
         <Modal title={`Faktur Penjualan — ${printInv.noFaktur}`} onClose={() => setPrintInv(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
+            <PaperSelect />
+
             <Button onClick={() => printDocumentContent("printable-invoice", `Faktur Penjualan - ${printInv.noFaktur}`)} variant="primary" colorConfig={colorConfig}>
               <Printer size={15} /> Cetak Sekarang / Simpan PDF
             </Button>
