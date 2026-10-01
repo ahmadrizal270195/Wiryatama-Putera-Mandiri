@@ -90,27 +90,52 @@ function getPaper() {
 function choosePaperAndPrint(elementId, titleText) {
   const choices = PAPER_OPTIONS.filter((p) => p.id !== "a4");
   const last = getPaper().id;
-  const overlay = document.createElement("div");
+  let dark = false;
+  try { dark = localStorage.getItem("erp-theme") === "dark"; } catch (_) { /* abaikan */ }
+  // Warna sendiri (pakai id + !important) supaya tidak ketimpa CSS mode gelap aplikasi
+  const C = dark
+    ? { overlay: "rgba(0,0,0,.7)", box: "#0F172A", border: "#334155", text: "#F8FAFC", soft: "#94A3B8", card: "#1E293B", activeBg: "rgba(0,196,140,.15)", active: "#00C48C", link: "#34D399", btn: "#1E293B" }
+    : { overlay: "rgba(0,0,0,.55)", box: "#FFFFFF", border: "#CBD5E1", text: "#15302D", soft: "#5C7873", card: "#FFFFFF", activeBg: "#E8F0EF", active: "#0E4749", link: "#0E4749", btn: "#F1F5F9" };
+
+  document.getElementById("erp-paper-chooser")?.remove();
+  const overlay = document.createElement("section");
+  overlay.id = "erp-paper-chooser";
   overlay.setAttribute("role", "dialog");
-  overlay.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;font-family:ui-sans-serif,system-ui,sans-serif";
-  const box = document.createElement("div");
-  box.style.cssText = "background:#fff;color:#111;border-radius:14px;padding:20px;width:100%;max-width:420px;box-shadow:0 20px 50px rgba(0,0,0,.35)";
-  box.innerHTML = `
-    <div style="font-weight:700;font-size:16px;margin-bottom:4px">Pilih ukuran kertas</div>
-    <div style="font-size:12px;color:#555;margin-bottom:14px">${titleText}</div>
-    <div data-list style="display:flex;flex-direction:column;gap:8px"></div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
-      <button data-a4 style="background:none;border:none;color:#0E4749;font-size:12px;text-decoration:underline;cursor:pointer;padding:0">Pakai A4 (printer biasa / PDF)</button>
-      <button data-cancel style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer">Batal</button>
-    </div>`;
-  const list = box.querySelector("[data-list]");
+  overlay.innerHTML = `
+    <style>
+      #erp-paper-chooser { position:fixed !important; inset:0 !important; z-index:9999 !important; background:${C.overlay} !important; display:flex !important; align-items:center !important; justify-content:center !important; padding:16px !important; font-family:ui-sans-serif,system-ui,sans-serif !important; }
+      #erp-paper-chooser .pc-box { background:${C.box} !important; color:${C.text} !important; border:1px solid ${C.border} !important; border-radius:14px !important; padding:20px !important; width:100% !important; max-width:420px !important; box-shadow:0 20px 50px rgba(0,0,0,.4) !important; }
+      #erp-paper-chooser .pc-title { color:${C.text} !important; font-weight:700 !important; font-size:16px !important; margin-bottom:4px !important; }
+      #erp-paper-chooser .pc-sub { color:${C.soft} !important; font-size:12px !important; margin-bottom:14px !important; }
+      #erp-paper-chooser .pc-opt { display:block !important; width:100% !important; text-align:left !important; background:${C.card} !important; border:2px solid ${C.border} !important; border-radius:10px !important; padding:10px 12px !important; cursor:pointer !important; margin-bottom:8px !important; }
+      #erp-paper-chooser .pc-opt:hover { border-color:${C.active} !important; }
+      #erp-paper-chooser .pc-opt.active { background:${C.activeBg} !important; border-color:${C.active} !important; }
+      #erp-paper-chooser .pc-size { color:${C.text} !important; font-weight:700 !important; font-size:15px !important; }
+      #erp-paper-chooser .pc-note { color:${C.soft} !important; font-size:12px !important; }
+      #erp-paper-chooser .pc-foot { display:flex !important; justify-content:space-between !important; align-items:center !important; margin-top:6px !important; }
+      #erp-paper-chooser .pc-a4 { background:none !important; border:none !important; color:${C.link} !important; font-size:12px !important; text-decoration:underline !important; cursor:pointer !important; padding:0 !important; }
+      #erp-paper-chooser .pc-cancel { background:${C.btn} !important; color:${C.text} !important; border:1px solid ${C.border} !important; border-radius:8px !important; padding:6px 14px !important; font-size:13px !important; cursor:pointer !important; }
+    </style>
+    <article class="pc-box">
+      <p class="pc-title">Pilih ukuran kertas</p>
+      <p class="pc-sub"></p>
+      <nav class="pc-list"></nav>
+      <footer class="pc-foot">
+        <button type="button" class="pc-a4">Pakai A4 (printer biasa / PDF)</button>
+        <button type="button" class="pc-cancel">Batal</button>
+      </footer>
+    </article>`;
+  overlay.querySelector(".pc-sub").textContent = titleText;
+  const list = overlay.querySelector(".pc-list");
   const sizes = { continuous: '9,5" x 11"', half: '9,5" x 5,5" (setengah)' };
   const notes = { continuous: "Satu lembar penuh continuous form", half: "Setengah lembar, format rapat seperti Excel" };
   choices.forEach((p) => {
     const b = document.createElement("button");
-    const active = p.id === last;
-    b.style.cssText = `text-align:left;border:2px solid ${active ? "#0E4749" : "#cbd5e1"};background:${active ? "#E8F0EF" : "#fff"};border-radius:10px;padding:10px 12px;cursor:pointer`;
-    b.innerHTML = `<div style="font-weight:700;font-size:15px">${sizes[p.id]}</div><div style="font-size:12px;color:#555">${notes[p.id]}${active ? " · terakhir dipakai" : ""}</div>`;
+    b.type = "button";
+    b.className = "pc-opt" + (p.id === last ? " active" : "");
+    b.innerHTML = `<span class="pc-size"></span><br><span class="pc-note"></span>`;
+    b.querySelector(".pc-size").textContent = sizes[p.id];
+    b.querySelector(".pc-note").textContent = notes[p.id] + (p.id === last ? " · terakhir dipakai" : "");
     b.onclick = () => go(p.id);
     list.appendChild(b);
   });
@@ -121,11 +146,10 @@ function choosePaperAndPrint(elementId, titleText) {
     printDocumentContent(elementId, titleText);
   }
   function onKey(e) { if (e.key === "Escape") close(); }
-  box.querySelector("[data-cancel]").onclick = close;
-  box.querySelector("[data-a4]").onclick = () => go("a4");
+  overlay.querySelector(".pc-cancel").onclick = close;
+  overlay.querySelector(".pc-a4").onclick = () => go("a4");
   overlay.onclick = (e) => { if (e.target === overlay) close(); };
   document.addEventListener("keydown", onKey);
-  overlay.appendChild(box);
   document.body.appendChild(overlay);
   setTimeout(() => list.querySelector("button")?.focus(), 0);
 }
