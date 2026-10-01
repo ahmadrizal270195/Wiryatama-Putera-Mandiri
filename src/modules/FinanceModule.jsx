@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { Wallet, CreditCard, Receipt, PiggyBank, Plus, Calendar, Filter } from "lucide-react";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import { isCleared, blockedReason } from "../qa";
+import { computeBill } from "../billing";
 
 const EXPENSE_CATEGORIES = [
   "Sewa Gudang (Bulanan)",
@@ -98,8 +99,8 @@ export default function FinanceView(props) {
       ? (rawSubtotal > 0 ? (Math.min(rawSubtotal, Number(inv.discountPercent || 0)) / rawSubtotal) * 100 : 0)
       : Number(inv.discountPercent || 0);
 
-    const taxInfo = typeof calcTax === "function" ? calcTax(rawSubtotal, inv.taxType || "none", effHeaderPct) : { total: rawSubtotal };
-    return taxInfo.total + (Number(inv.ongkir) || 0);
+    // Pakai rumus tagihan bersama (diskon nota, fee, ongkir) supaya sama dengan form & cetakan.
+    return computeBill(inv).total;
   };
 
   // HELPER KALKULASI SISA HUTANG AKURAT DI FINANCE

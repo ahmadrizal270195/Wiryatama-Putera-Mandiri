@@ -30,6 +30,7 @@ import SalesView from "./modules/SalesModule";
 import FinanceView from "./modules/FinanceModule";
 import QAView from "./modules/QAModule";
 import { myClasses } from "./qa";
+import { computeBill } from "./billing";
 
 const THEME = {
   light: {
@@ -1026,59 +1027,17 @@ function PharmaERP({ userEmail, onLogout }) {
     return item ? item.name : "-";
   }
 
-  function invoiceRawTotal(inv) {
-  return (inv?.items || []).reduce((s, it) => {
-    const gross = it.qty * it.unitPrice;
-    const discAmount = gross * (Number(it.discountPercent || 0) / 100);
-    return s + Math.max(0, gross - discAmount);
-  }, 0);
-}
-
-function invoiceTotal(inv) {
-  const rawSub = invoiceRawTotal(inv);
-  const pct = headerDiscountToPct(rawSub, inv?.discountType, inv?.discountPercent || inv?.discount || 0);
-  return calcTax(rawSub, inv?.taxType || "none", pct).total + (Number(inv?.ongkir) || 0);
-}
-
-// DPP penjualan 1 faktur SETELAH diskon per-item DAN diskon header (Diskon Nota),
-// TIDAK termasuk PPN. Ini angka yang benar dipakai sebagai "penjualan" untuk
-// perhitungan margin/laba kotor — dipakai bersama oleh Dashboard, Finance, dan
-// Laporan Laba Rugi supaya ketiganya selalu konsisten.
-function invoiceNetSalesDPP(inv) {
-  const rawSub = invoiceRawTotal(inv);
-  const pct = headerDiscountToPct(rawSub, inv?.discountType, inv?.discountPercent || inv?.discount || 0);
-  return calcTax(rawSub, inv?.taxType || "none", pct).dpp;
-}
-
-  function pInvoiceRawTotal(inv) { 
-    return (inv?.items || []).reduce((s, it) => {
-      const gross = it.qty * it.unitPrice;
-      const discAmount = gross * (Number(it.discountPercent || 0) / 100);
-      return s + Math.max(0, gross - discAmount);
-    }, 0); 
-  }
-  function pInvoiceTotal(inv) { 
-    const rawSub = pInvoiceRawTotal(inv);
-    const pct = headerDiscountToPct(rawSub, inv?.discountType, inv?.discountPercent || inv?.discount || 0);
-    return calcTax(rawSub, inv?.taxType || "none", pct).total + (Number(inv?.ongkir) || 0); 
-  }
-
-  function soTotal(so) {
-  const rawSub = (so?.items || []).reduce((s, it) => {
-    const gross = it.qty * it.unitPrice;
-    const discAmount = gross * (Number(it.discountPercent || 0) / 100);
-    return s + Math.max(0, gross - discAmount);
-  }, 0);
-  return calcTax(rawSub, so?.taxType || "none", so?.discountPercent || so?.discount || 0).total;
-}
-  function poTotal(po) {
-    const rawSub = (po?.items || []).reduce((s, it) => {
-      const gross = it.qty * it.unitPrice;
-      const discAmount = gross * (Number(it.discountPercent || 0) / 100);
-      return s + Math.max(0, gross - discAmount);
-    }, 0);
-    return calcTax(rawSub, po?.taxType || "none", po?.discountPercent || po?.discount || 0).total;
-  }
+  // Semua total tagihan pakai rumus bersama di src/billing.js
+  // (diskon item % / Rp, diskon nota, PPN, fee, ongkir) supaya Dashboard, Finance,
+  // Laporan, form, dan cetakan selalu sama angkanya.
+  function invoiceRawTotal(inv) { return computeBill(inv).raw; }
+  function invoiceTotal(inv) { return computeBill(inv).total; }
+  // DPP penjualan setelah diskon item & diskon nota, tanpa PPN (dipakai untuk margin / laba kotor).
+  function invoiceNetSalesDPP(inv) { return computeBill(inv).dpp; }
+  function pInvoiceRawTotal(inv) { return computeBill(inv).raw; }
+  function pInvoiceTotal(inv) { return computeBill(inv).total; }
+  function soTotal(so) { return computeBill(so, { includeOngkir: false }).total; }
+  function poTotal(po) { return computeBill(po, { includeOngkir: false }).total; }
   
   function pInvoicePaidAmount(invId) { return (paymentsOut || []).filter((p) => p.pInvoiceId === invId).reduce((s, p) => s + p.amount, 0); }
   function pInvoiceReturnedAmount(invId) { return (pReturns || []).filter((r) => r.pInvoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
@@ -2013,9 +1972,15 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
       .reduce((s, pi) => s + (Number(pi.ongkir) || 0), 0);
     periodExpenses += ongkirPembelian;
 
-    const netProfit = grossProfit - periodExpenses;
+    // Fee yang dipotong dari tagihan penjualan = beban (uang yang diterima berkurang, DPP tetap).
+    const feePenjualan = (filteredInvoices || []).reduce((s, inv) => s + computeBill(inv).fee, 0);
+    periodExpenses += feePenjualan;
+    // Fee / potongan yang diberikan supplier di faktur pembelian = pendapatan lain-lain.
+    const feePembelian = (pInvoices || []).filter((pi) => inRange(pi.date)).reduce((s, pi) => s + computeBill(pi).fee, 0);
 
-    return { grossSalesDPP, salesReturnsVal, netSales, totalCOGS, grossProfit, periodExpenses, ongkirPembelian, netProfit };
+    const netProfit = grossProfit - periodExpenses + feePembelian;
+
+    return { grossSalesDPP, salesReturnsVal, netSales, totalCOGS, grossProfit, periodExpenses, ongkirPembelian, feePenjualan, feePembelian, netProfit };
   }, [filteredInvoices, returns, deliveryNotes, batches, expenses, pInvoices, start, end]);
 
   function aggregateByProduct(docs) {
@@ -2208,12 +2173,24 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
 
               <div className="flex justify-between py-1.5 border-b text-gray-700 pl-4">
                 <span>(-) Beban Operasional Lainnya</span>
-                <span className="text-red-600">- {fmtIDR(pnlData.periodExpenses - pnlData.ongkirPembelian)}</span>
+                <span className="text-red-600">- {fmtIDR(pnlData.periodExpenses - pnlData.ongkirPembelian - pnlData.feePenjualan)}</span>
               </div>
               {pnlData.ongkirPembelian > 0 && (
                 <div className="flex justify-between py-1.5 border-b text-gray-700 pl-4">
                   <span>(-) Ongkir Pembelian (dari Faktur Pembelian)</span>
                   <span className="text-red-600">- {fmtIDR(pnlData.ongkirPembelian)}</span>
+                </div>
+              )}
+              {pnlData.feePenjualan > 0 && (
+                <div className="flex justify-between py-1.5 border-b text-gray-700 pl-4">
+                  <span>(-) Fee Penjualan (dipotong dari faktur)</span>
+                  <span className="text-red-600">- {fmtIDR(pnlData.feePenjualan)}</span>
+                </div>
+              )}
+              {pnlData.feePembelian > 0 && (
+                <div className="flex justify-between py-1.5 border-b text-gray-700 pl-4">
+                  <span>(+) Fee / Potongan dari Supplier</span>
+                  <span className="text-emerald-700">+ {fmtIDR(pnlData.feePembelian)}</span>
                 </div>
               )}
 

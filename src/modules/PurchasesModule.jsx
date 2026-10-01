@@ -8,6 +8,9 @@ function itemsChanged(oldItems, newItems) {
   return sig(oldItems) !== sig(newItems);
 }
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
+import { computeBill, normalizeDeductions, legacyDiscountFields, cleanDeductions } from "../billing";
+import { ItemsTable, DeductionsEditor, BillSummary, AddedBadge } from "../components/OrderEditor";
+const withRowIds = (list) => (list || []).map((d, i) => ({ ...d, id: d.id && d.id !== "legacy" ? d.id : `ded-${Date.now().toString(36)}-${i}` }));
 
 // Helper Input Diskon Dwi-Mode (% / Rp)
 function DiscountControl({ type, value, onTypeChange, onValueChange, colorConfig }) {
@@ -178,6 +181,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
   const [taxType, setTaxType] = useState("none");
   const [discountTypeHeader, setDiscountTypeHeader] = useState("percent");
   const [discountPercentHeader, setDiscountPercentHeader] = useState(0);
+  const [deductions, setDeductions] = useState([]);
   const [items, setItems] = useState([]);
   const [searchProd, setSearchProd] = useState("");
 
@@ -202,7 +206,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
     setDate(todayISO());
     setTaxType("none");
     setDiscountTypeHeader("percent");
-    setDiscountPercentHeader(0);
+    setDiscountPercentHeader(0); setDeductions([]);
     setItems([]);
     setSearchProd("");
     setEditingId(null);
@@ -220,7 +224,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
     setDate(po.date || todayISO());
     setTaxType(po.taxType || "none");
     setDiscountTypeHeader(po.discountType || "percent");
-    setDiscountPercentHeader(po.discountPercent ?? po.discount ?? 0);
+    setDiscountPercentHeader(po.discountPercent ?? po.discount ?? 0); setDeductions(withRowIds(normalizeDeductions(po)));
     setItems((po.items || []).map(it => ({ 
       ...it, 
       discountType: it.discountType || "percent", 
@@ -273,6 +277,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
     : Number(discountPercentHeader || 0);
 
   const taxInfo = calcTax(rawSubtotal, taxType, effectiveHeaderPct);
+  const poBill = computeBill({ items, taxType, deductions }, { includeOngkir: false });
 
   async function submit() {
     if (!poNumber.trim()) return notify("Nomor PO wajib diisi", "danger");
@@ -301,8 +306,8 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
       supplierId, 
       date, 
       taxType, 
-      discountType: discountTypeHeader,
-      discountPercent: Number(discountPercentHeader || 0), 
+      ...legacyDiscountFields(cleanDeductions(deductions), rawSubtotal),
+      deductions: cleanDeductions(deductions),
       items, 
       status: currentStatus,
       isClosedPartial: false
@@ -398,7 +403,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
       </ResponsiveTable>
 
       {modal && (
-        <Modal title={editingId ? `Edit Purchase Order — ${poNumber}` : "Buat Purchase Order"} onClose={() => { setModal(null); setEditingId(null); }} wide colorConfig={colorConfig}>
+        <Modal title={editingId ? `Edit Purchase Order — ${poNumber}` : "Buat Purchase Order"} onClose={() => { setModal(null); setEditingId(null); }} wide xwide colorConfig={colorConfig}>
           <div className="grid grid-cols-3 gap-3 mb-3">
             <Field label="Nomor PO" colorConfig={colorConfig}>
               <TextInput value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="Contoh: PO/WPM/2026/001" className="font-mono" colorConfig={colorConfig} />
@@ -422,16 +427,6 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
                 <option value="include11">PPN 11% (Termasuk Pajak)</option>
               </Select>
             </Field>
-
-            <Field label="Diskon Nota Supplier (% / Rp)" colorConfig={colorConfig}>
-              <DiscountControl
-                type={discountTypeHeader}
-                value={discountPercentHeader}
-                onTypeChange={setDiscountTypeHeader}
-                onValueChange={setDiscountPercentHeader}
-                colorConfig={colorConfig}
-              />
-            </Field>
           </div>
 
           <div className="mb-4 p-3 rounded-xl border" style={{ background: colorConfig?.bg, borderColor: colorConfig?.border }}>
@@ -447,7 +442,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
                   <div key={prod.id} className="flex items-center justify-between p-2 rounded-lg bg-white border text-xs" style={{ borderColor: colorConfig?.border }}>
                     <div>
                       <span className="font-semibold" style={{ color: colorConfig?.ink }}>{prod.name}</span>
-                      <span className="ml-2 text-[11px] font-mono" style={{ color: colorConfig?.inkSoft }}>({prod.category}) · Stok: {s.qty} {prod.unit}</span>
+                      <span className="ml-2 text-[11px] font-mono" style={{ color: colorConfig?.inkSoft }}>({prod.category}) · Stok: {s.qty} {prod.unit}</span><AddedBadge items={items} productId={prod.id} colorConfig={colorConfig} />
                     </div>
                     <Button variant="ghost" onClick={() => addProductToPO(prod)} className="!py-0.5 !px-2 text-xs" colorConfig={colorConfig}>
                       <Plus size={12} /> Tambah
@@ -458,77 +453,14 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
             </div>
           </div>
 
-          <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: colorConfig?.primary }}>Rincian Item Dipesan ({items.length})</div>
-          <div className="flex flex-col gap-2 max-h-56 overflow-y-auto mb-4 pr-1">
-            {items.map((it, i) => {
-              const p = (products || []).find((x) => x.id === it.productId);
-              const gross = it.qty * it.unitPrice;
-              const discAmount = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
-              const lineTotal = Math.max(0, gross - discAmount);
+          <ItemsTable items={items} products={products} stockByProduct={stockByProduct} showStock={false} readOnly={false} withBatch={false}
 
-              return (
-                <div key={i} className="p-2.5 rounded-lg bg-white border flex flex-col gap-2" style={{ borderColor: colorConfig?.border }}>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="text-sm font-semibold" style={{ color: colorConfig?.ink }}>{p?.name}</div>
-                      <div className="text-[11px] font-mono" style={{ color: colorConfig?.inkSoft }}>
-                        Total Item: <span className="font-bold text-gray-900">{fmtIDR(lineTotal)}</span>
-                      </div>
-                    </div>
-                    <button onClick={() => removeItem(i)} className="p-1 text-red-500 hover:opacity-70 cursor-pointer"><Trash2 size={16} color={colorConfig?.danger} /></button>
-                  </div>
+            onUpdate={updateItem} onRemove={removeItem} fmtIDR={fmtIDR} colorConfig={colorConfig} priceLabel="Harga Beli" title="Rincian Item Dipesan" />
 
-                  <div className="grid grid-cols-3 gap-2 pt-1 border-t border-gray-100">
-                    <div>
-                      <label className="text-[10px] block text-gray-500 font-mono">Qty</label>
-                      <TextInput 
-                        type="number" 
-                        value={it.qty} 
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          updateItem(i, { qty: val === "" ? "" : Math.max(0, Number(val)) });
-                        }} 
-                        onBlur={() => { if (!it.qty || Number(it.qty) <= 0) updateItem(i, { qty: 1 }); }}
-                        className="text-center" 
-                        colorConfig={colorConfig}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] block text-gray-500 font-mono">Harga Beli (Satuan)</label>
-                      <TextInput 
-                        type="number" 
-                        value={it.unitPrice} 
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          updateItem(i, { unitPrice: val === "" ? "" : Math.max(0, Number(val)) });
-                        }} 
-                        colorConfig={colorConfig}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] block text-gray-500 font-mono">Diskon Item (% / Rp)</label>
-                      <DiscountControl
-                        type={it.discountType || "percent"}
-                        value={it.discountPercent}
-                        onTypeChange={(t) => updateItem(i, { discountType: t })}
-                        onValueChange={(v) => updateItem(i, { discountPercent: v })}
-                        colorConfig={colorConfig}
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <DeductionsEditor deductions={deductions} onChange={setDeductions} bill={poBill} colorConfig={colorConfig} fmtIDR={fmtIDR} />
 
           <div className="flex justify-between items-end mt-4 pt-3 border-t" style={{ borderColor: colorConfig?.border }}>
-            <div className="text-xs flex flex-col gap-0.5">
-              <div>Subtotal Kotor: <span className="font-mono font-semibold">{fmtIDR(rawSubtotal)}</span></div>
-              {Number(discountPercentHeader) > 0 && <div>Diskon Nota Supplier: <span className="font-mono font-semibold text-red-600">- {fmtIDR(taxInfo.discHeaderAmount)}</span></div>}
-              <div>DPP: <span className="font-mono font-semibold">{fmtIDR(taxInfo.dpp)}</span></div>
-              {taxType !== "none" && <div>PPN (11%): <span className="font-mono font-semibold text-teal-700">{fmtIDR(taxInfo.ppn)}</span></div>}
-              <div className="font-bold text-sm text-gray-900 mt-1">Total PO: <span className="font-mono">{fmtIDR(taxInfo.total)}</span></div>
-            </div>
+            <BillSummary bill={poBill} fmtIDR={fmtIDR} colorConfig={colorConfig} totalLabel="Total PO" />
             <Button onClick={submit} colorConfig={colorConfig}>{editingId ? "Simpan Perubahan PO" : "Simpan & Terbitkan PO"}</Button>
           </div>
         </Modal>
@@ -610,7 +542,8 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
                   ? (rawSub > 0 ? (Math.min(rawSub, Number(printPO.discountPercent || 0)) / rawSub) * 100 : 0)
                   : Number(printPO.discountPercent || 0);
 
-                const taxInfo = calcTax(rawSub, printPO.taxType || "none", effPct);
+                const _bill = computeBill(printPO, { includeOngkir: false }); // pemotongan (diskon & fee) ikut dihitung
+                const taxInfo = { ..._bill, total: _bill.afterTax - _bill.fee };
 
                 return (
                   <div>
@@ -672,6 +605,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
                         {taxInfo.discHeaderAmount > 0 && <div className="flex justify-between py-1 border-b text-red-600"><span>Diskon Nota Vendor</span><span className="font-mono font-bold">- {fmtIDR(taxInfo.discHeaderAmount)}</span></div>}
                         <div className="flex justify-between py-1 border-b"><span className="text-gray-600">DPP</span><span className="font-mono font-bold">{fmtIDR(taxInfo.dpp)}</span></div>
                         {taxInfo.ppn > 0 && <div className="flex justify-between py-1 border-b text-teal-800"><span>PPN (11%)</span><span className="font-mono font-bold">{fmtIDR(taxInfo.ppn)}</span></div>}
+                        {(taxInfo.feeLines || []).filter((d) => d.amount > 0).map((d) => <div key={d.id} className="flex justify-between py-1 border-b text-red-600"><span>Fee{d.mode !== "amount" ? ` ${d.value}%` : ""}{d.note ? ` (${d.note})` : ""}</span><span className="font-mono font-bold">- {fmtIDR(d.amount)}</span></div>)}
                         <div className="flex justify-between py-2 border-b-2 text-sm font-bold" style={{ color: colorConfig?.primary, borderColor: colorConfig?.primary }}><span>Total Pesanan PO</span><span className="font-mono">{fmtIDR(taxInfo.total)}</span></div>
                       </div>
                     </div>
@@ -945,6 +879,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   const [taxType, setTaxType] = useState("none");
   const [discountTypeHeader, setDiscountTypeHeader] = useState("percent");
   const [discountPercentHeader, setDiscountPercentHeader] = useState(0);
+  const [deductions, setDeductions] = useState([]);
   const [ongkir, setOngkir] = useState(0);
   const [items, setItems] = useState([]);
   const [searchProd, setSearchProd] = useState("");
@@ -980,8 +915,8 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       : Number(inv.discountPercent || 0);
 
     // 3. Kalkulasi Pajak PPN (Non-PPN, PPN 11%, atau Include PPN)
-    const taxInfo = calcTax(rawSubtotal, inv.taxType || "none", effHeaderPct);
-    return taxInfo.total + (Number(inv.ongkir) || 0);
+    // Pakai rumus tagihan bersama (diskon nota, fee, ongkir) supaya sama dengan form & cetakan.
+    return computeBill(inv).total;
   };
 
   // LOGIKA PEMROSESAN FILTER & SORTING
@@ -1032,7 +967,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     setDate(todayISO());
     setTaxType("none");
     setDiscountTypeHeader("percent");
-    setDiscountPercentHeader(0);
+    setDiscountPercentHeader(0); setDeductions([]);
     setOngkir(0);
     setItems([]);
     setSearchProd("");
@@ -1051,7 +986,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     setDate(inv.date || todayISO());
     setTaxType(inv.taxType || "none");
     setDiscountTypeHeader(inv.discountType || "percent");
-    setDiscountPercentHeader(inv.discountPercent || 0);
+    setDiscountPercentHeader(inv.discountPercent || 0); setDeductions(withRowIds(normalizeDeductions(inv)));
     setOngkir(inv.ongkir || 0);
     setItems((inv.items || []).map(it => ({ ...it, discountType: it.discountType || "percent", discountPercent: it.discountPercent || 0 })));
     setSearchProd("");
@@ -1184,8 +1119,8 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     supplierId, 
     date, 
     taxType, 
-    discountType: discountTypeHeader,
-    discountPercent: Number(discountPercentHeader || 0), 
+    ...legacyDiscountFields(cleanDeductions(deductions), directRawSubtotal),
+    deductions: cleanDeductions(deductions),
     ongkir: Number(ongkir || 0),
     items: invItems, 
     isDirect: true,
@@ -1249,6 +1184,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       taxType: po.taxType || "none", 
       discountType: po.discountType || "percent",
       discountPercent: Number(po.discountPercent || 0),
+      ...(Array.isArray(po.deductions) ? { deductions: po.deductions } : {}),
       ongkir: ongkirVal,
       items: invItems 
     }]);
@@ -1297,6 +1233,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     : Number(discountPercentHeader || 0);
 
   const directTax = calcTax(directRawSubtotal, taxType, directEffHeaderPct);
+  const dirBill = computeBill({ items, taxType, deductions, ongkir });
 
   return (
     <div>
@@ -1384,7 +1321,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       </ResponsiveTable>
 
       {modalDirect && (
-        <Modal title={editingId ? `Edit Faktur Pembelian — ${noFakturDirect}` : "Buat Faktur Pembelian Langsung (Tanpa PO)"} onClose={() => { setModalDirect(false); setEditingId(null); }} wide colorConfig={colorConfig}>
+        <Modal title={editingId ? `Edit Faktur Pembelian — ${noFakturDirect}` : "Buat Faktur Pembelian Langsung (Tanpa PO)"} onClose={() => { setModalDirect(false); setEditingId(null); }} wide xwide colorConfig={colorConfig}>
           <div className="grid grid-cols-3 gap-3 mb-4">
             <Field label="Nomor Faktur Vendor" colorConfig={colorConfig}>
               <TextInput value={noFakturDirect} onChange={(e) => setNoFakturDirect(e.target.value)} placeholder="Contoh: VINV/2026/001" className="font-mono" colorConfig={colorConfig} />
@@ -1409,16 +1346,6 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
               </Select>
             </Field>
 
-            <Field label="Diskon Nota Vendor (% / Rp)" colorConfig={colorConfig}>
-              <DiscountControl
-                type={discountTypeHeader}
-                value={discountPercentHeader}
-                onTypeChange={setDiscountTypeHeader}
-                onValueChange={setDiscountPercentHeader}
-                colorConfig={colorConfig}
-              />
-            </Field>
-
             <Field label="Biaya Ongkir (Rp)" colorConfig={colorConfig}>
               <TextInput type="number" value={ongkir} onChange={(e) => setOngkir(e.target.value)} placeholder="0" colorConfig={colorConfig} />
             </Field>
@@ -1435,7 +1362,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
                 <div key={prod.id} className="flex items-center justify-between p-2 rounded-lg bg-white border text-xs" style={{ borderColor: colorConfig?.border }}>
                   <div>
                     <span className="font-semibold" style={{ color: colorConfig?.ink }}>{prod.name}</span>
-                    <span className="ml-2 text-[11px] font-mono" style={{ color: colorConfig?.inkSoft }}>({prod.category})</span>
+                    <span className="ml-2 text-[11px] font-mono" style={{ color: colorConfig?.inkSoft }}>({prod.category})</span><AddedBadge items={items} productId={prod.id} colorConfig={colorConfig} />
                   </div>
                   <Button variant="ghost" onClick={() => addProductToDirect(prod)} className="!py-0.5 !px-2 text-xs" colorConfig={colorConfig}>
                     <Plus size={12} /> Tambah
@@ -1445,58 +1372,14 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
             </div>
           </div>
 
-          <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: colorConfig?.primary }}>Rincian Item, Batch & Exp Date ({items.length})</div>
-          <div className="flex flex-col gap-2 max-h-56 overflow-y-auto mb-4 pr-1">
-            {items.map((it, i) => {
-              const p = (products || []).find((x) => x.id === it.productId);
-              return (
-                <div key={i} className="p-3 rounded-lg bg-white border flex flex-col gap-2" style={{ borderColor: colorConfig?.border }}>
-                  <div className="flex justify-between items-center">
-                    <div className="text-sm font-semibold" style={{ color: colorConfig?.ink }}>{p?.name}</div>
-                    <button onClick={() => removeDirectItem(i)} className="text-red-500 hover:opacity-70 cursor-pointer"><Trash2 size={15} /></button>
-                  </div>
-                  <div className="grid grid-cols-5 gap-2">
-                    <div>
-                      <label className="text-[10px] block text-gray-500 font-mono">Qty</label>
-                      <TextInput type="number" value={it.qty} onChange={(e) => updateDirectItem(i, { qty: Math.max(1, Number(e.target.value)) })} colorConfig={colorConfig} />
-                    </div>
-                    <div>
-                      <label className="text-[10px] block text-gray-500 font-mono">Harga Beli</label>
-                      <TextInput type="number" value={it.unitPrice} onChange={(e) => updateDirectItem(i, { unitPrice: Number(e.target.value) })} colorConfig={colorConfig} />
-                    </div>
-                    <div>
-                      <label className="text-[10px] block text-gray-500 font-mono">Disc (% / Rp)</label>
-                      <DiscountControl
-                        type={it.discountType || "percent"}
-                        value={it.discountPercent}
-                        onTypeChange={(t) => updateDirectItem(i, { discountType: t })}
-                        onValueChange={(v) => updateDirectItem(i, { discountPercent: v })}
-                        colorConfig={colorConfig}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] block text-gray-500 font-mono">No. Batch</label>
-                      <TextInput placeholder="Batch" value={it.batchNo} onChange={(e) => updateDirectItem(i, { batchNo: e.target.value })} colorConfig={colorConfig} />
-                    </div>
-                    <div>
-                      <label className="text-[10px] block text-gray-500 font-mono">Exp Date</label>
-                      <TextInput type="date" value={it.expiryDate} onChange={(e) => updateDirectItem(i, { expiryDate: e.target.value })} colorConfig={colorConfig} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <ItemsTable items={items} products={products} stockByProduct={null} showStock={false} readOnly={false} withBatch={true}
+
+            onUpdate={updateDirectItem} onRemove={removeDirectItem} fmtIDR={fmtIDR} colorConfig={colorConfig} priceLabel="Harga Beli" title="Rincian Item, Batch & Exp Date" />
+
+          <DeductionsEditor deductions={deductions} onChange={setDeductions} bill={dirBill} colorConfig={colorConfig} fmtIDR={fmtIDR} />
 
           <div className="flex justify-between items-end mt-4 pt-3 border-t" style={{ borderColor: colorConfig?.border }}>
-            <div className="text-xs flex flex-col gap-0.5">
-              <div>Subtotal Kotor: <span className="font-mono font-semibold">{fmtIDR(directRawSubtotal)}</span></div>
-              {Number(discountPercentHeader) > 0 && <div>Diskon Nota: <span className="font-mono font-semibold text-red-600">- {fmtIDR(directTax.discHeaderAmount)}</span></div>}
-              <div>DPP: <span className="font-mono font-semibold">{fmtIDR(directTax.dpp)}</span></div>
-              {taxType !== "none" && <div>PPN (11%): <span className="font-mono font-semibold text-teal-700">{fmtIDR(directTax.ppn)}</span></div>}
-              {Number(ongkir) > 0 && <div>Ongkir: <span className="font-mono font-semibold">{fmtIDR(Number(ongkir))}</span></div>}
-              <div className="font-bold text-sm text-gray-900 mt-1">Total Tagihan: <span className="font-mono">{fmtIDR(directTax.total + (Number(ongkir) || 0))}</span></div>
-            </div>
+            <BillSummary bill={dirBill} fmtIDR={fmtIDR} colorConfig={colorConfig} totalLabel="Total Tagihan" />
             <Button onClick={submitDirectPInvoice} colorConfig={colorConfig}>{editingId ? "Simpan Perubahan Faktur" : "Simpan Faktur Pembelian & Tambah Stok"}</Button>
           </div>
         </Modal>
@@ -1554,11 +1437,14 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         ? (rawSub > 0 ? (Math.min(rawSub, Number(detailInv.discountPercent || 0)) / rawSub) * 100 : 0)
         : Number(detailInv.discountPercent || 0);
 
-      const taxInfo = calcTax(rawSub, detailInv.taxType || "none", effPct);
+      const _bill = computeBill(detailInv, { includeOngkir: false }); // pemotongan (diskon & fee) ikut dihitung
+                const taxInfo = { ..._bill, total: _bill.afterTax - _bill.fee };
       const ongkirVal = Number(detailInv.ongkir) || 0;
 
       return (
         <div className="text-right font-mono text-sm mb-2" style={{ color: colorConfig?.ink }}>
+          {_bill.diskon > 0 && <div className="font-normal" style={{ color: colorConfig?.danger }}>Diskon Nota: - {fmtIDR(_bill.diskon)}</div>}
+          {_bill.fee > 0 && <div className="font-normal" style={{ color: colorConfig?.danger }}>Fee: - {fmtIDR(_bill.fee)}</div>}
           {ongkirVal > 0 && <div className="font-normal">Ongkir: {fmtIDR(ongkirVal)}</div>}
           <div className="font-bold">Total Tagihan: {fmtIDR(taxInfo.total + ongkirVal)}</div>
         </div>
