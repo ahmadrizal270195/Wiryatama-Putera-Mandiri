@@ -3,7 +3,7 @@ import { Plus, Search, CheckCircle2, XCircle, Clock, ShieldCheck, AlertTriangle,
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import {
   QA_CLASSES, qaClassOf, reviewState, applyDecision, myOfficerFor, officerStatus, QABadge,
-  officerRoleLabel, decisionByText, onBehalfOfFor,
+  officerRoleLabel, decisionByText, onBehalfOfFor, printSigner,
 } from "../qa";
 import { PrintArea, DocHeader, DocParties, DocTable } from "../print";
 
@@ -178,9 +178,9 @@ function RejectionLetter({ row, products, customers, suppliers, pos, company, fm
             <div key={cls}>
               <p className="text-gray-700">Hormat kami,</p>
               <p className="text-gray-700 mb-12">{company?.name || "PT Wiryatama Putera Mandiri"}</p>
-              <p className="underline text-gray-900 font-bold">( {decisionByText(dd)} )</p>
+              <p className="underline text-gray-900 font-bold">( {printSigner(dd, cls).name} )</p>
               <p className="text-gray-700">{QA_CLASSES[cls].roleLong}</p>
-              {dd?.license && <p className="text-gray-700">No. {dd.license}</p>}
+              {printSigner(dd, cls).license && <p className="text-gray-700">No. {printSigner(dd, cls).license}</p>}
             </div>
           );
         })}

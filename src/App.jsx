@@ -29,7 +29,7 @@ import PurchasesView from "./modules/PurchasesModule";
 import SalesView from "./modules/SalesModule";
 import FinanceView from "./modules/FinanceModule";
 import QAView from "./modules/QAModule";
-import { myClasses } from "./qa";
+import { myClasses, setOfficersCache } from "./qa";
 import { computeBill } from "./billing";
 
 const THEME = {
@@ -815,6 +815,7 @@ function PharmaERP({ userEmail, onLogout }) {
   const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [qaOfficers, setQaOfficers] = useState([]);
+  useEffect(() => { setOfficersCache(qaOfficers); }, [qaOfficers]);
   const [disposals, setDisposals] = useState([]);
 
   const idleTimerRef = useRef(null);

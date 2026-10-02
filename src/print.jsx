@@ -1,6 +1,6 @@
 import React from "react";
 import { Printer } from "lucide-react";
-import { QA_CLASSES, decisionByText } from "./qa";
+import { QA_CLASSES, printSigner } from "./qa";
 
 // ---------------------------------------------------------------------
 //  CETAK DOKUMEN (dioptimalkan untuk printer dot matrix / continuous form)
@@ -198,6 +198,7 @@ export function QASignatureBlock({ doc, leftLabel = "Dibuat Oleh,", leftName = "
         const d = r?.[cls];
         const role = `${QA_CLASSES[cls]?.role} ${QA_CLASSES[cls]?.label}`;
         const approved = d?.status === "approved";
+        const signer = printSigner(d, cls);
         const rejected = d?.status === "rejected";
         return (
           <div key={cls}>
@@ -205,8 +206,8 @@ export function QASignatureBlock({ doc, leftLabel = "Dibuat Oleh,", leftName = "
             <div className="h-10" />
             {approved ? (
               <>
-                <p className="underline text-gray-900 font-bold">( {decisionByText(d)} )</p>
-                {d.license && <p className="text-gray-700">No. {d.license}</p>}
+                <p className="underline text-gray-900 font-bold">( {signer.name} )</p>
+                {signer.license && <p className="text-gray-700">No. {signer.license}</p>}
                 <p className="text-gray-700">Disetujui {fmtD(d.at)}</p>
               </>
             ) : (

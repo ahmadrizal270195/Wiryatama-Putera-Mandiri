@@ -100,6 +100,7 @@ export function applyDecision(doc, cls, status, officer, note) {
         // Persetujuan oleh wakil dicatat "a.n." penanggung jawab utama
         delegate: !!officer.delegate,
         onBehalfOf: officer.delegate ? onBehalfOfFor(officer, cls) : "",
+        onBehalfOfLicense: officer.delegate ? (principalFor(onBehalfOfFor(officer, cls), cls)?.sipa || "") : "",
         at: new Date().toISOString(),
         note: note || "",
       },
@@ -139,6 +140,26 @@ export function myOfficerFor(officers, email, cls) {
 export function onBehalfOfFor(o, cls) {
   if (!o || !o.delegate) return "";
   return (cls === "obat" ? o.onBehalfOfObat : cls === "alkes" ? o.onBehalfOfAlkes : "") || o.onBehalfOf || "";
+}
+
+// Cache master APJ/PJT (diisi App) supaya dokumen cetak bisa ambil SIPA penanggung jawab utama.
+let OFFICERS_CACHE = [];
+export function setOfficersCache(list) { OFFICERS_CACHE = Array.isArray(list) ? list : []; }
+
+function principalFor(name, cls) {
+  const n = String(name || "").trim().toLowerCase();
+  if (!n) return null;
+  return OFFICERS_CACHE.find((o) => !o.delegate && officerCovers(o, cls) && String(o.name || "").trim().toLowerCase() === n) || null;
+}
+
+// Nama & SIPA untuk kolom TTD di dokumen cetak.
+// Kalau disetujui wakil, yang tercetak cuma penanggung jawab utama (nama wakil disembunyikan).
+// Riwayat audit di aplikasi tetap mencatat "a.n.".
+export function printSigner(d, cls) {
+  if (!d) return { name: "", license: "" };
+  if (!d.delegate) return { name: d.byName || "", license: d.license || "" };
+  const p = principalFor(d.onBehalfOf, cls);
+  return { name: p?.name || d.onBehalfOf || d.byName || "", license: d.onBehalfOfLicense || p?.sipa || "" };
 }
 
 // Nama yang ditampilkan untuk sebuah keputusan: "Nama" atau "Nama (a.n. APJ X)"
@@ -185,6 +206,6 @@ export function qaSignatureText(doc, fmtDate = (d) => d) {
   if (!r || !r.required?.length) return "";
   return r.required
     .filter((c) => r[c]?.status === "approved")
-    .map((c) => `${QA_CLASSES[c].role} ${QA_CLASSES[c].label}: ${decisionByText(r[c])}${r[c].license ? " (" + r[c].license + ")" : ""}, ${fmtDate((r[c].at || "").slice(0, 10))}`)
+    .map((c) => `${QA_CLASSES[c].role} ${QA_CLASSES[c].label}: ${printSigner(r[c], c).name}${printSigner(r[c], c).license ? " (" + printSigner(r[c], c).license + ")" : ""}, ${fmtDate((r[c].at || "").slice(0, 10))}`)
     .join("  |  ");
 }
