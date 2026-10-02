@@ -189,7 +189,8 @@ export function QASignatureBlock({ doc, leftLabel = "Dibuat Oleh,", leftName = "
     <div className="grid gap-4 text-center text-xs mt-8 pt-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
       {lefts.map((l, i) => (
         <div key={"l" + i}>
-          <p className="text-gray-500 mb-12">{l.label}</p>
+          <div className="text-gray-500 min-h-[2.6em]">{l.label}</div>
+          <div className="h-10" />
           <p className={`text-gray-900 font-bold whitespace-pre ${l.name ? "underline" : ""}`}>{l.name ? `( ${l.name} )` : "(                              )"}</p>
         </div>
       ))}
@@ -200,8 +201,8 @@ export function QASignatureBlock({ doc, leftLabel = "Dibuat Oleh,", leftName = "
         const rejected = d?.status === "rejected";
         return (
           <div key={cls}>
-            <p className="text-gray-500 mb-1">{title}</p>
-            <p className="text-gray-500 mb-8">{role}</p>
+            <div className="text-gray-500 min-h-[2.6em]"><p>{title}</p><p>{role}</p></div>
+            <div className="h-10" />
             {approved ? (
               <>
                 <p className="underline text-gray-900 font-bold">( {decisionByText(d)} )</p>

@@ -1085,11 +1085,13 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
                     </tbody>
                   </table>
 
-                  <div className="grid grid-cols-3 gap-4 text-center text-xs mt-12 pt-4">
-                    <div><p className="text-gray-500 mb-12">Disiapkan Oleh (Gudang),</p><p className="underline text-gray-900 font-bold">( Petugas Gudang )</p></div>
-                    <div><p className="text-gray-500 mb-12">Dikirim Oleh (Sales/Driver),</p><p className="underline text-gray-900 font-bold">( Pengirim )</p></div>
-                    <div><p className="text-gray-500 mb-12">Diterima Oleh (Pelanggan),</p><p className="text-gray-900 font-bold whitespace-pre">(                                        )</p></div>
-                  </div>
+                  <QASignatureBlock doc={so} title="Mengetahui,"
+                    requiredFallback={requiredClasses(printDN.items || so?.items || [], products)}
+                    leftCols={[
+                      { label: "Disiapkan Oleh (Gudang),", name: "Petugas Gudang" },
+                      { label: "Dikirim Oleh (Sales/Driver),", name: "Pengirim" },
+                      { label: "Diterima Oleh (Pelanggan),", name: "" },
+                    ]} />
                 </div>
               );
             })()}
