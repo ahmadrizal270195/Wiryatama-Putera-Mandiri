@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { Plus, Search, Printer, FileText, Trash2 } from "lucide-react";
 import { newReview, isCleared, blockedReason, QABadge, reviewState, qaSignatureText, requiredClasses } from "../qa";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
-import { choosePaperAndPrint, printDocumentContent, QASignatureBlock, PrintArea, DocHeader, DocParties, DocTable, SignatureRow } from "../print";
+import { choosePaperAndPrint, printDocumentContent, QASignatureBlock, PrintArea, DocHeader, DocParties, DocTable, SignatureRow, PaymentInfo } from "../print";
 import { computeBill, normalizeDeductions, legacyDiscountFields, cleanDeductions } from "../billing";
 import { ItemsTable, DeductionsEditor, BillSummary, AddedBadge } from "../components/OrderEditor";
 const withRowIds = (list) => (list || []).map((d, i) => ({ ...d, id: d.id && d.id !== "legacy" ? d.id : `ded-${Date.now().toString(36)}-${i}` }));
@@ -1683,11 +1683,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                     <div className="flex justify-between items-start mb-8 gap-4">
                       <div className="w-1/2 p-3 rounded-lg border bg-gray-50 text-[11px]">
                         <div className="text-gray-700 mb-1 font-bold">Catatan Pembayaran:</div>
-                        <p className="text-gray-500 leading-relaxed">
-                          Pembayaran dapat ditransfer melalui Bank: <b className="font-bold">{COMPANY_PROFILE?.bankDetails?.bankName}</b><br />
-                          No. Rekening: <b className="font-bold">{COMPANY_PROFILE?.bankDetails?.accountNumber}</b> a.n <b className="font-bold">{COMPANY_PROFILE?.bankDetails?.accountName}</b>.<br />
-                          <span className="italic">{COMPANY_PROFILE?.paymentNotes}</span>
-                        </p>
+                        <PaymentInfo taxType={_bill.taxType || printInv.taxType || "none"} company={COMPANY_PROFILE} />
                       </div>
 
                       <div className="w-5/12 text-xs flex flex-col gap-1.5">

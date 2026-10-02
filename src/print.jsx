@@ -317,3 +317,58 @@ export function PrintArea({ id, docTitle, children, buttonLabel = "Cetak Sekaran
     </div>
   );
 }
+
+// ---------------------------------------------------------------------
+//  REKENING PEMBAYARAN (otomatis beda untuk faktur PPN & Non-PPN)
+//  Data disimpan di erp-app-settings (cloud) -> paymentAccounts, paymentNotesPPN, paymentNotesNonPPN
+// ---------------------------------------------------------------------
+let PAYMENT_SETTINGS = {};
+export function setPaymentSettings(s) { PAYMENT_SETTINGS = s && !Array.isArray(s) ? s : {}; }
+export function getPaymentSettings() { return PAYMENT_SETTINGS; }
+
+export const PAYMENT_GROUPS = {
+  ppn: { label: "Faktur PPN", hint: "Rekening PT" },
+  nonppn: { label: "Faktur Non-PPN", hint: "Rekening Owner" },
+};
+
+export function paymentGroupOf(taxType) { return taxType && taxType !== "none" ? "ppn" : "nonppn"; }
+
+export function paymentAccountsFor(taxType, company) {
+  const g = paymentGroupOf(taxType);
+  const list = (PAYMENT_SETTINGS.paymentAccounts || []).filter(
+    (a) => a.group === g && a.active !== false && String(a.accountNumber || "").trim()
+  );
+  if (list.length) return list;
+  // Belum diatur: faktur PPN pakai rekening PT bawaan profil perusahaan
+  if (g === "ppn" && company?.bankDetails?.accountNumber) return [{ id: "default", ...company.bankDetails }];
+  return [];
+}
+
+export function paymentNoteFor(taxType, company) {
+  const g = paymentGroupOf(taxType);
+  const n = g === "ppn" ? PAYMENT_SETTINGS.paymentNotesPPN : PAYMENT_SETTINGS.paymentNotesNonPPN;
+  if (n && String(n).trim()) return n;
+  return g === "ppn" ? company?.paymentNotes || "" : "";
+}
+
+export function PaymentInfo({ taxType, company }) {
+  const accounts = paymentAccountsFor(taxType, company);
+  const note = paymentNoteFor(taxType, company);
+  return (
+    <p className="text-gray-500 leading-relaxed">
+      {accounts.length ? (
+        <>
+          Pembayaran dapat ditransfer ke:<br />
+          {accounts.map((a) => (
+            <span key={a.id || a.accountNumber}>
+              <b className="font-bold">{a.bankName}</b> No. Rek: <b className="font-bold">{a.accountNumber}</b> a.n <b className="font-bold">{a.accountName}</b><br />
+            </span>
+          ))}
+        </>
+      ) : (
+        <>Silakan hubungi kami untuk informasi rekening pembayaran.<br /></>
+      )}
+      {note && <span className="italic">{note}</span>}
+    </p>
+  );
+}

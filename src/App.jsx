@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import {
-  loadKey, saveKey, deleteKey,
+  loadKey, saveKey, deleteKey, subscribeKey,
   loadList, subscribeList, saveList, writeWholeList, deleteList,
   getStorageMode, watchSchema, migrateToV2,
 } from "./storage";
@@ -31,6 +31,7 @@ import FinanceView from "./modules/FinanceModule";
 import QAView from "./modules/QAModule";
 import { myClasses, setOfficersCache } from "./qa";
 import { computeBill } from "./billing";
+import { setPaymentSettings, PAYMENT_GROUPS } from "./print";
 
 const THEME = {
   light: {
@@ -816,6 +817,8 @@ function PharmaERP({ userEmail, onLogout }) {
   const [users, setUsers] = useState([]);
   const [qaOfficers, setQaOfficers] = useState([]);
   useEffect(() => { setOfficersCache(qaOfficers); }, [qaOfficers]);
+  // Pengaturan rekening pembayaran (PPN / Non-PPN) disinkron realtime dari cloud
+  useEffect(() => subscribeKey(KEYS.settings, (v) => setPaymentSettings(v), () => {}), []);
   const [disposals, setDisposals] = useState([]);
 
   const idleTimerRef = useRef(null);
@@ -2341,6 +2344,126 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
 // Ganti ke true kalau suatu saat mau dimunculkan lagi.
 const SHOW_MANUAL_BACKUP_RESTORE = false;
 
+// ---------------------------------------------------------------------
+//  PENGATURAN REKENING PEMBAYARAN (otomatis per jenis faktur)
+//  PPN -> rekening PT, Non-PPN -> rekening Owner. Disimpan di cloud (erp-app-settings).
+// ---------------------------------------------------------------------
+function newPayAcc(group) {
+  return { id: Math.random().toString(36).slice(2, 10), group, bankName: "", accountNumber: "", accountName: "", active: true };
+}
+
+function PaymentAccountsSettings({ notify }) {
+  const [accounts, setAccounts] = useState(null);
+  const [notes, setNotes] = useState({ ppn: "", nonppn: "" });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const raw = await loadKey(KEYS.settings);
+      const st = raw && !Array.isArray(raw) ? raw : {};
+      let list = Array.isArray(st.paymentAccounts) ? st.paymentAccounts : null;
+      if (!list) {
+        // Pertama kali: rekening PT lama otomatis jadi rekening Faktur PPN
+        const bd = COMPANY_PROFILE.bankDetails || {};
+        list = [{ ...newPayAcc("ppn"), bankName: bd.bankName || "", accountNumber: bd.accountNumber || "", accountName: bd.accountName || "" }, newPayAcc("nonppn")];
+      }
+      setAccounts(list);
+      setNotes({
+        ppn: st.paymentNotesPPN ?? (COMPANY_PROFILE.paymentNotes || ""),
+        nonppn: st.paymentNotesNonPPN ?? "Pembayaran dianggap sah apabila dana telah masuk ke rekening di atas.",
+      });
+    })();
+  }, []);
+
+  function update(id, field, value) {
+    setAccounts((list) => list.map((a) => (a.id === id ? { ...a, [field]: value } : a)));
+  }
+
+  async function save() {
+    const cleaned = (accounts || []).filter((a) => String(a.accountNumber || "").trim() || String(a.bankName || "").trim());
+    const bad = cleaned.find((a) => !String(a.accountNumber || "").trim() || !String(a.bankName || "").trim() || !String(a.accountName || "").trim());
+    if (bad) return notify("Lengkapi Nama Bank, No. Rekening, dan Atas Nama di setiap rekening.", "danger");
+    setSaving(true);
+    try {
+      const raw = await loadKey(KEYS.settings);
+      const st = raw && !Array.isArray(raw) ? raw : {};
+      const next = { ...st, paymentAccounts: cleaned, paymentNotesPPN: notes.ppn, paymentNotesNonPPN: notes.nonppn };
+      const ok = await saveKey(KEYS.settings, next);
+      if (!ok) throw new Error("save failed");
+      setPaymentSettings(next);
+      setAccounts(cleaned.length ? cleaned : [newPayAcc("ppn"), newPayAcc("nonppn")]);
+      notify("Rekening pembayaran tersimpan. Faktur PPN & Non-PPN otomatis pakai rekening masing-masing.");
+    } catch (e) {
+      console.error(e);
+      notify("Gagal menyimpan rekening pembayaran", "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!accounts) return <Card className="max-w-3xl !p-6 text-sm">Memuat pengaturan rekening...</Card>;
+
+  return (
+    <Card className="max-w-3xl !p-6 space-y-6">
+      <div>
+        <div className="font-bold text-sm text-teal-900 border-b pb-2 uppercase tracking-wide">Rekening Pembayaran di Faktur</div>
+        <p className="text-xs mt-2 opacity-80">
+          Rekening yang tercetak di faktur penjualan dipilih otomatis sesuai jenis pajaknya. Bisa isi lebih dari 1 rekening per jenis.
+        </p>
+      </div>
+
+      {["ppn", "nonppn"].map((g) => {
+        const rows = accounts.filter((a) => a.group === g);
+        return (
+          <div key={g} className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="font-bold text-sm">{PAYMENT_GROUPS[g].label}</div>
+                <div className="text-xs opacity-70">{g === "ppn" ? "Faktur dengan PPN otomatis pakai rekening ini (Rekening PT)." : "Faktur tanpa PPN otomatis pakai rekening ini (Rekening Owner)."}</div>
+              </div>
+              <Button variant="secondary" onClick={() => setAccounts([...accounts, newPayAcc(g)])}>
+                <Plus size={14} /> Tambah Rekening
+              </Button>
+            </div>
+
+            {rows.length === 0 && <div className="text-xs italic opacity-70">Belum ada rekening. Faktur akan menulis "hubungi kami untuk info rekening".</div>}
+
+            {rows.map((a) => (
+              <div key={a.id} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_1.3fr_auto] gap-2 items-end border rounded-lg p-3">
+                <Field label="Nama Bank">
+                  <TextInput value={a.bankName} placeholder="Contoh: BCA" onChange={(e) => update(a.id, "bankName", e.target.value)} />
+                </Field>
+                <Field label="No. Rekening">
+                  <TextInput value={a.accountNumber} onChange={(e) => update(a.id, "accountNumber", e.target.value)} />
+                </Field>
+                <Field label="Atas Nama">
+                  <TextInput value={a.accountName} onChange={(e) => update(a.id, "accountName", e.target.value)} />
+                </Field>
+                <div className="flex items-center gap-2 pb-1">
+                  <label className="flex items-center gap-1 text-xs cursor-pointer whitespace-nowrap">
+                    <input type="checkbox" checked={a.active !== false} onChange={(e) => update(a.id, "active", e.target.checked)} /> Tampil
+                  </label>
+                  <button type="button" title="Hapus rekening" className="p-1.5 rounded text-red-600 hover:bg-red-50" onClick={() => setAccounts(accounts.filter((x) => x.id !== a.id))}>
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <Field label={`Catatan Pembayaran ${PAYMENT_GROUPS[g].label}`}>
+              <TextInput value={notes[g]} onChange={(e) => setNotes({ ...notes, [g]: e.target.value })} />
+            </Field>
+          </div>
+        );
+      })}
+
+      <div className="flex justify-end pt-3 border-t">
+        <Button onClick={save} disabled={saving}>{saving ? "Menyimpan..." : "Simpan Rekening Pembayaran"}</Button>
+      </div>
+    </Card>
+  );
+}
+
 function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, isDarkMode = false, onThemeChange }) {
   const PC = getCOLOR(isDarkMode); // warna panel preferensi, ikut mode terang/gelap
   // Cek apakah user yang sedang login adalah Super Admin / Finance
@@ -2710,32 +2833,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
 
       {/* TAB 2: PAJAK & BANK (SUPER ADMIN) */}
       {subTab === "finance" && isSuperAdmin && (
-        <Card className="max-w-3xl !p-6 space-y-4">
-          <div className="font-bold text-sm text-teal-900 border-b pb-2 uppercase tracking-wide">
-            Pengaturan Rekening Bank Transfer Resmi
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Nama Bank">
-              <TextInput value={companyForm.bankDetails?.bankName || ""} onChange={(e) => setCompanyForm({ ...companyForm, bankDetails: { ...companyForm.bankDetails, bankName: e.target.value } })} />
-            </Field>
-            <Field label="Nomor Rekening">
-              <TextInput value={companyForm.bankDetails?.accountNumber || ""} onChange={(e) => setCompanyForm({ ...companyForm, bankDetails: { ...companyForm.bankDetails, accountNumber: e.target.value } })} />
-            </Field>
-          </div>
-
-          <Field label="Nama Pemilik Rekening (Atas Nama)">
-            <TextInput value={companyForm.bankDetails?.accountName || ""} onChange={(e) => setCompanyForm({ ...companyForm, bankDetails: { ...companyForm.bankDetails, accountName: e.target.value } })} />
-          </Field>
-
-          <Field label="Catatan Pembayaran / Footer Invoice">
-            <TextInput value={companyForm.paymentNotes || ""} onChange={(e) => setCompanyForm({ ...companyForm, paymentNotes: e.target.value })} />
-          </Field>
-
-          <div className="flex justify-end pt-3 border-t">
-            <Button onClick={handleSaveProfile}>Simpan Pengaturan Bank</Button>
-          </div>
-        </Card>
+        <PaymentAccountsSettings notify={notify} />
       )}
 
       {/* TAB 3: PENGGUNA & HAK AKSES + FORM GANTI PASSWORD */}
