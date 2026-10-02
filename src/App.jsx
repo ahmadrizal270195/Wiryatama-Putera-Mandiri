@@ -144,6 +144,7 @@ const KEYS = {
   returns: "erp-returns",
   users: "erp-users",
   qaOfficers: "erp-qa-officers",
+  disposals: "erp-disposals",
   settings: "erp-app-settings",
   autoBackupPrefix: "erp-auto-backup-",
 };
@@ -155,7 +156,7 @@ const AUTO_BACKUP_RESTORE_KEYS = [
   KEYS.products, KEYS.suppliers, KEYS.customers, KEYS.batches,
   KEYS.pos, KEYS.pReceipts, KEYS.pInvoices, KEYS.pReturns,
   KEYS.sos, KEYS.paymentsOut, KEYS.paymentsIn, KEYS.expenses,
-  KEYS.deliveryNotes, KEYS.invoices, KEYS.returns, KEYS.users, KEYS.qaOfficers,
+  KEYS.deliveryNotes, KEYS.invoices, KEYS.returns, KEYS.users, KEYS.qaOfficers, KEYS.disposals,
 ];
 function autoBackupDocKey(dateKey, key) {
   return `${KEYS.autoBackupPrefix}${dateKey}__${key}`;
@@ -814,6 +815,7 @@ function PharmaERP({ userEmail, onLogout }) {
   const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [qaOfficers, setQaOfficers] = useState([]);
+  const [disposals, setDisposals] = useState([]);
 
   const idleTimerRef = useRef(null);
 
@@ -886,7 +888,7 @@ function PharmaERP({ userEmail, onLogout }) {
     KEYS.products, KEYS.suppliers, KEYS.customers, KEYS.batches,
     KEYS.pos, KEYS.pReceipts, KEYS.pInvoices, KEYS.pReturns,
     KEYS.sos, KEYS.paymentsOut, KEYS.paymentsIn, KEYS.expenses,
-    KEYS.deliveryNotes, KEYS.invoices, KEYS.returns, KEYS.users, KEYS.qaOfficers
+    KEYS.deliveryNotes, KEYS.invoices, KEYS.returns, KEYS.users, KEYS.qaOfficers, KEYS.disposals
   ];
   const MAX_AUTO_BACKUPS = 7; // simpan 7 cadangan harian terakhir, yang lebih lama otomatis dihapus
 
@@ -937,7 +939,7 @@ function PharmaERP({ userEmail, onLogout }) {
       [KEYS.pInvoices, setPInvoices], [KEYS.pReturns, setPReturns], [KEYS.sos, setSOs],
       [KEYS.paymentsOut, setPaymentsOut], [KEYS.paymentsIn, setPaymentsIn], [KEYS.expenses, setExpenses],
       [KEYS.deliveryNotes, setDeliveryNotes], [KEYS.invoices, setInvoices], [KEYS.returns, setReturns],
-      [KEYS.users, setUsers], [KEYS.qaOfficers, setQaOfficers],
+      [KEYS.users, setUsers], [KEYS.qaOfficers, setQaOfficers], [KEYS.disposals, setDisposals],
     ];
     const unsubs = pairs.map(([key, setter]) =>
       subscribeList(
@@ -1001,6 +1003,7 @@ function PharmaERP({ userEmail, onLogout }) {
     returns: async (list) => { setReturns(list); return saveList(KEYS.returns, returns, list); },
     users: async (list) => { setUsers(list); return saveList(KEYS.users, users, list); },
     qaOfficers: async (list) => { setQaOfficers(list); return saveList(KEYS.qaOfficers, qaOfficers, list); },
+    disposals: async (list) => { setDisposals(list); return saveList(KEYS.disposals, disposals, list); },
   };
 
   const stockByProduct = useMemo(() => {
@@ -1525,6 +1528,9 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpe
       fmtDate={fmtDate} 
       fmtIDR={fmtIDR} 
       CATEGORIES={CATEGORIES} 
+      disposals={disposals}
+      saveDisposals={persist.disposals}
+      COMPANY_PROFILE={COMPANY_PROFILE}
     />
   ) : <AccessDenied />
 )}
@@ -1651,6 +1657,7 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpe
               savePReceipts={persist.pReceipts} savePInvoices={persist.pInvoices} saveBatches={persist.batches}
               userEmail={userEmail} canManage={isHardAdmin || currentUserAccess.includes("settings")}
               findName={findName} notify={notify} colorConfig={COLOR} fmtDate={fmtDate} uid={uid}
+              company={COMPANY_PROFILE}
             />
           ) : <AccessDenied />
         )}
@@ -2564,7 +2571,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
         KEYS.products, KEYS.suppliers, KEYS.customers, KEYS.batches,
         KEYS.pos, KEYS.pReceipts, KEYS.pInvoices, KEYS.pReturns,
         KEYS.sos, KEYS.paymentsOut, KEYS.paymentsIn, KEYS.expenses,
-        KEYS.deliveryNotes, KEYS.invoices, KEYS.returns, KEYS.users, KEYS.qaOfficers
+        KEYS.deliveryNotes, KEYS.invoices, KEYS.returns, KEYS.users, KEYS.qaOfficers, KEYS.disposals
       ];
 
       const backupData = { exportDate: new Date().toISOString(), company: companyForm, data: {} };

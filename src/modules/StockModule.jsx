@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useRef } from "react";
 import { Upload, Search, Download, Edit2, Trash2 } from "lucide-react";
 import { Eyebrow, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
+import DisposalPanel from "./DisposalPanel";
 
 export default function StockView(props) {
   const { 
     products, batches, saveBatches, suppliers, stockByProduct, 
     invoices, notify, findName, colorConfig, uid, todayISO, daysUntil, 
-    urgencyOf, fmtDate, fmtIDR, CATEGORIES 
+    urgencyOf, fmtDate, fmtIDR, CATEGORIES, disposals, saveDisposals, COMPANY_PROFILE
   } = props;
 
   const [modalImport, setModalImport] = useState(false);
@@ -254,6 +255,8 @@ export default function StockView(props) {
           </Button>
         </div>
       </div>
+
+      <DisposalPanel {...{ products, batches, saveBatches, disposals, saveDisposals, notify, uid, todayISO, fmtDate, fmtIDR, COMPANY_PROFILE }} colorConfig={colorConfig} />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
         <div className="relative">

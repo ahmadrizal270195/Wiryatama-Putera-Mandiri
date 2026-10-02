@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from "react";
 import { Plus, Search, Printer, FileText, Trash2 } from "lucide-react";
-import { newReview, isCleared, blockedReason, QABadge, reviewState, qaSignatureText } from "../qa";
+import { newReview, isCleared, blockedReason, QABadge, reviewState, qaSignatureText, requiredClasses } from "../qa";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
+import { choosePaperAndPrint, printDocumentContent, QASignatureBlock, PrintArea, DocHeader, DocParties, DocTable, SignatureRow } from "../print";
 import { computeBill, normalizeDeductions, legacyDiscountFields, cleanDeductions } from "../billing";
 import { ItemsTable, DeductionsEditor, BillSummary, AddedBadge } from "../components/OrderEditor";
 const withRowIds = (list) => (list || []).map((d, i) => ({ ...d, id: d.id && d.id !== "legacy" ? d.id : `ded-${Date.now().toString(36)}-${i}` }));
@@ -55,173 +56,6 @@ function getItemDiscountAmount(qty, unitPrice, discType, discVal) {
 function itemsChanged(oldItems, newItems) {
   const sig = (arr) => JSON.stringify((arr || []).map((it) => [it.productId, Number(it.qty) || 0]).sort());
   return sig(oldItems) !== sig(newItems);
-}
-
-// ---------------------------------------------------------------------
-//  CETAK DOKUMEN (dioptimalkan untuk printer dot matrix / continuous form)
-//  - Semua teks & garis dipaksa HITAM pekat (abu-abu/hijau jadi titik jarang di dot matrix)
-//  - Font Arial ukuran normal, tanpa latar berwarna
-//  - Ukuran kertas bisa dipilih: continuous 9,5 x 11 in, setengah (9,5 x 5,5 in), atau A4
-// ---------------------------------------------------------------------
-const PAPER_KEY = "erp-print-paper";
-const PAPER_OPTIONS = [
-  { id: "continuous", label: "Continuous Form 9,5 x 11 in", css: "9.5in 11in", margin: "6mm 8mm" },
-  { id: "half", label: "Setengah Continuous 9,5 x 5,5 in", css: "9.5in 5.5in", margin: "4mm 8mm",
-    // versi rapat supaya muat setengah halaman (kayak format Excel)
-    extra: `
-      body { font-size: 9pt !important; }
-      .text-\\[9px\\], .text-\\[10px\\], .text-\\[11px\\], .text-xs { font-size: 8.5pt !important; line-height: 1.2 !important; }
-      .text-sm { font-size: 9.5pt !important; } .text-base, .text-lg, .text-xl { font-size: 11pt !important; }
-      [class*="mt-"], [class*="pt-"], [class*="mb-"], [class*="pb-"] { margin-top: 2px !important; margin-bottom: 2px !important; padding-top: 1px !important; padding-bottom: 1px !important; }
-      .mb-12 { margin-bottom: 26px !important; }
-      table th, table td { padding: 1px 4px !important; }
-      img { max-height: 30px !important; }
-    ` },
-  { id: "a4", label: "A4 (printer biasa / PDF)", css: "A4 portrait", margin: "12mm 10mm" },
-];
-function getPaper() {
-  let id = "continuous";
-  try { id = localStorage.getItem(PAPER_KEY) || "continuous"; } catch (_) { /* abaikan */ }
-  return PAPER_OPTIONS.find((p) => p.id === id) || PAPER_OPTIONS[0];
-}
-
-// Jendela kecil "Pilih ukuran kertas" yang muncul setiap kali klik Cetak.
-// Dibuat langsung pakai DOM supaya bisa dipanggil dari tombol mana pun tanpa state tambahan.
-function choosePaperAndPrint(elementId, titleText) {
-  const choices = PAPER_OPTIONS.filter((p) => p.id !== "a4");
-  const last = getPaper().id;
-  let dark = false;
-  try { dark = localStorage.getItem("erp-theme") === "dark"; } catch (_) { /* abaikan */ }
-  // Warna sendiri (pakai id + !important) supaya tidak ketimpa CSS mode gelap aplikasi
-  const C = dark
-    ? { overlay: "rgba(0,0,0,.7)", box: "#0F172A", border: "#334155", text: "#F8FAFC", soft: "#94A3B8", card: "#1E293B", activeBg: "rgba(0,196,140,.15)", active: "#00C48C", link: "#34D399", btn: "#1E293B" }
-    : { overlay: "rgba(0,0,0,.55)", box: "#FFFFFF", border: "#CBD5E1", text: "#15302D", soft: "#5C7873", card: "#FFFFFF", activeBg: "#E8F0EF", active: "#0E4749", link: "#0E4749", btn: "#F1F5F9" };
-
-  document.getElementById("erp-paper-chooser")?.remove();
-  const overlay = document.createElement("section");
-  overlay.id = "erp-paper-chooser";
-  overlay.setAttribute("role", "dialog");
-  overlay.innerHTML = `
-    <style>
-      #erp-paper-chooser { position:fixed !important; inset:0 !important; z-index:9999 !important; background:${C.overlay} !important; display:flex !important; align-items:center !important; justify-content:center !important; padding:16px !important; font-family:ui-sans-serif,system-ui,sans-serif !important; }
-      #erp-paper-chooser .pc-box { background:${C.box} !important; color:${C.text} !important; border:1px solid ${C.border} !important; border-radius:14px !important; padding:20px !important; width:100% !important; max-width:420px !important; box-shadow:0 20px 50px rgba(0,0,0,.4) !important; }
-      #erp-paper-chooser .pc-title { color:${C.text} !important; font-weight:700 !important; font-size:16px !important; margin-bottom:4px !important; }
-      #erp-paper-chooser .pc-sub { color:${C.soft} !important; font-size:12px !important; margin-bottom:14px !important; }
-      #erp-paper-chooser .pc-opt { display:block !important; width:100% !important; text-align:left !important; background:${C.card} !important; border:2px solid ${C.border} !important; border-radius:10px !important; padding:10px 12px !important; cursor:pointer !important; margin-bottom:8px !important; }
-      #erp-paper-chooser .pc-opt:hover { border-color:${C.active} !important; }
-      #erp-paper-chooser .pc-opt.active { background:${C.activeBg} !important; border-color:${C.active} !important; }
-      #erp-paper-chooser .pc-size { color:${C.text} !important; font-weight:700 !important; font-size:15px !important; }
-      #erp-paper-chooser .pc-note { color:${C.soft} !important; font-size:12px !important; }
-      #erp-paper-chooser .pc-foot { display:flex !important; justify-content:space-between !important; align-items:center !important; margin-top:6px !important; }
-      #erp-paper-chooser .pc-a4 { background:none !important; border:none !important; color:${C.link} !important; font-size:12px !important; text-decoration:underline !important; cursor:pointer !important; padding:0 !important; }
-      #erp-paper-chooser .pc-cancel { background:${C.btn} !important; color:${C.text} !important; border:1px solid ${C.border} !important; border-radius:8px !important; padding:6px 14px !important; font-size:13px !important; cursor:pointer !important; }
-    </style>
-    <article class="pc-box">
-      <p class="pc-title">Pilih ukuran kertas</p>
-      <p class="pc-sub"></p>
-      <nav class="pc-list"></nav>
-      <footer class="pc-foot">
-        <button type="button" class="pc-a4">Pakai A4 (printer biasa / PDF)</button>
-        <button type="button" class="pc-cancel">Batal</button>
-      </footer>
-    </article>`;
-  overlay.querySelector(".pc-sub").textContent = titleText;
-  const list = overlay.querySelector(".pc-list");
-  const sizes = { continuous: '9,5" x 11"', half: '9,5" x 5,5" (setengah)' };
-  const notes = { continuous: "Satu lembar penuh continuous form", half: "Setengah lembar, format rapat seperti Excel" };
-  choices.forEach((p) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "pc-opt" + (p.id === last ? " active" : "");
-    b.innerHTML = `<span class="pc-size"></span><br><span class="pc-note"></span>`;
-    b.querySelector(".pc-size").textContent = sizes[p.id];
-    b.querySelector(".pc-note").textContent = notes[p.id] + (p.id === last ? " · terakhir dipakai" : "");
-    b.onclick = () => go(p.id);
-    list.appendChild(b);
-  });
-  function close() { overlay.remove(); document.removeEventListener("keydown", onKey); }
-  function go(id) {
-    try { localStorage.setItem(PAPER_KEY, id); } catch (_) { /* abaikan */ }
-    close();
-    printDocumentContent(elementId, titleText);
-  }
-  function onKey(e) { if (e.key === "Escape") close(); }
-  overlay.querySelector(".pc-cancel").onclick = close;
-  overlay.querySelector(".pc-a4").onclick = () => go("a4");
-  overlay.onclick = (e) => { if (e.target === overlay) close(); };
-  document.addEventListener("keydown", onKey);
-  document.body.appendChild(overlay);
-  setTimeout(() => list.querySelector("button")?.focus(), 0);
-}
-
-function printDocumentContent(elementId, titleText) {
-  const contentElement = document.getElementById(elementId);
-  if (!contentElement) return alert("Elemen cetak tidak ditemukan!");
-
-  const printWindow = window.open("", "_blank", "width=950,height=750");
-  if (!printWindow) return alert("Pop-up diblokir oleh browser. Izinkan pop-up untuk mencetak dokumen.");
-  const paper = getPaper();
-
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>${titleText}</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-        <style>
-          @page { size: ${paper.css}; margin: ${paper.margin}; }
-          html, body { background: #fff !important; }
-          body { font-family: Arial, Helvetica, sans-serif !important; color: #000 !important; margin: 0; padding: 0; font-size: 11pt; }
-
-          /* 1. Semua teks, garis, ikon jadi hitam pekat; tanpa latar & bayangan */
-          *, *::before, *::after {
-            color: #000 !important;
-            border-color: #000 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            text-shadow: none !important;
-            opacity: 1 !important;
-          }
-          svg, svg * { stroke: #000 !important; }
-
-          /* 2. Font jelas & tidak kekecilan */
-          .font-mono, code, pre { font-family: Arial, Helvetica, sans-serif !important; }
-          .text-\\[9px\\], .text-\\[10px\\], .text-\\[11px\\], .text-xs { font-size: 10pt !important; line-height: 1.3 !important; }
-          .text-sm { font-size: 11pt !important; }
-          .text-base { font-size: 12pt !important; }
-          .text-lg, .text-xl { font-size: 14pt !important; }
-          .font-semibold, .font-bold, th { font-weight: 700 !important; }
-
-          /* 3. Tabel bergaris hitam seperti Excel */
-          table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
-          table th, table td { border: 1px solid #000 !important; padding: 2px 5px !important; }
-          tr { page-break-inside: avoid; page-break-after: auto; }
-          thead { display: table-header-group; }
-          tfoot { display: table-footer-group; }
-
-          /* 4. Rapikan: tanpa sudut membulat, logo hitam putih, ruang kosong dikurangi */
-          [class*="rounded"] { border-radius: 0 !important; }
-          img { filter: grayscale(100%) contrast(180%); max-height: 42px !important; }
-          [class*="min-w-"] { min-width: 0 !important; }
-          .p-4, .sm\\:p-6, .p-3 { padding: 4px !important; }
-          .mb-6 { margin-bottom: 8px !important; }
-          .no-print { display: none !important; }
-          ${paper.extra || ""}
-        </style>
-      </head>
-      <body>
-        <div>${contentElement.innerHTML}</div>
-        <script>
-          setTimeout(() => {
-            window.print();
-            window.close();
-          }, 900);
-        </script>
-      </body>
-    </html>
-  `);
-
-  printWindow.document.close();
 }
 
 export default function SalesView({
@@ -342,7 +176,7 @@ export default function SalesView({
         <FakturTab {...{ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, batches, saveBatches, saveInvoices, saveCustomers, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount, stockByProduct, allocateFEFO, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES }} />
       )}
       {subTab === "retur" && (
-        <ReturTab {...{ products, customers, sos, invoices, returns, deliveryNotes, batches, saveBatches, saveReturns, findName, notify, invoiceTotal, invoiceReturnedAmount, colorConfig, uid, todayISO, fmtDate, fmtIDR }} />
+        <ReturTab {...{ products, customers, sos, invoices, returns, deliveryNotes, batches, saveBatches, saveReturns, findName, notify, invoiceTotal, invoiceReturnedAmount, colorConfig, uid, todayISO, fmtDate, fmtIDR, COMPANY_PROFILE }} />
       )}
     </div>
   );
@@ -755,7 +589,7 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
                   </div>
                 </div>
                 <div className="text-left sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 w-full sm:w-auto">
-                  <div className="text-base sm:text-lg uppercase tracking-wider text-gray-700 font-bold">SALES ORDER / PENAWARAN</div>
+                  <div className="text-base sm:text-lg uppercase tracking-wider text-gray-700 font-bold">SURAT PESANAN / SALES ORDER</div>
                   <div className="font-mono text-sm mt-0.5 sm:mt-1 font-bold" style={{ color: colorConfig?.primary }}>{printSO.soNumber}</div>
                 </div>
               </div>
@@ -839,6 +673,8 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
                         <div className="flex justify-between py-2 border-b-2 text-sm font-bold" style={{ color: colorConfig?.primary, borderColor: colorConfig?.primary }}><span>Total Nilai Pesanan</span><span className="font-mono">{fmtIDR(taxInfo.total)}</span></div>
                       </div>
                     </div>
+                    <QASignatureBlock doc={printSO} leftLabel="Pemesan," leftName={cust?.name || ""}
+                      requiredFallback={requiredClasses(printSO.items, products)} />
                   </div>
                 );
               })()}
@@ -1882,8 +1718,9 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
 }
 
 // --- SUB-KOMPONEN RETUR TAB ---
-function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, batches, saveBatches, saveReturns, findName, notify, invoiceTotal, invoiceReturnedAmount, colorConfig, uid, todayISO, fmtDate, fmtIDR }) {
+function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, batches, saveBatches, saveReturns, findName, notify, invoiceTotal, invoiceReturnedAmount, colorConfig, uid, todayISO, fmtDate, fmtIDR, COMPANY_PROFILE }) {
   const [modal, setModal] = useState(null);
+  const [printRet, setPrintRet] = useState(null);
   const [invoiceId, setInvoiceId] = useState("");
   const [returnQty, setReturnQty] = useState({});
 
@@ -1983,13 +1820,50 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{inv?.noFaktur || so?.soNumber || "-"}</td>
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(r.date)}</td>
                   <td className="px-4 py-2.5 font-mono" style={{ color: colorConfig?.ink }}>{fmtIDR(value)}</td>
-                  <td className="px-4 py-2.5 text-right"><button onClick={() => cancelReturn(r)} className="text-xs cursor-pointer" style={{ color: colorConfig?.danger }}>Batalkan Retur</button></td>
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                    <button onClick={() => setPrintRet(r)} className="text-xs font-semibold cursor-pointer mr-3 inline-flex items-center gap-1" style={{ color: colorConfig?.primary }}><Printer size={13} /> Cetak</button>
+                    <button onClick={() => cancelReturn(r)} className="text-xs cursor-pointer" style={{ color: colorConfig?.danger }}>Batalkan Retur</button>
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </Card>
+
+      {printRet && (() => {
+        const so = (sos || []).find((x) => x.id === printRet.soId);
+        const inv = (invoices || []).find((x) => x.id === printRet.invoiceId);
+        const dn = (deliveryNotes || []).find((x) => x.id === printRet.sjId);
+        const cust = (customers || []).find((c) => c.id === (inv?.isDirect ? inv.customerId : so?.customerId));
+        const total = (printRet.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0);
+        return (
+          <Modal title={`Cetak Surat Retur — ${printRet.noRetur}`} onClose={() => setPrintRet(null)} wide colorConfig={colorConfig}>
+            <PrintArea id="printable-retur-jual" docTitle={`Surat Retur Penjualan - ${printRet.noRetur}`}>
+              <DocHeader company={COMPANY_PROFILE} title="Surat Retur Penjualan" number={printRet.noRetur} subtitle="Pengembalian barang dari pelanggan" />
+              <DocParties leftTitle="Dikembalikan Oleh (Pelanggan)" leftName={cust?.name} leftLines={[cust?.address, cust?.contact]}
+                rightRows={[["Tanggal Retur", fmtDate(printRet.date)], ["No. Faktur", inv?.noFaktur], ["No. Surat Jalan", dn?.noSJ], ["No. Sales Order", so?.soNumber]]} />
+              <DocTable rows={printRet.items || []} columns={[
+                { label: "No", render: (r, i) => i + 1 },
+                { label: "Nama Barang / Alkes", render: (r) => <b>{(products || []).find((x) => x.id === r.productId)?.name || "-"}</b> },
+                { label: "Qty", align: "center", render: (r) => `${r.qty} ${(products || []).find((x) => x.id === r.productId)?.unit || ""}` },
+                { label: "No. Batch", render: (r) => (r.restockedBatches || []).map((b) => b.batchNo).filter(Boolean).join(", ") || "-" },
+                { label: "Harga", align: "right", render: (r) => fmtIDR(r.unitPrice) },
+                { label: "Nilai", align: "right", render: (r) => <b>{fmtIDR(r.qty * r.unitPrice)}</b> },
+              ]} />
+              <div className="flex justify-between gap-4 text-xs">
+                <div className="text-gray-700">Alasan retur: ..................................................................</div>
+                <div className="font-bold text-sm">Total Nilai Retur: {fmtIDR(total)}</div>
+              </div>
+              <SignatureRow cols={[
+                { label: "Dikembalikan Oleh (Pelanggan),", name: "" },
+                { label: "Diterima Oleh (Gudang),", name: "" },
+                { label: "Mengetahui (APJ / PJT),", name: "" },
+              ]} />
+            </PrintArea>
+          </Modal>
+        );
+      })()}
 
       {modal === "new" && (
         <Modal title="Catat Retur dari Faktur Penjualan" onClose={() => setModal(null)} wide colorConfig={colorConfig}>

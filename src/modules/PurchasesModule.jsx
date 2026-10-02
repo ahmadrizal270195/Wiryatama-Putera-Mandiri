@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Plus, Printer, FileText, Trash2, Search } from "lucide-react";
-import { newReview, isCleared, blockedReason, QABadge, reviewState } from "../qa";
+import { newReview, isCleared, blockedReason, QABadge, reviewState, requiredClasses } from "../qa";
+import { choosePaperAndPrint, QASignatureBlock, PrintArea, DocHeader, DocParties, DocTable, SignatureRow } from "../print";
 
 // Review APJ/PJT diulang kalau isi barang berubah (produk, qty, batch, ED).
 function itemsChanged(oldItems, newItems) {
@@ -157,13 +158,13 @@ export default function PurchasesView({
         <POTab {...{ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSuppliers, findName, notify, poTotal, getPOStatus, STATUS_LABEL, stockByProduct, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, handleClosePartialPO, receivedQty }} />
       )}
       {subTab === "bpb" && (
-        <BPBTab {...{ products, suppliers, pos, batches, pReceipts, pInvoices, saveBatches, savePOs, savePReceipts, findName, notify, getPOStatus, receivedQty, colorConfig, uid, todayISO, fmtDate, fmtIDR }} />
+        <BPBTab {...{ products, suppliers, pos, batches, pReceipts, pInvoices, saveBatches, savePOs, savePReceipts, findName, notify, getPOStatus, receivedQty, colorConfig, uid, todayISO, fmtDate, fmtIDR, COMPANY_PROFILE }} />
       )}
       {subTab === "faktur" && (
         <FakturPembelianTab {...{ products, suppliers, pos, batches, pReceipts, pInvoices, paymentsOut, pReturns, saveBatches, savePInvoices, saveSuppliers, findName, notify, getPOStatus, pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax }} />
       )}
       {subTab === "retur" && (
-        <ReturPembelianTab {...{ products, suppliers, pos, pInvoices, pReturns, pReceipts, batches, saveBatches, savePReturns, findName, notify, pInvoiceTotal, pInvoiceReturnedAmount, colorConfig, uid, todayISO, fmtDate, fmtIDR }} />
+        <ReturPembelianTab {...{ products, suppliers, pos, pInvoices, pReturns, pReceipts, batches, saveBatches, savePReturns, findName, notify, pInvoiceTotal, pInvoiceReturnedAmount, colorConfig, uid, todayISO, fmtDate, fmtIDR, COMPANY_PROFILE }} />
       )}
     </div>
   );
@@ -511,7 +512,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
       {printPO && (
         <Modal title={`Purchase Order — ${printPO.poNumber}`} onClose={() => setPrintPO(null)} wide colorConfig={colorConfig}>
           <div className="flex justify-end gap-2 mb-4 no-print">
-            <Button onClick={() => window.print()} variant="primary" colorConfig={colorConfig}><Printer size={15} /> Cetak Sekarang / Simpan PDF</Button>
+            <Button onClick={() => choosePaperAndPrint("printable-po", `Surat Pesanan - ${printPO.poNumber}`)} variant="primary" colorConfig={colorConfig}><Printer size={15} /> Cetak Sekarang / Simpan PDF</Button>
           </div>
           <div className="overflow-x-auto w-full">
             <div id="printable-po" className="p-4 sm:p-6 bg-white border rounded-xl text-xs text-gray-800 min-w-[550px] sm:min-w-0">
@@ -525,7 +526,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
                   </div>
                 </div>
                 <div className="text-left sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 w-full sm:w-auto">
-                  <div className="text-base sm:text-lg uppercase tracking-wider text-gray-700 font-bold">PURCHASE ORDER (PO)</div>
+                  <div className="text-base sm:text-lg uppercase tracking-wider text-gray-700 font-bold">SURAT PESANAN / PURCHASE ORDER</div>
                   <div className="font-mono text-sm mt-0.5 sm:mt-1 font-bold" style={{ color: colorConfig?.primary }}>{printPO.poNumber}</div>
                 </div>
               </div>
@@ -609,6 +610,8 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
                         <div className="flex justify-between py-2 border-b-2 text-sm font-bold" style={{ color: colorConfig?.primary, borderColor: colorConfig?.primary }}><span>Total Pesanan PO</span><span className="font-mono">{fmtIDR(taxInfo.total)}</span></div>
                       </div>
                     </div>
+                    <QASignatureBlock doc={printPO} leftLabel="Dibuat Oleh (Pembelian)," leftName=""
+                      requiredFallback={requiredClasses(printPO.items, products)} title="Penanggung Jawab," />
                   </div>
                 );
               })()}
@@ -621,9 +624,10 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
 }
 
 // --- SUB-KOMPONEN BPB TAB ---
-function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveBatches, savePOs, savePReceipts, findName, notify, getPOStatus, receivedQty, colorConfig, uid, todayISO, fmtDate, fmtIDR }) {
+function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveBatches, savePOs, savePReceipts, findName, notify, getPOStatus, receivedQty, colorConfig, uid, todayISO, fmtDate, fmtIDR, COMPANY_PROFILE }) {
   const [modal, setModal] = useState(null);
   const [detailPR, setDetailPR] = useState(null);
+  const [printPR, setPrintPR] = useState(null);
   const [noBPB, setNoBPB] = useState("");
   const [poId, setPoId] = useState("");
   const [date, setDate] = useState(todayISO());
@@ -778,6 +782,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
                 </td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
                   <div className="flex items-center justify-end gap-2">
+                    <button onClick={() => setPrintPR(pr)} className="text-xs flex items-center gap-1 font-semibold cursor-pointer" style={{ color: colorConfig?.primary }}><Printer size={13} /> Cetak</button>
                     <button onClick={() => setDetailPR(pr)} className="text-xs font-medium cursor-pointer" style={{ color: colorConfig?.accent }}>Detail</button>
                     {canCancel && <button onClick={() => cancelBPB(pr)} className="text-xs cursor-pointer" style={{ color: colorConfig?.danger }}>Batalkan Terima</button>}
                   </div>
@@ -843,6 +848,32 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
           )}
         </Modal>
       )}
+
+      {printPR && (() => {
+        const po = (pos || []).find((x) => x.id === printPR.poId);
+        const sup = (suppliers || []).find((x) => x.id === po?.supplierId);
+        return (
+          <Modal title={`Cetak Bukti Penerimaan Barang — ${printPR.noBPB}`} onClose={() => setPrintPR(null)} wide colorConfig={colorConfig}>
+            <PrintArea id="printable-bpb" docTitle={`BPB - ${printPR.noBPB}`}>
+              <DocHeader company={COMPANY_PROFILE} title="Bukti Penerimaan Barang" number={printPR.noBPB} />
+              <DocParties leftTitle="Diterima Dari (Supplier / PBF)" leftName={sup?.name} leftLines={[sup?.address, sup?.contact]}
+                rightRows={[["Tanggal Terima", fmtDate(printPR.date)], ["No. Surat Pesanan / PO", po?.poNumber || "-"]]} />
+              <DocTable rows={printPR.items || []} columns={[
+                { label: "No", render: (r, i) => i + 1 },
+                { label: "Nama Barang / Alkes", render: (r) => <b>{(products || []).find((x) => x.id === r.productId)?.name || "-"}</b> },
+                { label: "Qty Diterima", align: "center", render: (r) => `${r.qty} ${(products || []).find((x) => x.id === r.productId)?.unit || ""}` },
+                { label: "No. Batch", render: (r) => r.batchNo || "-" },
+                { label: "Exp. Date", render: (r) => (r.expiryDate ? fmtDate(r.expiryDate) : "-") },
+                { label: "Kondisi", align: "center", render: () => "Baik" },
+              ]} />
+              <p className="text-[11px] text-gray-700 mb-2">Barang di atas telah diterima dan diperiksa kesesuaian jumlah, No. Batch, dan tanggal kedaluwarsa.</p>
+              <QASignatureBlock doc={printPR} title="Diperiksa Oleh,"
+                leftCols={[{ label: "Diserahkan Oleh (Supplier / Kurir),", name: "" }, { label: "Diterima Oleh (Gudang),", name: "" }]}
+                requiredFallback={requiredClasses(printPR.items, products)} />
+            </PrintArea>
+          </Modal>
+        );
+      })()}
 
       {detailPR && (
         <Modal title={`Detail ${detailPR.noBPB}`} onClose={() => setDetailPR(null)} wide colorConfig={colorConfig}>
@@ -1457,8 +1488,9 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 }
 
 // --- SUB-KOMPONEN RETUR PEMBELIAN TAB ---
-function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pReceipts, batches, saveBatches, savePReturns, findName, notify, pInvoiceTotal, pInvoiceReturnedAmount, colorConfig, uid, todayISO, fmtDate, fmtIDR }) {
+function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pReceipts, batches, saveBatches, savePReturns, findName, notify, pInvoiceTotal, pInvoiceReturnedAmount, colorConfig, uid, todayISO, fmtDate, fmtIDR, COMPANY_PROFILE }) {
   const [modal, setModal] = useState(null);
+  const [printRet, setPrintRet] = useState(null);
   const [pInvoiceId, setPInvoiceId] = useState("");
   const [returnQty, setReturnQty] = useState({});
 
@@ -1589,6 +1621,7 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(r.date)}</td>
                   <td className="px-4 py-2.5 font-mono font-medium" style={{ color: colorConfig?.good }}>{fmtIDR(value)}</td>
                   <td className="px-4 py-2.5 text-right">
+                    <button onClick={() => setPrintRet(r)} className="text-xs font-semibold cursor-pointer mr-3 inline-flex items-center gap-1" style={{ color: colorConfig?.primary }}><Printer size={13} /> Cetak</button>
                     <button onClick={() => cancelReturn(r)} className="text-xs cursor-pointer" style={{ color: colorConfig?.danger }}>Batalkan Retur</button>
                   </td>
                 </tr>
@@ -1598,6 +1631,46 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
           </tbody>
         </table>
       </Card>
+
+      {printRet && (() => {
+        const inv = (pInvoices || []).find((x) => x.id === printRet.pInvoiceId);
+        const po = (pos || []).find((x) => x.id === (printRet.poId || inv?.poId));
+        const sup = (suppliers || []).find((x) => x.id === (inv?.supplierId || po?.supplierId));
+        // Batch: dari item faktur langsung, atau dari BPB atas PO tersebut
+        const batchOf = (productId) => {
+          const fromInv = (inv?.items || []).filter((x) => x.productId === productId && x.batchNo).map((x) => x.batchNo);
+          const fromBpb = (pReceipts || []).filter((x) => x.poId && x.poId === po?.id).flatMap((x) => (x.items || []).filter((y) => y.productId === productId && y.batchNo).map((y) => y.batchNo));
+          return [...new Set([...fromInv, ...fromBpb])].join(", ") || "-";
+        };
+        const total = (printRet.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0);
+        return (
+          <Modal title={`Cetak Surat Retur — ${printRet.noRetur}`} onClose={() => setPrintRet(null)} wide colorConfig={colorConfig}>
+            <PrintArea id="printable-retur-beli" docTitle={`Surat Retur Pembelian - ${printRet.noRetur}`}>
+              <DocHeader company={COMPANY_PROFILE} title="Surat Retur Pembelian" number={printRet.noRetur} subtitle="Pengembalian barang ke supplier" />
+              <DocParties leftTitle="Kepada Yth. (Supplier / PBF)" leftName={sup?.name} leftLines={[sup?.address, sup?.contact]}
+                rightRows={[["Tanggal Retur", fmtDate(printRet.date)], ["No. Faktur Vendor", inv?.noFaktur], ["No. Surat Pesanan / PO", po?.poNumber]]} />
+              <p className="text-xs text-gray-800 mb-2">Bersama ini kami kembalikan barang-barang berikut:</p>
+              <DocTable rows={printRet.items || []} columns={[
+                { label: "No", render: (r, i) => i + 1 },
+                { label: "Nama Barang / Alkes", render: (r) => <b>{(products || []).find((x) => x.id === r.productId)?.name || "-"}</b> },
+                { label: "Qty", align: "center", render: (r) => `${r.qty} ${(products || []).find((x) => x.id === r.productId)?.unit || ""}` },
+                { label: "No. Batch", render: (r) => batchOf(r.productId) },
+                { label: "Harga", align: "right", render: (r) => fmtIDR(r.unitPrice) },
+                { label: "Nilai", align: "right", render: (r) => <b>{fmtIDR(r.qty * r.unitPrice)}</b> },
+              ]} />
+              <div className="flex justify-between gap-4 text-xs">
+                <div className="text-gray-700">Alasan retur: ..................................................................</div>
+                <div className="font-bold text-sm">Total Nilai Retur: {fmtIDR(total)}</div>
+              </div>
+              <SignatureRow cols={[
+                { label: "Hormat Kami,", name: COMPANY_PROFILE?.name || "PT Wiryatama Putera Mandiri" },
+                { label: "Mengetahui (APJ / PJT),", name: "" },
+                { label: "Diterima Oleh (Supplier),", name: "" },
+              ]} />
+            </PrintArea>
+          </Modal>
+        );
+      })()}
 
       {modal === "new" && (
         <Modal title="Catat Retur Pembelian ke Supplier" onClose={() => setModal(null)} wide colorConfig={colorConfig}>

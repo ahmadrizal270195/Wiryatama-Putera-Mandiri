@@ -5,6 +5,7 @@ import {
   QA_CLASSES, qaClassOf, reviewState, applyDecision, myOfficerFor, officerStatus, QABadge,
   officerRoleLabel, decisionByText, onBehalfOfFor,
 } from "../qa";
+import { PrintArea, DocHeader, DocParties, DocTable } from "../print";
 
 const FLOW_KEY = "erp-qa-flow-open";
 
@@ -136,8 +137,60 @@ function useReviewDocs({ sos, pos, invoices, pReceipts, pInvoices, customers, su
   }, [sos, pos, invoices, pReceipts, pInvoices, customers, suppliers]);
 }
 
+// Surat penolakan pesanan: item kategori yang ditolak + alasan, ditandatangani APJ/PJT yang menolak.
+function RejectionLetter({ row, products, customers, suppliers, pos, company, fmtDate }) {
+  const d = row.doc;
+  const rv = d.qaReview || {};
+  const rejected = (rv.required || []).filter((cls) => rv[cls]?.status === "rejected");
+  const toCustomer = row.kind === "so" || row.kind === "inv";
+  const partyId = toCustomer ? d.customerId : (d.supplierId || (pos || []).find((x) => x.id === d.poId)?.supplierId);
+  const party = (toCustomer ? customers : suppliers || []).find((x) => x.id === partyId);
+  const items = (d.items || []).filter((it) => rejected.includes(qaClassOf((products || []).find((p) => p.id === it.productId))));
+  const docLabel = { so: "Surat Pesanan / Sales Order", inv: "Pesanan (Faktur Langsung)", po: "Surat Pesanan / Purchase Order", bpb: "Penerimaan Barang", pinv: "Penerimaan Barang (Pembelian Langsung)" }[row.kind];
+  const fmtAt = (iso) => (iso ? new Date(iso).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "");
+  return (
+    <>
+      <DocHeader company={company} title="Surat Penolakan Pesanan" number={row.no} subtitle={rejected.length ? `Tanggal: ${fmtAt(rv[rejected[0]]?.at)}` : ""} />
+      <DocParties leftTitle="Kepada Yth." leftName={party?.name || row.party} leftLines={[party?.address, party?.contact]}
+        rightRows={[["Perihal", "Penolakan Pesanan"], ["Referensi", `${docLabel} ${row.no || ""}`], ["Tanggal Pesanan", fmtDate(d.date)]]} />
+      <p className="text-xs text-gray-900 mb-1">Dengan hormat,</p>
+      <p className="text-xs text-gray-900 mb-3 leading-relaxed">
+        Sehubungan dengan {docLabel.toLowerCase()} nomor <b>{row.no}</b> tanggal {fmtDate(d.date)}, dengan ini kami sampaikan bahwa
+        pesanan untuk barang di bawah ini <b>tidak dapat kami proses</b> setelah dilakukan pemeriksaan oleh penanggung jawab
+        sesuai ketentuan Cara Distribusi Obat yang Baik (CDOB):
+      </p>
+      <DocTable rows={items} columns={[
+        { label: "No", render: (r, i) => i + 1 },
+        { label: "Nama Barang / Alkes", render: (r) => <b>{(products || []).find((x) => x.id === r.productId)?.name || "-"}</b> },
+        { label: "Qty", align: "center", render: (r) => `${r.qty} ${(products || []).find((x) => x.id === r.productId)?.unit || ""}` },
+        { label: "Kategori", render: (r) => QA_CLASSES[qaClassOf((products || []).find((x) => x.id === r.productId))]?.label },
+      ]} />
+      {rejected.map((cls) => (
+        <p key={cls} className="text-xs text-gray-900 mb-1"><b>Alasan penolakan ({QA_CLASSES[cls].role} {QA_CLASSES[cls].label}):</b> {rv[cls]?.note || "-"}</p>
+      ))}
+      <p className="text-xs text-gray-900 mt-3 mb-1 leading-relaxed">
+        Demikian surat ini kami sampaikan. Apabila persyaratan telah dilengkapi, pesanan dapat diajukan kembali. Atas perhatian dan kerja samanya kami ucapkan terima kasih.
+      </p>
+      <div className="grid gap-4 text-center text-xs mt-6" style={{ gridTemplateColumns: `repeat(${Math.max(1, rejected.length)}, minmax(0, 1fr))` }}>
+        {rejected.map((cls) => {
+          const dd = rv[cls];
+          return (
+            <div key={cls}>
+              <p className="text-gray-700">Hormat kami,</p>
+              <p className="text-gray-700 mb-12">{company?.name || "PT Wiryatama Putera Mandiri"}</p>
+              <p className="underline text-gray-900 font-bold">( {decisionByText(dd)} )</p>
+              <p className="text-gray-700">{QA_CLASSES[cls].roleLong}</p>
+              {dd?.license && <p className="text-gray-700">No. {dd.license}</p>}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 function QueueTab(props) {
-  const { products, officers, userEmail, colorConfig: c, fmtDate, notify, batches,
+  const { products, officers, userEmail, colorConfig: c, fmtDate, notify, batches, customers, suppliers, company,
     saveSOs, savePOs, saveInvoices, savePReceipts, savePInvoices, saveBatches, sos, pos, invoices, pReceipts, pInvoices } = props;
   const docs = useReviewDocs(props);
   const [filter, setFilter] = useState("mine");
@@ -145,6 +198,7 @@ function QueueTab(props) {
   const [decide, setDecide] = useState(null); // { row, cls, status }
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [printReject, setPrintReject] = useState(null);
 
   const mineClasses = ["obat", "alkes"].filter((cls) => myOfficerFor(officers, userEmail, cls));
 
@@ -225,9 +279,18 @@ function QueueTab(props) {
         <div className="space-y-3">
           {rows.map((r) => (
             <ReviewCard key={r.kind + r.doc.id} r={r} products={products} c={c} fmtDate={fmtDate}
-              mineClasses={mineClasses} onDecide={(cls, status) => { setNote(""); setDecide({ row: r, cls, status }); }} />
+              mineClasses={mineClasses} onDecide={(cls, status) => { setNote(""); setDecide({ row: r, cls, status }); }}
+              onPrintReject={() => setPrintReject(r)} />
           ))}
         </div>
+      )}
+
+      {printReject && (
+        <Modal title={`Surat Penolakan — ${printReject.no}`} onClose={() => setPrintReject(null)} wide colorConfig={c}>
+          <PrintArea id="printable-penolakan" docTitle={`Surat Penolakan - ${printReject.no}`}>
+            <RejectionLetter row={printReject} products={products} customers={customers} suppliers={suppliers} pos={pos} company={company} fmtDate={fmtDate} />
+          </PrintArea>
+        </Modal>
       )}
 
       {decide && (
@@ -253,7 +316,7 @@ function QueueTab(props) {
   );
 }
 
-function ReviewCard({ r, products, c, fmtDate, mineClasses, onDecide }) {
+function ReviewCard({ r, products, c, fmtDate, mineClasses, onDecide, onPrintReject }) {
   const rv = r.doc.qaReview;
   const items = r.doc.items || [];
   return (
@@ -264,7 +327,13 @@ function ReviewCard({ r, products, c, fmtDate, mineClasses, onDecide }) {
           <div className="font-mono font-semibold text-sm" style={{ color: c.ink }}>{r.no || "-"}</div>
           <div className="text-xs" style={{ color: c.inkSoft }}>{r.party} · {fmtDate(r.doc.date)}</div>
         </div>
-        <QABadge doc={r.doc} colorConfig={c} />
+        <div className="flex flex-col items-end gap-1.5">
+          <QABadge doc={r.doc} colorConfig={c} />
+          {reviewState(r.doc) === "rejected" && (
+            <button onClick={onPrintReject} className="text-[11px] font-semibold px-2 py-1 rounded-md border cursor-pointer"
+              style={{ color: c.danger, borderColor: c.danger }}>Cetak Surat Penolakan</button>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
