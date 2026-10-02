@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Wallet, CreditCard, Receipt, PiggyBank, Plus, Calendar, Filter } from "lucide-react";
+import { Wallet, CreditCard, Receipt, PiggyBank, Plus, Calendar, Filter, Search, X } from "lucide-react";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import { isCleared, blockedReason } from "../qa";
 import { computeBill } from "../billing";
@@ -22,6 +22,26 @@ function getItemDiscountAmount(qty, unitPrice, discType, discVal) {
   const val = Number(discVal || 0);
   if (discType === "amount") return Math.min(gross, val);
   return gross * (Math.min(100, val) / 100);
+}
+
+// Kotak cari kecil untuk tab Piutang & Hutang
+function SearchBar({ value, onChange, placeholder, shown, total, COLOR }) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+      <div className="relative flex-1">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: COLOR.inkSoft }} />
+        <TextInput value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="pl-9 pr-8" colorConfig={COLOR} />
+        {value && (
+          <button type="button" onClick={() => onChange("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer" title="Hapus pencarian">
+            <X size={15} style={{ color: COLOR.inkSoft }} />
+          </button>
+        )}
+      </div>
+      <div className="text-xs shrink-0" style={{ color: COLOR.inkSoft }}>
+        {value ? `${shown} dari ${total} faktur` : `${total} faktur`}
+      </div>
+    </div>
+  );
 }
 
 export default function FinanceView(props) {
@@ -75,6 +95,9 @@ export default function FinanceView(props) {
   const [payForm, setPayForm] = useState({ amount: "", date: todayISO(), method: PAYMENT_METHODS[0], note: "" });
   const [expModal, setExpModal] = useState(false);
   const [expForm, setExpForm] = useState({ category: EXPENSE_CATEGORIES[0], amount: "", date: todayISO(), note: "" });
+  const [editingExpId, setEditingExpId] = useState(null);
+  const [arSearch, setArSearch] = useState("");
+  const [apSearch, setApSearch] = useState("");
 
   // Helper kalkulasi sisa piutang aman
   const getInvoiceSisa = (inv) => {
@@ -195,12 +218,35 @@ export default function FinanceView(props) {
     notify("Pembayaran keluar dihapus");
   }
 
+  function openNewExp() {
+    setEditingExpId(null);
+    setExpForm({ category: EXPENSE_CATEGORIES[0], amount: "", date: todayISO(), note: "" });
+    setExpModal(true);
+  }
+
+  function openEditExp(e) {
+    setEditingExpId(e.id);
+    setExpForm({ category: e.category || EXPENSE_CATEGORIES[0], amount: e.amount, date: e.date || todayISO(), note: e.note || "" });
+    setExpModal(true);
+  }
+
+  function closeExpModal() {
+    setExpModal(false);
+    setEditingExpId(null);
+    setExpForm({ category: EXPENSE_CATEGORIES[0], amount: "", date: todayISO(), note: "" });
+  }
+
   async function submitExpense() {
     if (!expForm.amount || Number(expForm.amount) <= 0) return notify("Jumlah biaya harus lebih dari 0", "danger");
-    await saveExpenses([...(expenses || []), { id: uid(), ...expForm, amount: Number(expForm.amount) }]);
-    notify("Biaya operasional dicatat");
-    setExpModal(false);
-    setExpForm({ category: EXPENSE_CATEGORIES[0], amount: "", date: todayISO(), note: "" });
+    if (!expForm.date) return notify("Tanggal pengeluaran wajib diisi", "danger");
+    if (editingExpId) {
+      await saveExpenses((expenses || []).map((e) => (e.id === editingExpId ? { ...e, ...expForm, amount: Number(expForm.amount) } : e)));
+      notify("Biaya operasional diperbarui");
+    } else {
+      await saveExpenses([...(expenses || []), { id: uid(), ...expForm, amount: Number(expForm.amount) }]);
+      notify("Biaya operasional dicatat");
+    }
+    closeExpModal();
   }
 
   async function removeExpense(id) {
@@ -218,6 +264,22 @@ export default function FinanceView(props) {
     total: getPInvoiceTotal(inv), 
     sisa: getPInvoiceSisa(inv) 
   })).filter((x) => x.sisa > 0);
+
+  // Pencarian Piutang & Hutang (no. faktur, no. SO, nama pelanggan/supplier, tanggal, nominal)
+  const matchQ = (q, parts) => !q.trim() || parts.join(" ").toLowerCase().includes(q.trim().toLowerCase());
+  const arCustName = (inv) => {
+    const so = (sos || []).find((x) => x.id === inv.soId);
+    return inv.isDirect ? findName(customers, inv.customerId) : (so ? findName(customers, so.customerId) : "-");
+  };
+  const arShown = invoiceARList.filter(({ inv, sisa }) => {
+    const so = (sos || []).find((x) => x.id === inv.soId);
+    return matchQ(arSearch, [inv.noFaktur, arCustName(inv), so?.soNumber, fmtDate(inv.date), inv.date, sisa, fmtIDR(sisa)]);
+  });
+  const dpShown = dpOnlySOList.filter((so) => matchQ(arSearch, [so.soNumber, findName(customers, so.customerId), fmtDate(so.date), so.date]));
+  const apShown = pInvoiceAPList.filter(({ inv, sisa }) => {
+    const po = (pos || []).find((x) => x.id === inv.poId);
+    return matchQ(apSearch, [inv.noFaktur, findName(suppliers, inv.supplierId), po?.poNumber, fmtDate(inv.date), inv.date, sisa, fmtIDR(sisa)]);
+  });
 
   const filteredPaymentsIn = useMemo(() => (paymentsIn || []).filter((p) => inDateRange(p.date)), [paymentsIn, startDate, endDate]);
   const filteredPaymentsOut = useMemo(() => (paymentsOut || []).filter((p) => inDateRange(p.date)), [paymentsOut, startDate, endDate]);
@@ -295,6 +357,7 @@ export default function FinanceView(props) {
       {/* SUBTAB 1: PIUTANG (AR) */}
       {subTab === "ar" && (
         <div>
+          <SearchBar value={arSearch} onChange={setArSearch} placeholder="Cari no. faktur, no. SO, nama pelanggan, tanggal, atau nominal..." shown={arShown.length} total={invoiceARList.length} COLOR={COLOR} />
           <ResponsiveTable minWidth={750} colorConfig={COLOR}>
             <thead>
               <tr style={{ background: COLOR.primarySoft }}>
@@ -304,7 +367,7 @@ export default function FinanceView(props) {
               </tr>
             </thead>
             <tbody>
-              {invoiceARList.map(({ inv, total, sisa }) => {
+              {arShown.map(({ inv, total, sisa }) => {
                 const so = (sos || []).find((x) => x.id === inv.soId);
                 const custName = inv.isDirect ? findName(customers, inv.customerId) : (so ? findName(customers, so.customerId) : "-");
                 return (
@@ -320,6 +383,7 @@ export default function FinanceView(props) {
                 );
               })}
               {invoiceARList.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada piutang tersisa — semua Faktur Penjualan sudah lunas.</td></tr>}
+              {invoiceARList.length > 0 && arShown.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada piutang yang cocok dengan "{arSearch}".</td></tr>}
             </tbody>
           </ResponsiveTable>
 
@@ -333,7 +397,7 @@ export default function FinanceView(props) {
               </tr>
             </thead>
             <tbody>
-              {dpOnlySOList.map((so) => (
+              {dpShown.map((so) => (
                 <tr key={so.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                   <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{so.soNumber}</td>
                   <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(customers, so.customerId)}</td>
@@ -343,7 +407,7 @@ export default function FinanceView(props) {
                   <td className="px-4 py-2.5 text-right"><button onClick={() => openPay("dp", so)} className="text-xs font-semibold cursor-pointer" style={{ color: COLOR.accent }}>Tambah DP</button></td>
                 </tr>
               ))}
-              {dpOnlySOList.length === 0 && <tr><td colSpan={6} className="text-center py-6 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada DP yang tercatat untuk SO yang belum difaktur.</td></tr>}
+              {dpShown.length === 0 && <tr><td colSpan={6} className="text-center py-6 text-sm" style={{ color: COLOR.inkSoft }}>Belum ada DP yang tercatat untuk SO yang belum difaktur.</td></tr>}
             </tbody>
           </ResponsiveTable>
           <div className="flex justify-end mt-2">
@@ -354,6 +418,8 @@ export default function FinanceView(props) {
 
       {/* SUBTAB 2: HUTANG (AP) */}
       {subTab === "ap" && (
+        <div>
+        <SearchBar value={apSearch} onChange={setApSearch} placeholder="Cari no. faktur vendor, no. PO, nama supplier, tanggal, atau nominal..." shown={apShown.length} total={pInvoiceAPList.length} COLOR={COLOR} />
         <ResponsiveTable minWidth={750} colorConfig={COLOR}>
           <thead>
             <tr style={{ background: COLOR.primarySoft }}>
@@ -363,7 +429,7 @@ export default function FinanceView(props) {
             </tr>
           </thead>
           <tbody>
-            {pInvoiceAPList.map(({ inv, total, sisa }) => {
+            {apShown.map(({ inv, total, sisa }) => {
               const paid = typeof pInvoicePaidAmount === "function" ? pInvoicePaidAmount(inv.id) : 0;
               return (
                 <tr key={inv.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
@@ -378,8 +444,10 @@ export default function FinanceView(props) {
               );
             })}
             {pInvoiceAPList.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada hutang tersisa — semua Faktur Pembelian sudah lunas.</td></tr>}
+            {pInvoiceAPList.length > 0 && apShown.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada hutang yang cocok dengan "{apSearch}".</td></tr>}
           </tbody>
         </ResponsiveTable>
+        </div>
       )}
 
       {/* SUBTAB 3: RIWAYAT PEMBAYARAN (DENGAN FILTER TANGGAL) */}
@@ -456,7 +524,7 @@ export default function FinanceView(props) {
       {subTab === "expenses" && (
         <div>
           <div className="flex justify-end mb-3">
-            <Button onClick={() => setExpModal(true)} colorConfig={COLOR}><Plus size={15} /> Catat Biaya Operasional</Button>
+            <Button onClick={openNewExp} colorConfig={COLOR}><Plus size={15} /> Catat Biaya Operasional</Button>
           </div>
           <ResponsiveTable minWidth={600} colorConfig={COLOR}>
             <thead>
@@ -486,7 +554,8 @@ export default function FinanceView(props) {
                       )}
                     </td>
                     <td className="px-4 py-2.5" style={{ color: COLOR.inkSoft }}>{e.note || "-"}</td>
-                    <td className="px-4 py-2.5 text-right">
+                    <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                      <button onClick={() => openEditExp(e)} className="text-xs mr-3 font-semibold cursor-pointer" style={{ color: COLOR.accent }}>Edit</button>
                       <button onClick={() => removeExpense(e.id)} className="text-xs font-semibold cursor-pointer" style={{ color: COLOR.danger }}>Hapus</button>
                     </td>
                   </tr>
@@ -526,7 +595,7 @@ export default function FinanceView(props) {
 
       {/* MODAL CATAT BIAYA OPERASIONAL */}
       {expModal && (
-        <Modal title="Catat Biaya Operasional" onClose={() => setExpModal(false)} colorConfig={COLOR}>
+        <Modal title={editingExpId ? "Edit Biaya Operasional" : "Catat Biaya Operasional"} onClose={closeExpModal} colorConfig={COLOR}>
           <Field label="Kategori Biaya" colorConfig={COLOR}>
             <Select value={expForm.category} onChange={(e) => setExpForm({ ...expForm, category: e.target.value })} colorConfig={COLOR}>
               {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -535,7 +604,7 @@ export default function FinanceView(props) {
           <Field label="Jumlah Pengeluaran Kas (Rp)" colorConfig={COLOR}><TextInput type="number" value={expForm.amount} onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })} placeholder="0" colorConfig={COLOR} /></Field>
           <Field label="Tanggal Pengeluaran" colorConfig={COLOR}><TextInput type="date" value={expForm.date} onChange={(e) => setExpForm({ ...expForm, date: e.target.value })} colorConfig={COLOR} /></Field>
           <Field label="Catatan / Keterangan (opsional)" colorConfig={COLOR}><TextInput value={expForm.note} onChange={(e) => setExpForm({ ...expForm, note: e.target.value })} placeholder="Contoh: Sewa Gudang Periode Sep 2026" colorConfig={COLOR} /></Field>
-          <Button onClick={submitExpense} className="w-full justify-center mt-2 cursor-pointer" colorConfig={COLOR}>Simpan Biaya Operasional</Button>
+          <Button onClick={submitExpense} className="w-full justify-center mt-2 cursor-pointer" colorConfig={COLOR}>{editingExpId ? "Simpan Perubahan" : "Simpan Biaya Operasional"}</Button>
         </Modal>
       )}
     </div>
