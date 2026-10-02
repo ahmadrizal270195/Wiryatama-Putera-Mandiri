@@ -1252,7 +1252,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
                   <div className="grid grid-cols-3 gap-4 text-center text-xs mt-12 pt-4">
                     <div><p className="text-gray-500 mb-12">Disiapkan Oleh (Gudang),</p><p className="underline text-gray-900 font-bold">( Petugas Gudang )</p></div>
                     <div><p className="text-gray-500 mb-12">Dikirim Oleh (Sales/Driver),</p><p className="underline text-gray-900 font-bold">( Pengirim )</p></div>
-                    <div><p className="text-gray-500 mb-12">Diterima Oleh (Pelanggan),</p><p className="underline text-gray-900 font-bold">( {cust?.name || "..........................."} )</p></div>
+                    <div><p className="text-gray-500 mb-12">Diterima Oleh (Pelanggan),</p><p className="text-gray-900 font-bold whitespace-pre">(                                        )</p></div>
                   </div>
                 </div>
               );
@@ -1868,7 +1868,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
 
                     <div className="grid grid-cols-2 gap-8 text-center text-xs mt-12 pt-4">
                       <div><p className="text-gray-500 mb-12">Tanda Tangan Penerima / Pelanggan,</p><p className="underline text-gray-900 font-bold">( {cust?.name || "..........................."} )</p></div>
-                      <div><p className="text-gray-500 mb-12">Hormat Kami ({COMPANY_PROFILE?.name}),</p><p className="underline text-gray-900 font-bold">( Finance )</p></div>
+                      <div><p className="text-gray-500 mb-12">Hormat Kami,</p><p className="underline text-gray-900 font-bold">{COMPANY_PROFILE?.name || "PT Wiryatama Putera Mandiri"}</p></div>
                     </div>
                   </div>
                 );
