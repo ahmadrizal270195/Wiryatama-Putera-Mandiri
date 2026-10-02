@@ -10,7 +10,7 @@ import {
   AlertTriangle, Plus, X, Trash2, Search, Boxes, ArrowUpRight, ArrowDownRight,
   Loader2, Calendar, Printer, Wallet, Receipt, CreditCard, PiggyBank, BarChart3,
   FileText, LogOut, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare, ShieldAlert, Download, Upload,
-  Moon, Sun, ChevronLeft, ChevronRight, Database, SlidersHorizontal, ChevronDown, ClipboardCheck
+  Moon, Sun, ChevronLeft, ChevronRight, Database, SlidersHorizontal, ChevronDown, ClipboardCheck, History
 } from "lucide-react";
 import { 
   auth, 
@@ -33,6 +33,8 @@ import { myClasses, setOfficersCache } from "./qa";
 import { computeBill } from "./billing";
 import { setPaymentSettings, PAYMENT_GROUPS } from "./print";
 import SearchableSelect from "./components/SearchableSelect";
+import ActivityLogView from "./modules/ActivityLogModule";
+import { logActivity, logListChange, setActivityActor } from "./activityLog";
 
 const THEME = {
   light: {
@@ -297,7 +299,11 @@ export default function App() {
         <Route
           path="/app/*"
           element={
-            user ? <PharmaERP userEmail={user.email} onLogout={() => { localStorage.removeItem(ACTIVE_TAB_KEY); signOut(auth); }} /> : <Navigate to="/login" replace />
+            user ? <PharmaERP userEmail={user.email} onLogout={async (reason) => {
+              await logActivity({ action: "logout", module: "Autentikasi", email: user.email, details: reason === "idle" ? "Logout otomatis (60 menit tidak ada aktivitas)" : "Logout dari sistem" });
+              localStorage.removeItem(ACTIVE_TAB_KEY);
+              signOut(auth);
+            }} /> : <Navigate to="/login" replace />
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -489,6 +495,7 @@ function LoginScreen() {
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      logActivity({ action: "login", module: "Autentikasi", email, details: "Login ke sistem" });
       navigate("/app");
     } catch (err) {
       setError("Email atau password salah.");
@@ -842,7 +849,7 @@ function PharmaERP({ userEmail, onLogout }) {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       idleTimerRef.current = setTimeout(() => {
         localStorage.removeItem(ACTIVE_TAB_KEY);
-        onLogout();
+        onLogout("idle");
         alert("Sesi Anda telah berakhir secara otomatis karena tidak ada aktivitas selama 60 menit demi keamanan.");
       }, IDLE_TIMEOUT_MS);
     };
@@ -1003,25 +1010,32 @@ function PharmaERP({ userEmail, onLogout }) {
 
   // Tiap simpan mengirim perubahan relatif terhadap daftar yang sedang dilihat layar
   // (state di render ini), bukan menimpa seluruh daftar.
+  // Setiap simpan data otomatis tercatat di Log Aktivitas (tambah/ubah/hapus + apa yang berubah)
+  const auditedSave = async (key, prev, next) => {
+    const ok = await saveList(key, prev, next);
+    if (ok !== false) logListChange(key, prev, next);
+    return ok;
+  };
+
   const persist = {
-    products: async (list) => { setProducts(list); return saveList(KEYS.products, products, list); },
-    suppliers: async (list) => { setSuppliers(list); return saveList(KEYS.suppliers, suppliers, list); },
-    customers: async (list) => { setCustomers(list); return saveList(KEYS.customers, customers, list); },
-    batches: async (list) => { setBatches(list); return saveList(KEYS.batches, batches, list); },
-    pos: async (list) => { setPOs(list); return saveList(KEYS.pos, pos, list); },
-    pReceipts: async (list) => { setPReceipts(list); return saveList(KEYS.pReceipts, pReceipts, list); },
-    pInvoices: async (list) => { setPInvoices(list); return saveList(KEYS.pInvoices, pInvoices, list); },
-    pReturns: async (list) => { setPReturns(list); return saveList(KEYS.pReturns, pReturns, list); },
-    sos: async (list) => { setSOs(list); return saveList(KEYS.sos, sos, list); },
-    paymentsOut: async (list) => { setPaymentsOut(list); return saveList(KEYS.paymentsOut, paymentsOut, list); },
-    paymentsIn: async (list) => { setPaymentsIn(list); return saveList(KEYS.paymentsIn, paymentsIn, list); },
-    expenses: async (list) => { setExpenses(list); return saveList(KEYS.expenses, expenses, list); },
-    deliveryNotes: async (list) => { setDeliveryNotes(list); return saveList(KEYS.deliveryNotes, deliveryNotes, list); },
-    invoices: async (list) => { setInvoices(list); return saveList(KEYS.invoices, invoices, list); },
-    returns: async (list) => { setReturns(list); return saveList(KEYS.returns, returns, list); },
-    users: async (list) => { setUsers(list); return saveList(KEYS.users, users, list); },
-    qaOfficers: async (list) => { setQaOfficers(list); return saveList(KEYS.qaOfficers, qaOfficers, list); },
-    disposals: async (list) => { setDisposals(list); return saveList(KEYS.disposals, disposals, list); },
+    products: async (list) => { setProducts(list); return auditedSave(KEYS.products, products, list); },
+    suppliers: async (list) => { setSuppliers(list); return auditedSave(KEYS.suppliers, suppliers, list); },
+    customers: async (list) => { setCustomers(list); return auditedSave(KEYS.customers, customers, list); },
+    batches: async (list) => { setBatches(list); return auditedSave(KEYS.batches, batches, list); },
+    pos: async (list) => { setPOs(list); return auditedSave(KEYS.pos, pos, list); },
+    pReceipts: async (list) => { setPReceipts(list); return auditedSave(KEYS.pReceipts, pReceipts, list); },
+    pInvoices: async (list) => { setPInvoices(list); return auditedSave(KEYS.pInvoices, pInvoices, list); },
+    pReturns: async (list) => { setPReturns(list); return auditedSave(KEYS.pReturns, pReturns, list); },
+    sos: async (list) => { setSOs(list); return auditedSave(KEYS.sos, sos, list); },
+    paymentsOut: async (list) => { setPaymentsOut(list); return auditedSave(KEYS.paymentsOut, paymentsOut, list); },
+    paymentsIn: async (list) => { setPaymentsIn(list); return auditedSave(KEYS.paymentsIn, paymentsIn, list); },
+    expenses: async (list) => { setExpenses(list); return auditedSave(KEYS.expenses, expenses, list); },
+    deliveryNotes: async (list) => { setDeliveryNotes(list); return auditedSave(KEYS.deliveryNotes, deliveryNotes, list); },
+    invoices: async (list) => { setInvoices(list); return auditedSave(KEYS.invoices, invoices, list); },
+    returns: async (list) => { setReturns(list); return auditedSave(KEYS.returns, returns, list); },
+    users: async (list) => { setUsers(list); return auditedSave(KEYS.users, users, list); },
+    qaOfficers: async (list) => { setQaOfficers(list); return auditedSave(KEYS.qaOfficers, qaOfficers, list); },
+    disposals: async (list) => { setDisposals(list); return auditedSave(KEYS.disposals, disposals, list); },
   };
 
   const stockByProduct = useMemo(() => {
@@ -1174,6 +1188,7 @@ function PharmaERP({ userEmail, onLogout }) {
   { id: "reports", label: "Laporan", icon: BarChart3, requiresFinance: false },
   { id: "qa", label: "APJ / PJT", icon: ClipboardCheck, requiresFinance: false },
   { id: "settings", label: "Pengaturan", icon: ShieldCheck, requiresFinance: true },
+  { id: "activity", label: "Log Aktivitas", icon: History, requiresFinance: true },
 ];
 
 // Cari akun user yang sedang login saat ini berdasarkan email:
@@ -1191,7 +1206,9 @@ const currentUserAccess = currentUser
 // APJ / PJT yang terdaftar otomatis bisa buka menu review walau belum diberi akses "qa".
 const isQAOfficer = myClasses(qaOfficers, userEmail).length > 0;
 const canOpenQA = currentUserAccess.includes("qa") || isQAOfficer || isHardAdmin;
-const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpenQA : currentUserAccess.includes(n.id)));
+const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpenQA : n.id === "activity" ? isHardAdmin : currentUserAccess.includes(n.id)));
+// Identitas pencatat untuk Log Aktivitas
+setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHardAdmin ? "Super Admin" : (currentUser?.role || "") });
 
   if (loading) {
     return (
@@ -1428,7 +1445,7 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpe
           { title: "Utama", ids: ["dashboard"] },
           { title: "Master Data", ids: ["products", "stock", "suppliers", "customers"] },
           { title: "Transaksi", ids: ["purchases", "sales", "finance"] },
-          { title: "Laporan & Kontrol", ids: ["reports", "qa", "settings"] },
+          { title: "Laporan & Kontrol", ids: ["reports", "qa", "settings", "activity"] },
         ];
         const grouped = new Set(GROUPS.flatMap((g) => g.ids));
         const sections = GROUPS.map((g) => ({ ...g, items: NAV.filter((n) => g.ids.includes(n.id)) }));
@@ -1752,6 +1769,9 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpe
         )}
 
         {/* PENGATURAN */}
+        {tab === "activity" && (
+          isHardAdmin ? <ActivityLogView users={users} colorConfig={COLOR} /> : <AccessDenied />
+        )}
         {tab === "settings" && (
           currentUserAccess.includes("settings") ? (
             <SettingsView 
@@ -2474,6 +2494,10 @@ function PaymentAccountsSettings({ notify }) {
       if (!ok) throw new Error("save failed");
       setPaymentSettings(next);
       setAccounts(cleaned.length ? cleaned : [newPayAcc("ppn"), newPayAcc("nonppn")]);
+      logActivity({
+        action: "update", module: "Pengaturan", targetLabel: "Rekening Pembayaran",
+        details: cleaned.map((a) => `${a.group === "ppn" ? "PPN" : "Non-PPN"}: ${a.bankName} ${a.accountNumber} a.n ${a.accountName}${a.active === false ? " (disembunyikan)" : ""}`).join("; ") || "Semua rekening dihapus",
+      });
       notify("Rekening pembayaran tersimpan. Faktur PPN & Non-PPN otomatis pakai rekening masing-masing.");
     } catch (e) {
       console.error(e);

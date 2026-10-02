@@ -51,6 +51,16 @@ service cloud.firestore {
       allow write: if signedIn() && (!migrated() || (docId == "erp-app-settings" && isMember()));
     }
 
+    // Log Aktivitas Sistem: tiap anggota boleh MENULIS log atas namanya sendiri,
+    // cuma super admin yang boleh MEMBACA, dan log tidak bisa diubah/dihapus siapa pun.
+    match /erp_activity_logs/{logId} {
+      allow create: if isMember()
+        && request.resource.data.userEmail == request.auth.token.email.lower()
+        && request.resource.data.keys().hasOnly(['userEmail', 'userName', 'userRole', 'action', 'module', 'targetLabel', 'details', 'createdAt']);
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
