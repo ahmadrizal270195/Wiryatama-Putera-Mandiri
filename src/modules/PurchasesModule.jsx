@@ -11,6 +11,7 @@ function itemsChanged(oldItems, newItems) {
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import { computeBill, normalizeDeductions, legacyDiscountFields, cleanDeductions } from "../billing";
 import { ItemsTable, DeductionsEditor, BillSummary, AddedBadge } from "../components/OrderEditor";
+import SearchableSelect from "../components/SearchableSelect";
 const withRowIds = (list) => (list || []).map((d, i) => ({ ...d, id: d.id && d.id !== "legacy" ? d.id : `ded-${Date.now().toString(36)}-${i}` }));
 
 // Helper Input Diskon Dwi-Mode (% / Rp)
@@ -410,10 +411,9 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
               <TextInput value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="Contoh: PO/WPM/2026/001" className="tabular-nums" colorConfig={colorConfig} />
             </Field>
             <Field label="Supplier / PBF" colorConfig={colorConfig}>
-              <Select value={supplierId} onChange={(e) => handleSelectSupplier(e.target.value)} colorConfig={colorConfig}>
-                {(suppliers || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                <option value="__ADD_NEW__" className="font-bold text-emerald-800 bg-emerald-50">+ Tambah Supplier Baru...</option>
-              </Select>
+              <SearchableSelect value={supplierId} onChange={handleSelectSupplier} colorConfig={colorConfig} placeholder="-- Pilih Supplier --"
+                options={(suppliers || []).map((s) => ({ value: s.id, label: s.name, sublabel: [s.category, s.address].filter(Boolean).join(" · ") }))}
+                pinnedOptions={[{ value: "__ADD_NEW__", label: "+ Tambah Supplier Baru..." }]} />
             </Field>
             <Field label="Tanggal PO" colorConfig={colorConfig}>
               <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} colorConfig={colorConfig} />
@@ -805,9 +805,8 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
                   <TextInput value={noBPB} onChange={(e) => setNoBPB(e.target.value)} placeholder="Contoh: BPB/WPM/2026/001" className="tabular-nums" colorConfig={colorConfig} />
                 </Field>
                 <Field label="Purchase Order (PO)" colorConfig={colorConfig}>
-                  <Select value={poId} onChange={(e) => changePO(e.target.value)} colorConfig={colorConfig}>
-                    {eligiblePOs.map((po) => <option key={po.id} value={po.id}>{po.poNumber} · {findName(suppliers, po.supplierId)}</option>)}
-                  </Select>
+                  <SearchableSelect value={poId} onChange={changePO} colorConfig={colorConfig} placeholder="-- Pilih PO --"
+                    options={eligiblePOs.map((po) => ({ value: po.id, label: `${po.poNumber} · ${findName(suppliers, po.supplierId)}`, sublabel: po.date ? fmtDate(po.date) : "" }))} />
                 </Field>
                 <Field label="Tanggal Terima" colorConfig={colorConfig}>
                   <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} colorConfig={colorConfig} />
@@ -1358,10 +1357,9 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
               <TextInput value={noFakturDirect} onChange={(e) => setNoFakturDirect(e.target.value)} placeholder="Contoh: VINV/2026/001" className="tabular-nums" colorConfig={colorConfig} />
             </Field>
             <Field label="Supplier / PBF" colorConfig={colorConfig}>
-              <Select value={supplierId} onChange={(e) => handleSelectSupplier(e.target.value)} colorConfig={colorConfig}>
-                {(suppliers || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                <option value="__ADD_NEW__" className="font-bold text-emerald-800 bg-emerald-50">+ Tambah Supplier Baru...</option>
-              </Select>
+              <SearchableSelect value={supplierId} onChange={handleSelectSupplier} colorConfig={colorConfig} placeholder="-- Pilih Supplier --"
+                options={(suppliers || []).map((s) => ({ value: s.id, label: s.name, sublabel: [s.category, s.address].filter(Boolean).join(" · ") }))}
+                pinnedOptions={[{ value: "__ADD_NEW__", label: "+ Tambah Supplier Baru..." }]} />
             </Field>
             <Field label="Tanggal Faktur" colorConfig={colorConfig}>
               <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} colorConfig={colorConfig} />
@@ -1679,9 +1677,8 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
           ) : (
             <>
               <Field label="Pilih Faktur Pembelian" colorConfig={colorConfig}>
-                <Select value={pInvoiceId} onChange={(e) => { setPInvoiceId(e.target.value); setReturnQty({}); }} colorConfig={colorConfig}>
-                  {returnableInvoices.map((inv) => <option key={inv.id} value={inv.id}>{inv.noFaktur} · {findName(suppliers, inv.supplierId)}</option>)}
-                </Select>
+                <SearchableSelect value={pInvoiceId} onChange={(v) => { setPInvoiceId(v); setReturnQty({}); }} colorConfig={colorConfig} placeholder="-- Pilih Faktur Pembelian --"
+                  options={returnableInvoices.map((inv) => ({ value: inv.id, label: `${inv.noFaktur} · ${findName(suppliers, inv.supplierId)}`, sublabel: inv.date ? fmtDate(inv.date) : "" }))} />
               </Field>
 
               {selectedInvoice && (

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef } from "react";
 import { Upload, Search, Download, Edit2, Trash2 } from "lucide-react";
 import { Eyebrow, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import DisposalPanel from "./DisposalPanel";
+import SearchableSelect from "../components/SearchableSelect";
 
 export default function StockView(props) {
   const { 
@@ -462,10 +463,9 @@ export default function StockView(props) {
 
               {sourceType === "pembelian" ? (
                 <Field label="Pilih Supplier / PBF Vendor" colorConfig={colorConfig}>
-                  <Select value={selectedSupplierId} onChange={(e) => setSelectedSupplierId(e.target.value)} colorConfig={colorConfig}>
-                    <option value="">-- Tanpa Supplier Terikat --</option>
-                    {(suppliers || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </Select>
+                  <SearchableSelect value={selectedSupplierId} onChange={setSelectedSupplierId} colorConfig={colorConfig} placeholder="-- Tanpa Supplier Terikat --"
+                    emptyOptionLabel="-- Tanpa Supplier Terikat --"
+                    options={(suppliers || []).map((s) => ({ value: s.id, label: s.name, sublabel: [s.category, s.address].filter(Boolean).join(" · ") }))} />
                 </Field>
               ) : (
                 <Field label="Keterangan" colorConfig={colorConfig}>

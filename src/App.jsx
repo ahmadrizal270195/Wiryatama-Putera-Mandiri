@@ -32,6 +32,7 @@ import QAView from "./modules/QAModule";
 import { myClasses, setOfficersCache } from "./qa";
 import { computeBill } from "./billing";
 import { setPaymentSettings, PAYMENT_GROUPS } from "./print";
+import SearchableSelect from "./components/SearchableSelect";
 
 const THEME = {
   light: {
@@ -2146,12 +2147,9 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
               </Field>
 
               <Field label="Filter Pelanggan">
-                <Select value={agingCust} onChange={(e) => setAgingCust(e.target.value)}>
-                  <option value="ALL">Semua Pelanggan</option>
-                  {(customers || []).map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </Select>
+                <SearchableSelect value={agingCust} onChange={setAgingCust} placeholder="Semua Pelanggan"
+                  pinnedOptions={[{ value: "ALL", label: "Semua Pelanggan" }]}
+                  options={(customers || []).map((c) => ({ value: c.id, label: c.name, sublabel: [c.type, c.address].filter(Boolean).join(" · ") }))} />
               </Field>
 
               <Field label="Filter Umur Piutang">

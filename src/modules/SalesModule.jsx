@@ -5,6 +5,7 @@ import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, Responsi
 import { choosePaperAndPrint, printDocumentContent, QASignatureBlock, PrintArea, DocHeader, DocParties, DocTable, SignatureRow, PaymentInfo } from "../print";
 import { computeBill, normalizeDeductions, legacyDiscountFields, cleanDeductions } from "../billing";
 import { ItemsTable, DeductionsEditor, BillSummary, AddedBadge } from "../components/OrderEditor";
+import SearchableSelect from "../components/SearchableSelect";
 const withRowIds = (list) => (list || []).map((d, i) => ({ ...d, id: d.id && d.id !== "legacy" ? d.id : `ded-${Date.now().toString(36)}-${i}` }));
 
 // Helper Input Diskon Dwi-Mode (% / Rp)
@@ -468,10 +469,9 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
           <div className="grid grid-cols-3 gap-3 mb-3">
             <Field label="Nomor SO" colorConfig={colorConfig}><TextInput value={soNumber} onChange={(e) => setSoNumber(e.target.value)} placeholder="Contoh: SO/WPM/2026/001" className="tabular-nums" colorConfig={colorConfig} /></Field>
             <Field label="Pelanggan" colorConfig={colorConfig}>
-              <Select value={customerId} onChange={(e) => handleSelectCustomer(e.target.value)} colorConfig={colorConfig}>
-                {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                <option value="__ADD_NEW__" className="font-bold text-emerald-800 bg-emerald-50">+ Tambah Pelanggan Baru...</option>
-              </Select>
+              <SearchableSelect value={customerId} onChange={handleSelectCustomer} colorConfig={colorConfig} placeholder="-- Pilih Pelanggan --"
+                options={(customers || []).map((c) => ({ value: c.id, label: c.name, sublabel: [c.type, c.address].filter(Boolean).join(" · ") }))}
+                pinnedOptions={[{ value: "__ADD_NEW__", label: "+ Tambah Pelanggan Baru..." }]} />
             </Field>
             <Field label="Tanggal SO" colorConfig={colorConfig}><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} colorConfig={colorConfig} /></Field>
           </div>
@@ -935,9 +935,8 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
               <div className="grid grid-cols-3 gap-3">
                 <Field label="Nomor Surat Jalan" colorConfig={colorConfig}><TextInput value={noSJ} onChange={(e) => setNoSJ(e.target.value)} placeholder="Contoh: SJ/WPM/2026/001" className="tabular-nums" colorConfig={colorConfig} /></Field>
                 <Field label="Sales Order" colorConfig={colorConfig}>
-                  <Select value={soId} onChange={(e) => changeSO(e.target.value)} disabled={!!editingId} colorConfig={colorConfig}>
-                    {eligibleSOs.map((so) => <option key={so.id} value={so.id}>{so.soNumber} · {findName(customers, so.customerId)}</option>)}
-                  </Select>
+                  <SearchableSelect value={soId} onChange={changeSO} disabled={!!editingId} colorConfig={colorConfig} placeholder="-- Pilih Sales Order --"
+                    options={eligibleSOs.map((so) => ({ value: so.id, label: `${so.soNumber} · ${findName(customers, so.customerId)}`, sublabel: so.date ? fmtDate(so.date) : "" }))} />
                 </Field>
                 <Field label="Tanggal Kirim" colorConfig={colorConfig}><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} colorConfig={colorConfig} /></Field>
               </div>
@@ -1489,10 +1488,9 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
           <div className="grid grid-cols-3 gap-3 mb-4">
             <Field label="Nomor Faktur" colorConfig={colorConfig}><TextInput value={noFakturDirect} onChange={(e) => setNoFakturDirect(e.target.value)} placeholder="Contoh: INV/WPM/2026/001" className="tabular-nums" colorConfig={colorConfig} /></Field>
             <Field label="Pelanggan" colorConfig={colorConfig}>
-              <Select value={customerId} onChange={(e) => handleSelectCustomer(e.target.value)} disabled={isEditingFromSO} colorConfig={colorConfig}>
-                {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                <option value="__ADD_NEW__" className="font-bold text-emerald-800 bg-emerald-50">+ Tambah Pelanggan Baru...</option>
-              </Select>
+              <SearchableSelect value={customerId} onChange={handleSelectCustomer} disabled={isEditingFromSO} colorConfig={colorConfig} placeholder="-- Pilih Pelanggan --"
+                options={(customers || []).map((c) => ({ value: c.id, label: c.name, sublabel: [c.type, c.address].filter(Boolean).join(" · ") }))}
+                pinnedOptions={[{ value: "__ADD_NEW__", label: "+ Tambah Pelanggan Baru..." }]} />
             </Field>
             <Field label="Tanggal Faktur" colorConfig={colorConfig}><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} colorConfig={colorConfig} /></Field>
           </div>
@@ -1870,9 +1868,8 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
           ) : (
             <>
               <Field label="Pilih Faktur Penjualan" colorConfig={colorConfig}>
-                <Select value={invoiceId} onChange={(e) => { setInvoiceId(e.target.value); setReturnQty({}); }} colorConfig={colorConfig}>
-                  {returnableInvoices.map((inv) => <option key={inv.id} value={inv.id}>{inv.noFaktur} ({fmtIDR(invoiceTotal(inv))})</option>)}
-                </Select>
+                <SearchableSelect value={invoiceId} onChange={(v) => { setInvoiceId(v); setReturnQty({}); }} colorConfig={colorConfig} placeholder="-- Pilih Faktur --"
+                  options={returnableInvoices.map((inv) => ({ value: inv.id, label: `${inv.noFaktur} (${fmtIDR(invoiceTotal(inv))})`, sublabel: findName(customers, inv.customerId) }))} />
               </Field>
               {selectedInvoice && (
                 <div className="flex flex-col gap-2 mt-2">
