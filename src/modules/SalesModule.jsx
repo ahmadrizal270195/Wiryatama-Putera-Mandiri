@@ -1215,19 +1215,34 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
                         <th className="py-2 px-2 text-left font-bold" style={{ color: colorConfig?.primary }}>No</th>
                         <th className="py-2 px-2 text-left font-bold" style={{ color: colorConfig?.primary }}>Nama Barang / Alkes</th>
                         <th className="py-2 px-2 text-center font-bold" style={{ color: colorConfig?.primary }}>Qty Kirim</th>
-                        <th className="py-2 px-2 text-left font-bold" style={{ color: colorConfig?.primary }}>Batch & Expire Date</th>
+                        <th className="py-2 px-2 text-left font-bold" style={{ color: colorConfig?.primary }}>No. Batch</th>
+                        <th className="py-2 px-2 text-left font-bold" style={{ color: colorConfig?.primary }}>Exp. Date</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(printDN.items || []).map((it, idx) => {
                         const p = (products || []).find((x) => x.id === it.productId);
-                        const batchInfo = (it.allocations || []).map(a => `${a.batchNo} (${a.qty} ${p?.unit || "unit"})`).join(", ");
+                        // Batch & ED dari alokasi FEFO; ED diambil dari data batch kalau alokasi lama belum menyimpannya.
+                        const allocs = (it.allocations || []).map((a) => {
+                          const b = (batches || []).find((x) => x.id === a.batchId);
+                          return { batchNo: a.batchNo || b?.batchNo || "-", ed: a.expiryDate || b?.expiryDate || "", qty: a.qty };
+                        });
+                        const multi = allocs.length > 1;
                         return (
                           <tr key={idx} className="border-b">
                             <td className="py-2.5 px-2 font-mono text-gray-500">{idx + 1}</td>
                             <td className="py-2.5 px-2 text-gray-900 font-bold">{p?.name || "-"}</td>
                             <td className="py-2.5 px-2 text-center font-mono font-bold">{it.qty} {p?.unit || "unit"}</td>
-                            <td className="py-2.5 px-2 font-mono text-gray-700">{batchInfo || "-"}</td>
+                            <td className="py-2.5 px-2 font-mono text-gray-700">
+                              {allocs.length === 0 ? "-" : allocs.map((a, k) => (
+                                <div key={k}>{a.batchNo}{multi ? ` (${a.qty} ${p?.unit || "unit"})` : ""}</div>
+                              ))}
+                            </td>
+                            <td className="py-2.5 px-2 font-mono text-gray-700">
+                              {allocs.length === 0 ? "-" : allocs.map((a, k) => (
+                                <div key={k}>{a.ed ? fmtDate(a.ed) : "-"}</div>
+                              ))}
+                            </td>
                           </tr>
                         );
                       })}
