@@ -10,8 +10,8 @@ function PJBadge({ product, colorConfig }) {
   const cls = qaClassOf(product);
   const manual = product.qaClass === "obat" || product.qaClass === "alkes";
   const isObat = cls === "obat";
-  const fg = isObat ? (colorConfig?.warn || "#C97F1E") : (colorConfig?.accent || "#1B6B6E");
-  const bg = isObat ? (colorConfig?.warnSoft || "#FBF1E1") : (colorConfig?.primarySoft || "#E8F0EF");
+  const fg = isObat ? (colorConfig?.warn || "#D97706") : (colorConfig?.accent || "#10B981");
+  const bg = isObat ? (colorConfig?.warnSoft || "#FFFBEB") : (colorConfig?.primarySoft || "#ECFDF5");
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap" style={{ background: bg, color: fg }}
       title={manual ? "Diatur manual di produk ini" : "Otomatis dari kategori"}>
@@ -128,7 +128,7 @@ export default function ProductsView({ products, save, stockByProduct, notify, c
 
   function renderSortIcon(field) {
     if (sortField !== field) return <span className="opacity-30 ml-1">↕</span>;
-    return sortOrder === "asc" ? <span className="ml-1 text-teal-900 font-bold">↑</span> : <span className="ml-1 text-teal-900 font-bold">↓</span>;
+    return sortOrder === "asc" ? <span className="ml-1 text-emerald-900 font-bold">↑</span> : <span className="ml-1 text-emerald-900 font-bold">↓</span>;
   }
 
   return (
@@ -161,8 +161,8 @@ export default function ProductsView({ products, save, stockByProduct, notify, c
         <div className="flex flex-wrap items-center gap-2 mb-3 rounded-lg px-3 py-2 text-xs" style={{ background: colorConfig?.primarySoft, color: colorConfig?.ink }}>
           <b>{selected.size} produk dipilih</b>
           <span style={{ color: colorConfig?.inkSoft }}>Ubah penanggung jawab jadi:</span>
-          <button disabled={bulkBusy} onClick={() => bulkSetClass("obat")} className="px-2.5 py-1 rounded-md font-semibold text-white disabled:opacity-50" style={{ background: colorConfig?.warn || "#C97F1E" }}>Obat (APJ)</button>
-          <button disabled={bulkBusy} onClick={() => bulkSetClass("alkes")} className="px-2.5 py-1 rounded-md font-semibold text-white disabled:opacity-50" style={{ background: colorConfig?.accent || "#1B6B6E" }}>Alkes (PJT)</button>
+          <button disabled={bulkBusy} onClick={() => bulkSetClass("obat")} className="px-2.5 py-1 rounded-md font-semibold text-white disabled:opacity-50" style={{ background: colorConfig?.warn || "#D97706" }}>Obat (APJ)</button>
+          <button disabled={bulkBusy} onClick={() => bulkSetClass("alkes")} className="px-2.5 py-1 rounded-md font-semibold text-white disabled:opacity-50" style={{ background: colorConfig?.accent || "#10B981" }}>Alkes (PJT)</button>
           <button disabled={bulkBusy} onClick={() => bulkSetClass("")} className="px-2.5 py-1 rounded-md font-semibold border disabled:opacity-50" style={{ borderColor: colorConfig?.border, color: colorConfig?.ink }}>Otomatis</button>
           <button onClick={() => setSelected(new Set())} className="ml-auto underline" style={{ color: colorConfig?.inkSoft }}>Batal pilih</button>
         </div>
@@ -195,9 +195,9 @@ export default function ProductsView({ products, save, stockByProduct, notify, c
                 <td className="px-4 py-2.5 font-medium" style={{ color: colorConfig?.ink }}>{p.name}</td>
                 <td className="px-4 py-2.5" style={{ color: colorConfig?.inkSoft }}>{p.category}</td>
                 <td className="px-4 py-2.5"><PJBadge product={p} colorConfig={colorConfig} /></td>
-                <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{p.unit}</td>
-                <td className="px-4 py-2.5 font-mono" style={{ color: colorConfig?.ink }}>{fmtIDR(p.sellPrice)}</td>
-                <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{p.minStock}</td>
+                <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{p.unit}</td>
+                <td className="px-4 py-2.5 tabular-nums" style={{ color: colorConfig?.ink }}>{fmtIDR(p.sellPrice)}</td>
+                <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{p.minStock}</td>
                 <td className="px-4 py-2.5">
                   <Badge tone={s.qty < p.minStock ? "warn" : s.qty === 0 ? "danger" : "good"} colorConfig={colorConfig}>{s.qty} {p.unit}</Badge>
                 </td>

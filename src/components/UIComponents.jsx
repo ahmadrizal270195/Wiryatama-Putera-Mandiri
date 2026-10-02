@@ -3,7 +3,7 @@ import { X, Calendar } from "lucide-react";
 
 export function Eyebrow({ children }) {
   return (
-    <div style={{ letterSpacing: "0.08em" }} className="text-[11px] font-mono uppercase mb-1 text-slate-500">
+    <div style={{ letterSpacing: "0.08em" }} className="text-[11px] tabular-nums uppercase mb-1 text-slate-500">
       {children}
     </div>
   );
@@ -15,8 +15,9 @@ export function Card({ children, style, className = "", colorConfig }) {
       className={"rounded-xl p-4 " + className}
       style={{
         background: colorConfig?.surface || "#FFFFFF",
-        border: `1px solid ${colorConfig?.border || "#E2E9E7"}`,
-        color: colorConfig?.ink || "#15302D",
+        border: `1px solid ${colorConfig?.border || "#E2E8F0"}`,
+        color: colorConfig?.ink || "#1E293B",
+        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.04)",
         ...style,
       }}
     >
@@ -27,17 +28,17 @@ export function Card({ children, style, className = "", colorConfig }) {
 
 export function Badge({ tone = "good", children, colorConfig }) {
   const map = {
-    good: [colorConfig?.goodSoft || "#E9F3ED", colorConfig?.good || "#357A5D"],
-    warn: [colorConfig?.warnSoft || "#FBF1E1", colorConfig?.warn || "#C97F1E"],
-    danger: [colorConfig?.dangerSoft || "#FBEAE8", colorConfig?.danger || "#B84438"],
-    neutral: [colorConfig?.primarySoft || "#E8F0EF", colorConfig?.primary || "#0E4749"],
+    good: [colorConfig?.goodSoft || "#ECFDF5", colorConfig?.good || "#059669"],
+    warn: [colorConfig?.warnSoft || "#FFFBEB", colorConfig?.warn || "#D97706"],
+    danger: [colorConfig?.dangerSoft || "#FEF2F2", colorConfig?.danger || "#DC2626"],
+    neutral: [colorConfig?.primarySoft || "#ECFDF5", colorConfig?.primary || "#059669"],
   };
   const [bg, fg] = map[tone] || map.good;
 
   return (
     <span
-      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold border"
-      style={{ background: bg, color: fg, borderColor: colorConfig?.border || "#E2E9E7" }}
+      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] tabular-nums font-bold border"
+      style={{ background: bg, color: fg, borderColor: colorConfig?.border || "#E2E8F0" }}
     >
       {children}
     </span>
@@ -48,10 +49,10 @@ export function Button({ children, onClick, variant = "primary", type = "button"
   const base = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-opacity disabled:opacity-40 cursor-pointer";
   const styles =
     variant === "primary"
-      ? { background: colorConfig?.primary || "#0E4749", color: "#fff" }
+      ? { background: colorConfig?.primary || "#059669", color: "#fff" }
       : variant === "danger"
-      ? { background: colorConfig?.dangerSoft || "#FBEAE8", color: colorConfig?.danger || "#B84438" }
-      : { background: "transparent", color: colorConfig?.ink || "#15302D", border: `1px solid ${colorConfig?.border || "#E2E9E7"}` };
+      ? { background: colorConfig?.dangerSoft || "#FEF2F2", color: colorConfig?.danger || "#DC2626" }
+      : { background: "transparent", color: colorConfig?.ink || "#1E293B", border: `1px solid ${colorConfig?.border || "#E2E8F0"}` };
   return (
     <button type={type} disabled={disabled} onClick={onClick} className={base + " " + className} style={styles}>
       {children}
@@ -62,7 +63,7 @@ export function Button({ children, onClick, variant = "primary", type = "button"
 export function Field({ label, children, colorConfig }) {
   return (
     <label className="block mb-3">
-      <div className="text-xs font-medium mb-1" style={{ color: colorConfig?.inkSoft || "#5C7873" }}>{label}</div>
+      <div className="text-xs font-medium mb-1" style={{ color: colorConfig?.inkSoft || "#64748B" }}>{label}</div>
       {children}
     </label>
   );
@@ -80,7 +81,7 @@ export function DateInput(props) {
 
   const baseInputStyle = {
     background: colorConfig?.surface || "#FFFFFF",
-    color: colorConfig?.ink || "#15302D",
+    color: colorConfig?.ink || "#1E293B",
     border: `1px solid ${colorConfig?.border || "#CBD5E1"}`,
     ...style,
   };
@@ -95,7 +96,7 @@ export function DateInput(props) {
         className={"w-full rounded-lg pl-3 pr-9 py-1.5 text-sm outline-none " + className}
         style={baseInputStyle}
       />
-      <Calendar size={15} className="absolute right-3 pointer-events-none" style={{ color: colorConfig?.inkSoft || "#5C7873" }} />
+      <Calendar size={15} className="absolute right-3 pointer-events-none" style={{ color: colorConfig?.inkSoft || "#64748B" }} />
       <input
         type="date"
         value={value || ""}
@@ -118,7 +119,7 @@ export function TextInput(props) {
 
   const baseInputStyle = {
     background: colorConfig?.surface || "#FFFFFF",
-    color: colorConfig?.ink || "#15302D",
+    color: colorConfig?.ink || "#1E293B",
     border: `1px solid ${colorConfig?.border || "#CBD5E1"}`,
     ...style,
   };
@@ -163,7 +164,7 @@ export function Select(props) {
 
   const baseSelectStyle = {
     background: colorConfig?.surface || "#FFFFFF",
-    color: colorConfig?.ink || "#15302D",
+    color: colorConfig?.ink || "#1E293B",
     border: `1px solid ${colorConfig?.border || "#CBD5E1"}`,
     ...style,
   };
@@ -202,12 +203,12 @@ export function Modal({ title, onClose, children, wide, xwide, isSubModal = fals
       <div
         onClick={(e) => e.stopPropagation()}
         className={"rounded-2xl w-full " + (xwide ? "max-w-6xl" : wide ? "max-w-3xl" : "max-w-md") + " max-h-[85vh] overflow-y-auto modal-content shadow-2xl print:max-h-none print:overflow-visible print:h-auto print:shadow-none print:border-none print:w-full print:max-w-none"}
-        style={{ background: colorConfig?.surface || "#FFFFFF", color: colorConfig?.ink || "#15302D", border: `1px solid ${colorConfig?.border || "#E2E9E7"}` }}
+        style={{ background: colorConfig?.surface || "#FFFFFF", color: colorConfig?.ink || "#1E293B", border: `1px solid ${colorConfig?.border || "#E2E8F0"}` }}
       >
-        <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10 no-print" style={{ background: colorConfig?.surface || "#FFFFFF", borderBottom: `1px solid ${colorConfig?.border || "#E2E9E7"}` }}>
-          <h3 className="font-semibold text-base" style={{ color: colorConfig?.ink || "#15302D" }}>{title}</h3>
+        <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10 no-print" style={{ background: colorConfig?.surface || "#FFFFFF", borderBottom: `1px solid ${colorConfig?.border || "#E2E8F0"}` }}>
+          <h3 className="font-semibold text-base" style={{ color: colorConfig?.ink || "#1E293B" }}>{title}</h3>
           <button type="button" onClick={onClose} className="p-1 rounded-lg hover:opacity-60 cursor-pointer">
-            <X size={18} color={colorConfig?.inkSoft || "#5C7873"} />
+            <X size={18} color={colorConfig?.inkSoft || "#64748B"} />
           </button>
         </div>
         <div className="p-5 print:p-0">{children}</div>

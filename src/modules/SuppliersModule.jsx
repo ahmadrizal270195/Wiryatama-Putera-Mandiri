@@ -59,8 +59,8 @@ export default function SuppliersView({ suppliers, pos, pInvoices, save, notify,
             <div className="flex items-start justify-between">
               <div>
                 <div className="font-medium text-sm" style={{ color: colorConfig?.ink }}>{s.name}</div>
-                <div className="text-[11px] font-mono text-teal-700 font-medium mt-0.5">Kategori: {s.category || "PBF"}</div>
-                {s.npwp && <div className="text-[11px] font-mono text-teal-700 font-medium">NPWP: {s.npwp}</div>}
+                <div className="text-[11px] tabular-nums text-emerald-700 font-medium mt-0.5">Kategori: {s.category || "PBF"}</div>
+                {s.npwp && <div className="text-[11px] tabular-nums text-emerald-700 font-medium">NPWP: {s.npwp}</div>}
                 <div className="text-xs mt-1" style={{ color: colorConfig?.inkSoft }}>{s.contact}</div>
                 <div className="text-xs" style={{ color: colorConfig?.inkSoft }}>{s.address}</div>
               </div>

@@ -40,7 +40,7 @@ export function choosePaperAndPrint(elementId, titleText) {
   // Warna sendiri (pakai id + !important) supaya tidak ketimpa CSS mode gelap aplikasi
   const C = dark
     ? { overlay: "rgba(0,0,0,.7)", box: "#0F172A", border: "#334155", text: "#F8FAFC", soft: "#94A3B8", card: "#1E293B", activeBg: "rgba(0,196,140,.15)", active: "#00C48C", link: "#34D399", btn: "#1E293B" }
-    : { overlay: "rgba(0,0,0,.55)", box: "#FFFFFF", border: "#CBD5E1", text: "#15302D", soft: "#5C7873", card: "#FFFFFF", activeBg: "#E8F0EF", active: "#0E4749", link: "#0E4749", btn: "#F1F5F9" };
+    : { overlay: "rgba(0,0,0,.55)", box: "#FFFFFF", border: "#CBD5E1", text: "#1E293B", soft: "#64748B", card: "#FFFFFF", activeBg: "#ECFDF5", active: "#059669", link: "#059669", btn: "#F1F5F9" };
 
   document.getElementById("erp-paper-chooser")?.remove();
   const overlay = document.createElement("section");
@@ -130,7 +130,7 @@ export function printDocumentContent(elementId, titleText) {
           svg, svg * { stroke: #000 !important; }
 
           /* 2. Font jelas & tidak kekecilan */
-          .font-mono, code, pre { font-family: Arial, Helvetica, sans-serif !important; }
+          .tabular-nums, code, pre { font-family: Arial, Helvetica, sans-serif !important; }
           .text-\\[9px\\], .text-\\[10px\\], .text-\\[11px\\], .text-xs { font-size: 10pt !important; line-height: 1.3 !important; }
           .text-sm { font-size: 11pt !important; }
           .text-base { font-size: 12pt !important; }
@@ -240,7 +240,7 @@ export function DocHeader({ company, title, number, subtitle }) {
       </div>
       <div className="text-right">
         <div className="text-base uppercase tracking-wider font-bold text-gray-900">{title}</div>
-        {number && <div className="font-mono text-sm font-bold text-gray-900">{number}</div>}
+        {number && <div className="tabular-nums text-sm font-bold text-gray-900">{number}</div>}
         {subtitle && <div className="text-[11px] text-gray-600">{subtitle}</div>}
       </div>
     </div>
@@ -259,7 +259,7 @@ export function DocParties({ leftTitle, leftName, leftLines = [], rightTitle = "
       <div className="text-right">
         <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 font-bold">{rightTitle}</div>
         {rightRows.filter((r) => r && r[1] !== undefined && r[1] !== null && r[1] !== "").map(([k, v], i) => (
-          <div key={i}><span className="text-gray-500">{k}:</span> <span className="font-mono font-bold">{v}</span></div>
+          <div key={i}><span className="text-gray-500">{k}:</span> <span className="tabular-nums font-bold">{v}</span></div>
         ))}
       </div>
     </div>
@@ -307,7 +307,7 @@ export function PrintArea({ id, docTitle, children, buttonLabel = "Cetak Sekaran
     <div>
       <div className="flex justify-end gap-2 mb-4 no-print">
         <button type="button" onClick={() => choosePaperAndPrint(id, docTitle)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer text-white" style={{ background: "#0E4749" }}>
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer text-white" style={{ background: "#059669" }}>
           <Printer size={15} /> {buttonLabel}
         </button>
       </div>

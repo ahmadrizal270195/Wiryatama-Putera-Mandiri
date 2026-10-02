@@ -324,7 +324,7 @@ function ReviewCard({ r, products, c, fmtDate, mineClasses, onDecide, onPrintRej
       <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
         <div>
           <div className="text-[11px] uppercase font-semibold tracking-wide" style={{ color: c.inkSoft }}>{r.kindLabel}</div>
-          <div className="font-mono font-semibold text-sm" style={{ color: c.ink }}>{r.no || "-"}</div>
+          <div className="tabular-nums font-semibold text-sm" style={{ color: c.ink }}>{r.no || "-"}</div>
           <div className="text-xs" style={{ color: c.inkSoft }}>{r.party} · {fmtDate(r.doc.date)}</div>
         </div>
         <div className="flex flex-col items-end gap-1.5">
@@ -357,7 +357,7 @@ function ReviewCard({ r, products, c, fmtDate, mineClasses, onDecide, onPrintRej
                   return (
                     <li key={i} className="flex justify-between gap-2">
                       <span className="truncate">{p?.name || it.productId}{it.batchNo ? <span style={{ color: c.inkSoft }}> · {it.batchNo}{it.expiryDate ? ` · ED ${fmtDate(it.expiryDate)}` : ""}</span> : null}</span>
-                      <span className="font-mono shrink-0">{it.qty} {p?.unit || ""}</span>
+                      <span className="tabular-nums shrink-0">{it.qty} {p?.unit || ""}</span>
                     </li>
                   );
                 })}
@@ -411,8 +411,8 @@ function HistoryTab(props) {
         )}
         {rows.map((r, i) => (
           <tr key={i} style={{ borderTop: `1px solid ${c.border}` }}>
-            <td className="px-3 py-2 text-xs font-mono" style={{ color: c.inkSoft }}>{new Date(r.d.at).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })}</td>
-            <td className="px-3 py-2 text-xs" style={{ color: c.ink }}><div className="font-mono font-semibold">{r.no}</div><div style={{ color: c.inkSoft }}>{r.kindLabel}</div></td>
+            <td className="px-3 py-2 text-xs tabular-nums" style={{ color: c.inkSoft }}>{new Date(r.d.at).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })}</td>
+            <td className="px-3 py-2 text-xs" style={{ color: c.ink }}><div className="tabular-nums font-semibold">{r.no}</div><div style={{ color: c.inkSoft }}>{r.kindLabel}</div></td>
             <td className="px-3 py-2 text-xs" style={{ color: c.ink }}>{r.party}</td>
             <td className="px-3 py-2 text-xs" style={{ color: c.ink }}>{QA_CLASSES[r.cls].role} {QA_CLASSES[r.cls].label}</td>
             <td className="px-3 py-2"><Badge tone={r.d.status === "approved" ? "good" : "danger"} colorConfig={c}>{r.d.status === "approved" ? "Disetujui" : "Ditolak"}</Badge></td>
@@ -490,13 +490,13 @@ function MasterTab({ officers, saveOfficers, users, canManage, colorConfig: c, n
                   {officerRoleLabel(o)}
                   {o.delegate && <div className="text-[10px]" style={{ color: c.warn }}>a.n. {o.qaClass === "both" ? `${o.onBehalfOfObat || "-"} & ${o.onBehalfOfAlkes || "-"}` : o.onBehalfOf || "-"}</div>}
                 </td>
-                <td className="px-3 py-2.5 text-xs font-mono" style={{ color: c.ink }}>
+                <td className="px-3 py-2.5 text-xs tabular-nums" style={{ color: c.ink }}>
                   {o.email}
                   {notUser && <div className="text-[10px] font-sans" style={{ color: c.warn }}>Belum terdaftar di menu Pengguna</div>}
                 </td>
-                <td className="px-3 py-2.5 text-xs font-mono" style={{ color: c.ink }}>{o.str || "-"}</td>
-                <td className="px-3 py-2.5 text-xs font-mono" style={{ color: c.ink }}>{o.sipa || "-"}</td>
-                <td className="px-3 py-2.5 text-xs font-mono" style={{ color: st === "expired" ? c.danger : c.inkSoft }}>{o.validUntil ? fmtDate(o.validUntil) : "-"}</td>
+                <td className="px-3 py-2.5 text-xs tabular-nums" style={{ color: c.ink }}>{o.str || "-"}</td>
+                <td className="px-3 py-2.5 text-xs tabular-nums" style={{ color: c.ink }}>{o.sipa || "-"}</td>
+                <td className="px-3 py-2.5 text-xs tabular-nums" style={{ color: st === "expired" ? c.danger : c.inkSoft }}>{o.validUntil ? fmtDate(o.validUntil) : "-"}</td>
                 <td className="px-3 py-2.5"><Badge tone={tone} colorConfig={c}>{lbl}</Badge></td>
                 <td className="px-3 py-2.5 text-right">
                   {canManage && <button onClick={() => openEdit(o)} className="text-xs font-semibold" style={{ color: c.accent }}>Edit</button>}

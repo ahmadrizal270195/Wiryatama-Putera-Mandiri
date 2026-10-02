@@ -239,19 +239,19 @@ export default function FinanceView(props) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
         <Card colorConfig={COLOR}>
           <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: COLOR.inkSoft }}><Wallet size={13} /> Total Piutang Running</div>
-          <div className="text-xl font-mono font-semibold" style={{ color: COLOR.warn }}>{fmtIDR(arOutstanding)}</div>
+          <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.warn }}>{fmtIDR(arOutstanding)}</div>
         </Card>
         <Card colorConfig={COLOR}>
           <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: COLOR.inkSoft }}><CreditCard size={13} /> Total Hutang Running</div>
-          <div className="text-xl font-mono font-semibold" style={{ color: COLOR.danger }}>{fmtIDR(apOutstanding)}</div>
+          <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.danger }}>{fmtIDR(apOutstanding)}</div>
         </Card>
         <Card colorConfig={COLOR}>
           <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: COLOR.inkSoft }}><Receipt size={13} /> Beban Operasional Bulan Ini</div>
-          <div className="text-xl font-mono font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(expensesMonth)}</div>
+          <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(expensesMonth)}</div>
         </Card>
         <Card colorConfig={COLOR}>
           <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: COLOR.inkSoft }}><PiggyBank size={13} /> Laba Kotor (Margin) Bulan Ini</div>
-          <div className="text-xl font-mono font-semibold" style={{ color: grossProfitMonth >= 0 ? COLOR.good : COLOR.danger }}>{fmtIDR(grossProfitMonth)}</div>
+          <div className="text-xl tabular-nums font-semibold" style={{ color: grossProfitMonth >= 0 ? COLOR.good : COLOR.danger }}>{fmtIDR(grossProfitMonth)}</div>
         </Card>
       </div>
 
@@ -260,7 +260,7 @@ export default function FinanceView(props) {
         <Card className="mb-4 no-print !p-3">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-              <div className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-teal-800 mr-1">
+              <div className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-emerald-800 mr-1">
                 <Filter size={14} /> Filter Periode:
               </div>
               <TextInput type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="!w-36 !py-1" colorConfig={COLOR} />
@@ -309,12 +309,12 @@ export default function FinanceView(props) {
                 const custName = inv.isDirect ? findName(customers, inv.customerId) : (so ? findName(customers, so.customerId) : "-");
                 return (
                   <tr key={inv.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{inv.noFaktur}</td>
+                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{inv.noFaktur}</td>
                     <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{custName}</td>
-                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.inkSoft }}>{fmtIDR(total)}</td>
-                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.good }}>{fmtIDR(total - sisa)}</td>
-                    <td className="px-4 py-2.5 font-mono font-medium" style={{ color: COLOR.warn }}>{fmtIDR(sisa)}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(inv.date)}</td>
+                    <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.inkSoft }}>{fmtIDR(total)}</td>
+                    <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.good }}>{fmtIDR(total - sisa)}</td>
+                    <td className="px-4 py-2.5 tabular-nums font-medium" style={{ color: COLOR.warn }}>{fmtIDR(sisa)}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(inv.date)}</td>
                     <td className="px-4 py-2.5 text-right"><button onClick={() => openPay("invoice", inv)} className="text-xs font-semibold cursor-pointer" style={{ color: COLOR.accent }}>Catat Pembayaran</button></td>
                   </tr>
                 );
@@ -335,11 +335,11 @@ export default function FinanceView(props) {
             <tbody>
               {dpOnlySOList.map((so) => (
                 <tr key={so.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                  <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{so.soNumber}</td>
+                  <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{so.soNumber}</td>
                   <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(customers, so.customerId)}</td>
-                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.inkSoft }}>{fmtIDR((so.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0))}</td>
-                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.good }}>{fmtIDR(soDPAmount ? soDPAmount(so.id) : 0)}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(so.date)}</td>
+                  <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.inkSoft }}>{fmtIDR((so.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0))}</td>
+                  <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.good }}>{fmtIDR(soDPAmount ? soDPAmount(so.id) : 0)}</td>
+                  <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(so.date)}</td>
                   <td className="px-4 py-2.5 text-right"><button onClick={() => openPay("dp", so)} className="text-xs font-semibold cursor-pointer" style={{ color: COLOR.accent }}>Tambah DP</button></td>
                 </tr>
               ))}
@@ -367,12 +367,12 @@ export default function FinanceView(props) {
               const paid = typeof pInvoicePaidAmount === "function" ? pInvoicePaidAmount(inv.id) : 0;
               return (
                 <tr key={inv.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                  <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{inv.noFaktur}</td>
+                  <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{inv.noFaktur}</td>
                   <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(suppliers, inv.supplierId)}</td>
-                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.inkSoft }}>{fmtIDR(total)}</td>
-                  <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.good }}>{fmtIDR(paid)}</td>
-                  <td className="px-4 py-2.5 font-mono font-medium" style={{ color: COLOR.danger }}>{fmtIDR(sisa)}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(inv.date)}</td>
+                  <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.inkSoft }}>{fmtIDR(total)}</td>
+                  <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.good }}>{fmtIDR(paid)}</td>
+                  <td className="px-4 py-2.5 tabular-nums font-medium" style={{ color: COLOR.danger }}>{fmtIDR(sisa)}</td>
+                  <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(inv.date)}</td>
                   <td className="px-4 py-2.5 text-right"><button onClick={() => openPay("pInvoice", inv)} className="text-xs font-semibold cursor-pointer" style={{ color: COLOR.accent }}>Bayar Hutang</button></td>
                 </tr>
               );
@@ -401,10 +401,10 @@ export default function FinanceView(props) {
                 const ref = inv ? inv.noFaktur : so ? so.soNumber : "-";
                 return (
                   <tr key={p.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(p.date)}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(p.date)}</td>
                     <td className="px-4 py-2.5"><Badge tone="good" colorConfig={COLOR}>{p.type || "Pelunasan"}</Badge></td>
-                    <td className="px-4 py-2.5 font-mono text-xs font-semibold" style={{ color: COLOR.ink }}>{ref}</td>
-                    <td className="px-4 py-2.5 font-mono font-medium" style={{ color: COLOR.good }}>{fmtIDR(p.amount)}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-xs font-semibold" style={{ color: COLOR.ink }}>{ref}</td>
+                    <td className="px-4 py-2.5 tabular-nums font-medium" style={{ color: COLOR.good }}>{fmtIDR(p.amount)}</td>
                     <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.method}</td>
                     <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.note || "-"}</td>
                     <td className="px-4 py-2.5 text-right whitespace-nowrap">
@@ -434,9 +434,9 @@ export default function FinanceView(props) {
                 const ref = inv ? inv.noFaktur : po ? po.poNumber : "-";
                 return (
                   <tr key={p.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(p.date)}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs font-semibold" style={{ color: COLOR.ink }}>{ref}</td>
-                    <td className="px-4 py-2.5 font-mono font-medium" style={{ color: COLOR.danger }}>{fmtIDR(p.amount)}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(p.date)}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-xs font-semibold" style={{ color: COLOR.ink }}>{ref}</td>
+                    <td className="px-4 py-2.5 tabular-nums font-medium" style={{ color: COLOR.danger }}>{fmtIDR(p.amount)}</td>
                     <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.method}</td>
                     <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.note || "-"}</td>
                     <td className="px-4 py-2.5 text-right whitespace-nowrap">
@@ -473,14 +473,14 @@ export default function FinanceView(props) {
 
                 return (
                   <tr key={e.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(e.date)}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(e.date)}</td>
                     <td className="px-4 py-2.5">
                       <Badge tone={isPrepaid ? "warn" : "neutral"} colorConfig={COLOR}>{e.category}</Badge>
                     </td>
-                    <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>
+                    <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.ink }}>
                       {fmtIDR(e.amount)}
                       {isPrepaid && (
-                        <span className="block text-[10px] text-teal-800 font-semibold mt-0.5">
+                        <span className="block text-[10px] text-emerald-800 font-semibold mt-0.5">
                           (Beban Amortisasi: {fmtIDR(monthlyVal)} / bulan)
                         </span>
                       )}

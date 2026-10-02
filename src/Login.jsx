@@ -6,7 +6,7 @@ const inputStyle = {
   width: "100%",
   padding: "10px 12px",
   borderRadius: "8px",
-  border: "1px solid #E2E9E7",
+  border: "1px solid #E2E8F0",
   fontSize: "14px",
   outline: "none",
   boxSizing: "border-box",
@@ -37,7 +37,7 @@ export default function Login() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#F5F8F7",
+        background: "#F1F5F9",
         fontFamily: "ui-sans-serif, system-ui, sans-serif",
         padding: "16px",
       }}
@@ -48,15 +48,15 @@ export default function Login() {
           background: "#fff",
           padding: "32px",
           borderRadius: "16px",
-          border: "1px solid #E2E9E7",
+          border: "1px solid #E2E8F0",
           width: "100%",
           maxWidth: "360px",
         }}
       >
-        <div style={{ fontWeight: 600, fontSize: "18px", color: "#15302D", marginBottom: "4px" }}>
+        <div style={{ fontWeight: 600, fontSize: "18px", color: "#1E293B", marginBottom: "4px" }}>
           Mini ERP — Farmasi & Alkes
         </div>
-        <div style={{ fontSize: "12px", color: "#5C7873", marginBottom: "20px" }}>Masuk sebagai admin</div>
+        <div style={{ fontSize: "12px", color: "#64748B", marginBottom: "20px" }}>Masuk sebagai admin</div>
 
         <input
           type="email"
@@ -75,7 +75,7 @@ export default function Login() {
           style={{ ...inputStyle, marginTop: 10 }}
         />
 
-        {error && <div style={{ color: "#B84438", fontSize: "12px", marginTop: "8px" }}>{error}</div>}
+        {error && <div style={{ color: "#DC2626", fontSize: "12px", marginTop: "8px" }}>{error}</div>}
 
         <button
           type="submit"
@@ -85,7 +85,7 @@ export default function Login() {
             width: "100%",
             padding: "10px",
             borderRadius: "8px",
-            background: "#0E4749",
+            background: "#059669",
             color: "#fff",
             border: "none",
             fontWeight: 500,

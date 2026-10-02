@@ -5,8 +5,8 @@ import { DEDUCTION_KINDS, itemLineTotal } from "../billing";
 const inputCls = "w-full rounded-md border px-2 py-1 text-xs outline-none focus:ring-1";
 const inStyle = (c, warn) => ({
   background: c?.surface || "#fff",
-  color: c?.ink || "#15302D",
-  borderColor: warn ? (c?.warn || "#C97F1E") : (c?.border || "#CBD5E1"),
+  color: c?.ink || "#1E293B",
+  borderColor: warn ? (c?.warn || "#D97706") : (c?.border || "#CBD5E1"),
 });
 
 function NumInput({ value, onChange, onBlur, disabled, c, warn, className = "", placeholder }) {
@@ -23,7 +23,7 @@ function NumInput({ value, onChange, onBlur, disabled, c, warn, className = "", 
         onChange(raw === "" ? "" : /\.$/.test(raw) ? raw : Math.max(0, Number(raw) || 0)); // "2." dibiarkan supaya bisa ketik desimal
       }}
       onBlur={onBlur}
-      className={`${inputCls} font-mono text-right disabled:opacity-60 ${className}`}
+      className={`${inputCls} tabular-nums text-right disabled:opacity-60 ${className}`}
       style={inStyle(c, warn)}
     />
   );
@@ -36,7 +36,7 @@ function ModeSelect({ value, onChange, disabled, c }) {
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
       className="rounded-md border px-1 py-1 text-xs font-bold outline-none cursor-pointer disabled:opacity-60 shrink-0"
-      style={{ ...inStyle(c), color: c?.primary || "#0E4749" }}
+      style={{ ...inStyle(c), color: c?.primary || "#059669" }}
     >
       <option value="percent">%</option>
       <option value="amount">Rp</option>
@@ -131,7 +131,7 @@ export function ItemsTable({
               const s = stockByProduct?.[it.productId]?.qty ?? 0;
               return (
                 <tr key={i} style={{ borderTop: `1px solid ${c?.border}`, background: warn ? c?.warnSoft : (i % 2 ? c?.bg : "transparent") }}>
-                  <td className="px-2 py-1.5 font-mono" style={{ color: c?.inkSoft }}>{i + 1}</td>
+                  <td className="px-2 py-1.5 tabular-nums" style={{ color: c?.inkSoft }}>{i + 1}</td>
                   <td className="px-2 py-1.5">
                     <div className="font-semibold leading-tight" style={{ color: c?.ink }}>{p?.name || "(produk dihapus)"}</div>
                     <div className="text-[10px]" style={{ color: warn ? c?.warn : c?.inkSoft }}>
@@ -167,7 +167,7 @@ export function ItemsTable({
                         onChange={(v) => onUpdate(i, { discountPercent: it.discountType === "amount" ? v : (v === "" ? "" : Math.min(100, v)) })} />
                     </div>
                   </td>
-                  <td className="px-2 py-1.5 text-right font-mono font-semibold whitespace-nowrap" style={{ color: c?.ink }}>{fmtIDR(itemLineTotal(it))}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums font-semibold whitespace-nowrap" style={{ color: c?.ink }}>{fmtIDR(itemLineTotal(it))}</td>
                   {!readOnly && (
                     <td className="px-1 py-1.5 text-center">
                       <button onClick={() => onRemove(i)} title="Hapus item" className="p-1 rounded hover:opacity-70 cursor-pointer">
@@ -230,7 +230,7 @@ export function DeductionsEditor({ deductions, onChange, bill, colorConfig: c, f
                 onChange={(v) => update(d.id, { value: d.mode === "amount" ? v : (v === "" ? "" : Math.min(100, v)) })} />
               <input value={d.note || ""} disabled={disabled} onChange={(e) => update(d.id, { note: e.target.value })}
                 placeholder={d.kind === "fee" ? "Keterangan, mis. fee marketing" : "Keterangan (opsional)"} className={inputCls} style={inStyle(c)} />
-              <div className="text-right font-mono text-xs font-semibold whitespace-nowrap" style={{ color: c?.danger }}>- {fmtIDR(amountOf(d))}</div>
+              <div className="text-right tabular-nums text-xs font-semibold whitespace-nowrap" style={{ color: c?.danger }}>- {fmtIDR(amountOf(d))}</div>
               {!disabled ? (
                 <button onClick={() => remove(d.id)} title="Hapus" className="p-1 rounded hover:opacity-70 cursor-pointer"><Trash2 size={14} color={c?.danger} /></button>
               ) : <span />}
@@ -254,7 +254,7 @@ export function BillSummary({ bill, fmtIDR, colorConfig: c, totalLabel = "Total"
   const Row = ({ k, v, tone, bold }) => (
     <div className={`flex justify-between gap-6 ${bold ? "font-bold text-sm mt-1 pt-1 border-t" : ""}`} style={{ borderColor: c?.border }}>
       <span style={{ color: bold ? c?.ink : c?.inkSoft }}>{k}</span>
-      <span className="font-mono font-semibold" style={{ color: tone || c?.ink }}>{v}</span>
+      <span className="tabular-nums font-semibold" style={{ color: tone || c?.ink }}>{v}</span>
     </div>
   );
   return (
@@ -276,7 +276,7 @@ export function AddedBadge({ items, productId, colorConfig: c }) {
   if (!rows.length) return null;
   const qty = rows.reduce((s, x) => s + (Number(x.qty) || 0), 0);
   return (
-    <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: c?.goodSoft || "#E9F3ED", color: c?.good || "#357A5D" }}>
+    <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: c?.goodSoft || "#ECFDF5", color: c?.good || "#059669" }}>
       ✓ sudah di daftar ({qty})
     </span>
   );

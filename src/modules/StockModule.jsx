@@ -309,7 +309,7 @@ export default function StockView(props) {
               <tr key={p.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
                 <td className="px-4 py-2.5 font-medium" style={{ color: colorConfig?.ink }}>{p.name}</td>
                 <td className="px-4 py-2.5" style={{ color: colorConfig?.inkSoft }}>{p.category}</td>
-                <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{p.unit}</td>
+                <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{p.unit}</td>
                 <td className="px-4 py-2.5">
                   <Badge tone={s.qty < (p.minStock || 0) ? "warn" : s.qty === 0 ? "danger" : "good"} colorConfig={colorConfig}>
                     {s.qty} {p.unit}
@@ -324,7 +324,7 @@ export default function StockView(props) {
                         return (
                           <span
                             key={b.id}
-                            className="batch-chip text-[10px] font-mono px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-colors shadow-2xs"
+                            className="batch-chip text-[10px] tabular-nums px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-colors shadow-2xs"
                             style={{ 
                               borderColor: colorConfig?.border, 
                               background: colorConfig?.cardSoft, 
@@ -335,7 +335,7 @@ export default function StockView(props) {
                             <span className="batch-qty" style={{ color: colorConfig?.ink }}>({b.qty} {p.unit})</span>
                             <span className="batch-exp" style={{ color: colorConfig?.inkSoft }}>exp {fmtDate(b.expiryDate)}</span>
                             {b.quarantine && (
-                              <span className="font-sans font-bold px-1.5 rounded" title="Menunggu persetujuan APJ/PJT, belum bisa disalurkan" style={{ background: colorConfig?.warnSoft || "#FBF1E1", color: colorConfig?.warn || "#C97F1E" }}>KARANTINA</span>
+                              <span className="font-sans font-bold px-1.5 rounded" title="Menunggu persetujuan APJ/PJT, belum bisa disalurkan" style={{ background: colorConfig?.warnSoft || "#FFFBEB", color: colorConfig?.warn || "#D97706" }}>KARANTINA</span>
                             )}
                             <span style={{ color: u.color }} className="font-bold">· {u.label}</span>
                             <span 
@@ -351,7 +351,7 @@ export default function StockView(props) {
                             {/* TOMBOL EDIT & HAPUS AKSI CEPAT DENGAN AUDIT TRAIL */}
                             <button
                               onClick={() => openEditBatch(b)}
-                              className="ml-1 p-0.5 hover:bg-gray-200 rounded cursor-pointer text-teal-700"
+                              className="ml-1 p-0.5 hover:bg-gray-200 rounded cursor-pointer text-emerald-700"
                               title="Edit / Sesuaikan Stok Batch Ini"
                             >
                               <Edit2 size={11} />
@@ -392,7 +392,7 @@ export default function StockView(props) {
           colorConfig={colorConfig}
         >
           <div className="text-xs mb-3 space-y-1" style={{ color: colorConfig?.inkSoft }}>
-            <div>Tanggal Kedaluwarsa: <span className="font-mono font-bold">{fmtDate(editBatchModal.expiryDate)}</span></div>
+            <div>Tanggal Kedaluwarsa: <span className="tabular-nums font-bold">{fmtDate(editBatchModal.expiryDate)}</span></div>
             {editBatchModal.lastAdjustedAt && (
               <div className="text-[11px] text-amber-700">
                 Terakhir disesuaikan: {fmtDate(editBatchModal.lastAdjustedAt)} ({editBatchModal.lastAdjustedReason || "-"})
@@ -443,7 +443,7 @@ export default function StockView(props) {
       {modalImport && (
         <Modal title="Import Stok & Batch (Opname Awal / Pembelian)" onClose={() => setModalImport(false)} wide colorConfig={colorConfig}>
           <div className="space-y-4">
-            <div className="bg-teal-50 border border-teal-200 p-3 rounded-lg text-xs text-teal-900 flex justify-between items-center">
+            <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-xs text-emerald-900 flex justify-between items-center">
               <div>
                 <strong>Petunjuk:</strong> Unduh format template CSV di bawah ini, isi data batch stok opname awal Anda, lalu upload kembali.
               </div>
@@ -469,7 +469,7 @@ export default function StockView(props) {
                 </Field>
               ) : (
                 <Field label="Keterangan" colorConfig={colorConfig}>
-                  <TextInput value="Stok Awal Sistem / Stock Opname" readOnly className="!bg-gray-100 font-mono text-xs" colorConfig={colorConfig} />
+                  <TextInput value="Stok Awal Sistem / Stock Opname" readOnly className="!bg-gray-100 tabular-nums text-xs" colorConfig={colorConfig} />
                 </Field>
               )}
             </div>
@@ -493,7 +493,7 @@ export default function StockView(props) {
                 <div className="max-h-56 overflow-y-auto border rounded-lg" style={{ borderColor: colorConfig?.border }}>
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="bg-gray-100 text-left border-b font-mono">
+                      <tr className="bg-gray-100 text-left border-b tabular-nums">
                         <th className="p-2">Status Produk</th>
                         <th className="p-2">No Batch</th>
                         <th className="p-2">Exp Date</th>
@@ -511,10 +511,10 @@ export default function StockView(props) {
                               <span className="text-red-600 font-semibold">❌ Tidak Cocok: "{d.rawProductName}"</span>
                             )}
                           </td>
-                          <td className="p-2 font-mono">{d.batchNo}</td>
-                          <td className="p-2 font-mono">{fmtDate(d.expiryDate)}</td>
-                          <td className="p-2 font-mono font-bold">{d.qty}</td>
-                          <td className="p-2 font-mono">{fmtIDR(d.costPrice)}</td>
+                          <td className="p-2 tabular-nums">{d.batchNo}</td>
+                          <td className="p-2 tabular-nums">{fmtDate(d.expiryDate)}</td>
+                          <td className="p-2 tabular-nums font-bold">{d.qty}</td>
+                          <td className="p-2 tabular-nums">{fmtIDR(d.costPrice)}</td>
                         </tr>
                       ))}
                     </tbody>

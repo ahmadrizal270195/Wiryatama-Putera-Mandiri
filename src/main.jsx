@@ -8,11 +8,11 @@ const root = ReactDOM.createRoot(document.getElementById("root"));
 
 function ConnectionError() {
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: "ui-sans-serif, system-ui, sans-serif", color: "#15302D", background: "#F5F8F7" }}>
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: "ui-sans-serif, system-ui, sans-serif", color: "#1E293B", background: "#F1F5F9" }}>
       <div style={{ maxWidth: 380, textAlign: "center" }}>
         <div style={{ fontWeight: 700, marginBottom: 6 }}>Tidak bisa terhubung ke server</div>
-        <div style={{ fontSize: 13, color: "#5C7873", marginBottom: 16 }}>Cek koneksi internet, lalu coba lagi.</div>
-        <button onClick={() => window.location.reload()} style={{ background: "#0E4749", color: "#fff", border: 0, borderRadius: 8, padding: "8px 16px", fontSize: 13, cursor: "pointer" }}>
+        <div style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>Cek koneksi internet, lalu coba lagi.</div>
+        <button onClick={() => window.location.reload()} style={{ background: "#059669", color: "#fff", border: 0, borderRadius: 8, padding: "8px 16px", fontSize: 13, cursor: "pointer" }}>
           Muat ulang
         </button>
       </div>

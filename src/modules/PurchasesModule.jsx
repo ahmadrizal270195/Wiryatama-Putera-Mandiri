@@ -23,7 +23,7 @@ function DiscountControl({ type, value, onTypeChange, onValueChange, colorConfig
         className="rounded-lg px-2 py-1.5 text-xs font-bold outline-none cursor-pointer border shrink-0"
         style={{
           background: colorConfig?.surface || "#FFFFFF",
-          color: colorConfig?.primary || "#0E4749",
+          color: colorConfig?.primary || "#059669",
           borderColor: colorConfig?.border || "#CBD5E1",
         }}
       >
@@ -48,7 +48,7 @@ function DiscountControl({ type, value, onTypeChange, onValueChange, colorConfig
         }}
         placeholder={type === "amount" ? "Rp 0" : "0 %"}
         colorConfig={colorConfig}
-        className="font-mono text-right"
+        className="tabular-nums text-right"
       />
     </div>
   );
@@ -361,10 +361,10 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
 
             return (
               <tr key={po.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
-                <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: colorConfig?.ink }}>{po.poNumber}</td>
+                <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: colorConfig?.ink }}>{po.poNumber}</td>
                 <td className="px-4 py-2.5" style={{ color: colorConfig?.ink }}>{findName(suppliers, po.supplierId)}</td>
-                <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(po.date)}</td>
-                <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: colorConfig?.ink }}>{fmtIDR(poTotal(po))}</td>
+                <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(po.date)}</td>
+                <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: colorConfig?.ink }}>{fmtIDR(poTotal(po))}</td>
                 <td className="px-4 py-2.5">
                   <div className="flex flex-col items-start gap-1">
                     <Badge tone={s.tone} colorConfig={colorConfig}>{s.label}</Badge>
@@ -407,12 +407,12 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
         <Modal title={editingId ? `Edit Purchase Order — ${poNumber}` : "Buat Purchase Order"} onClose={() => { setModal(null); setEditingId(null); }} wide xwide colorConfig={colorConfig}>
           <div className="grid grid-cols-3 gap-3 mb-3">
             <Field label="Nomor PO" colorConfig={colorConfig}>
-              <TextInput value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="Contoh: PO/WPM/2026/001" className="font-mono" colorConfig={colorConfig} />
+              <TextInput value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="Contoh: PO/WPM/2026/001" className="tabular-nums" colorConfig={colorConfig} />
             </Field>
             <Field label="Supplier / PBF" colorConfig={colorConfig}>
               <Select value={supplierId} onChange={(e) => handleSelectSupplier(e.target.value)} colorConfig={colorConfig}>
                 {(suppliers || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                <option value="__ADD_NEW__" className="font-bold text-teal-800 bg-teal-50">+ Tambah Supplier Baru...</option>
+                <option value="__ADD_NEW__" className="font-bold text-emerald-800 bg-emerald-50">+ Tambah Supplier Baru...</option>
               </Select>
             </Field>
             <Field label="Tanggal PO" colorConfig={colorConfig}>
@@ -443,7 +443,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
                   <div key={prod.id} className="flex items-center justify-between p-2 rounded-lg bg-white border text-xs" style={{ borderColor: colorConfig?.border }}>
                     <div>
                       <span className="font-semibold" style={{ color: colorConfig?.ink }}>{prod.name}</span>
-                      <span className="ml-2 text-[11px] font-mono" style={{ color: colorConfig?.inkSoft }}>({prod.category}) · Stok: {s.qty} {prod.unit}</span><AddedBadge items={items} productId={prod.id} colorConfig={colorConfig} />
+                      <span className="ml-2 text-[11px] tabular-nums" style={{ color: colorConfig?.inkSoft }}>({prod.category}) · Stok: {s.qty} {prod.unit}</span><AddedBadge items={items} productId={prod.id} colorConfig={colorConfig} />
                     </div>
                     <Button variant="ghost" onClick={() => addProductToPO(prod)} className="!py-0.5 !px-2 text-xs" colorConfig={colorConfig}>
                       <Plus size={12} /> Tambah
@@ -496,16 +496,16 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
                 return (
                   <tr key={i} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
                     <td className="px-3 py-2" style={{ color: colorConfig?.ink }}>{p?.name}</td>
-                    <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{it.qty} {p?.unit}</td>
-                    <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
-                    <td className="px-3 py-2 font-mono text-teal-800 font-semibold">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
-                    <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.ink }}>{fmtIDR(lineTotal)}</td>
+                    <td className="px-3 py-2 tabular-nums" style={{ color: colorConfig?.inkSoft }}>{it.qty} {p?.unit}</td>
+                    <td className="px-3 py-2 tabular-nums" style={{ color: colorConfig?.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
+                    <td className="px-3 py-2 tabular-nums text-emerald-800 font-semibold">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
+                    <td className="px-3 py-2 tabular-nums" style={{ color: colorConfig?.ink }}>{fmtIDR(lineTotal)}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-          <div className="text-right font-mono text-sm mb-2 font-bold" style={{ color: colorConfig?.ink }}>Total PO: {fmtIDR(poTotal(detailPO))}</div>
+          <div className="text-right tabular-nums text-sm mb-2 font-bold" style={{ color: colorConfig?.ink }}>Total PO: {fmtIDR(poTotal(detailPO))}</div>
         </Modal>
       )}
 
@@ -527,7 +527,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
                 </div>
                 <div className="text-left sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 w-full sm:w-auto">
                   <div className="text-base sm:text-lg uppercase tracking-wider text-gray-700 font-bold">SURAT PESANAN / PURCHASE ORDER</div>
-                  <div className="font-mono text-sm mt-0.5 sm:mt-1 font-bold" style={{ color: colorConfig?.primary }}>{printPO.poNumber}</div>
+                  <div className="tabular-nums text-sm mt-0.5 sm:mt-1 font-bold" style={{ color: colorConfig?.primary }}>{printPO.poNumber}</div>
                 </div>
               </div>
 
@@ -556,7 +556,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
                       </div>
                       <div className="text-right">
                         <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Detail Dokumen Pesanan</div>
-                        <div><span className="text-gray-500">Tanggal PO:</span> <span className="font-mono">{fmtDate(printPO.date)}</span></div>
+                        <div><span className="text-gray-500">Tanggal PO:</span> <span className="tabular-nums">{fmtDate(printPO.date)}</span></div>
                       </div>
                     </div>
 
@@ -580,12 +580,12 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
 
                           return (
                             <tr key={idx} className="border-b">
-                              <td className="py-2.5 px-2 font-mono text-gray-500">{idx + 1}</td>
+                              <td className="py-2.5 px-2 tabular-nums text-gray-500">{idx + 1}</td>
                               <td className="py-2.5 px-2 text-gray-900 font-bold">{p?.name || "-"}</td>
-                              <td className="py-2.5 px-2 text-center font-mono font-bold">{it.qty} {p?.unit || "unit"}</td>
-                              <td className="py-2.5 px-2 text-right font-mono">{fmtIDR(it.unitPrice)}</td>
-                              <td className="py-2.5 px-2 text-center font-mono text-teal-800">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
-                              <td className="py-2.5 px-2 text-right font-mono font-bold">{fmtIDR(lineTotal)}</td>
+                              <td className="py-2.5 px-2 text-center tabular-nums font-bold">{it.qty} {p?.unit || "unit"}</td>
+                              <td className="py-2.5 px-2 text-right tabular-nums">{fmtIDR(it.unitPrice)}</td>
+                              <td className="py-2.5 px-2 text-center tabular-nums text-emerald-800">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
+                              <td className="py-2.5 px-2 text-right tabular-nums font-bold">{fmtIDR(lineTotal)}</td>
                             </tr>
                           );
                         })}
@@ -602,12 +602,12 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
                       </div>
 
                       <div className="w-5/12 text-xs flex flex-col gap-1.5">
-                        <div className="flex justify-between py-1 border-b"><span className="text-gray-600">Subtotal Item</span><span className="font-mono font-bold">{fmtIDR(rawSub)}</span></div>
-                        {taxInfo.discHeaderAmount > 0 && <div className="flex justify-between py-1 border-b text-red-600"><span>Diskon Nota Vendor</span><span className="font-mono font-bold">- {fmtIDR(taxInfo.discHeaderAmount)}</span></div>}
-                        <div className="flex justify-between py-1 border-b"><span className="text-gray-600">DPP</span><span className="font-mono font-bold">{fmtIDR(taxInfo.dpp)}</span></div>
-                        {taxInfo.ppn > 0 && <div className="flex justify-between py-1 border-b text-teal-800"><span>PPN (11%)</span><span className="font-mono font-bold">{fmtIDR(taxInfo.ppn)}</span></div>}
-                        {(taxInfo.feeLines || []).filter((d) => d.amount > 0).map((d) => <div key={d.id} className="flex justify-between py-1 border-b text-red-600"><span>Fee{d.mode !== "amount" ? ` ${d.value}%` : ""}{d.note ? ` (${d.note})` : ""}</span><span className="font-mono font-bold">- {fmtIDR(d.amount)}</span></div>)}
-                        <div className="flex justify-between py-2 border-b-2 text-sm font-bold" style={{ color: colorConfig?.primary, borderColor: colorConfig?.primary }}><span>Total Pesanan PO</span><span className="font-mono">{fmtIDR(taxInfo.total)}</span></div>
+                        <div className="flex justify-between py-1 border-b"><span className="text-gray-600">Subtotal Item</span><span className="tabular-nums font-bold">{fmtIDR(rawSub)}</span></div>
+                        {taxInfo.discHeaderAmount > 0 && <div className="flex justify-between py-1 border-b text-red-600"><span>Diskon Nota Vendor</span><span className="tabular-nums font-bold">- {fmtIDR(taxInfo.discHeaderAmount)}</span></div>}
+                        <div className="flex justify-between py-1 border-b"><span className="text-gray-600">DPP</span><span className="tabular-nums font-bold">{fmtIDR(taxInfo.dpp)}</span></div>
+                        {taxInfo.ppn > 0 && <div className="flex justify-between py-1 border-b text-emerald-800"><span>PPN (11%)</span><span className="tabular-nums font-bold">{fmtIDR(taxInfo.ppn)}</span></div>}
+                        {(taxInfo.feeLines || []).filter((d) => d.amount > 0).map((d) => <div key={d.id} className="flex justify-between py-1 border-b text-red-600"><span>Fee{d.mode !== "amount" ? ` ${d.value}%` : ""}{d.note ? ` (${d.note})` : ""}</span><span className="tabular-nums font-bold">- {fmtIDR(d.amount)}</span></div>)}
+                        <div className="flex justify-between py-2 border-b-2 text-sm font-bold" style={{ color: colorConfig?.primary, borderColor: colorConfig?.primary }}><span>Total Pesanan PO</span><span className="tabular-nums">{fmtIDR(taxInfo.total)}</span></div>
                       </div>
                     </div>
                     <QASignatureBlock doc={printPO} leftLabel="Dibuat Oleh (Pembelian)," leftName=""
@@ -773,11 +773,11 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
             const canCancel = !(pInvoices || []).some((inv) => inv.poId === pr.poId);
             return (
               <tr key={pr.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
-                <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: colorConfig?.ink }}>{pr.noBPB}<div className="mt-1 font-sans"><QABadge doc={pr} colorConfig={colorConfig} compact /></div></td>
-                <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{po?.poNumber}</td>
+                <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: colorConfig?.ink }}>{pr.noBPB}<div className="mt-1 font-sans"><QABadge doc={pr} colorConfig={colorConfig} compact /></div></td>
+                <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{po?.poNumber}</td>
                 <td className="px-4 py-2.5" style={{ color: colorConfig?.ink }}>{po ? findName(suppliers, po.supplierId) : "-"}</td>
-                <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(pr.date)}</td>
-                <td className="px-4 py-2.5 text-xs font-mono" style={{ color: colorConfig?.inkSoft }}>
+                <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(pr.date)}</td>
+                <td className="px-4 py-2.5 text-xs tabular-nums" style={{ color: colorConfig?.inkSoft }}>
                   {(pr.items || []).map((it) => `${findName(products, it.productId)} (${it.qty} unit - ${it.batchNo})`).join(", ")}
                 </td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
@@ -802,7 +802,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
             <>
               <div className="grid grid-cols-3 gap-3 mb-3">
                 <Field label="Nomor BPB" colorConfig={colorConfig}>
-                  <TextInput value={noBPB} onChange={(e) => setNoBPB(e.target.value)} placeholder="Contoh: BPB/WPM/2026/001" className="font-mono" colorConfig={colorConfig} />
+                  <TextInput value={noBPB} onChange={(e) => setNoBPB(e.target.value)} placeholder="Contoh: BPB/WPM/2026/001" className="tabular-nums" colorConfig={colorConfig} />
                 </Field>
                 <Field label="Purchase Order (PO)" colorConfig={colorConfig}>
                   <Select value={poId} onChange={(e) => changePO(e.target.value)} colorConfig={colorConfig}>
@@ -823,18 +823,18 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
                     if (remaining <= 0) return null;
                     return (
                       <div key={i} className="p-3 rounded-lg mb-2 border flex flex-col gap-2" style={{ background: colorConfig?.bg, borderColor: colorConfig?.border }}>
-                        <div className="text-sm font-medium" style={{ color: colorConfig?.ink }}>{p?.name} <span className="text-xs font-mono font-normal" style={{ color: colorConfig?.inkSoft }}>(Sisa pesan: {remaining} {p?.unit})</span></div>
+                        <div className="text-sm font-medium" style={{ color: colorConfig?.ink }}>{p?.name} <span className="text-xs tabular-nums font-normal" style={{ color: colorConfig?.inkSoft }}>(Sisa pesan: {remaining} {p?.unit})</span></div>
                         <div className="grid grid-cols-3 gap-2">
                           <div>
-                            <label className="text-[10px] block text-gray-500 font-mono">Qty Diterima</label>
+                            <label className="text-[10px] block text-gray-500 tabular-nums">Qty Diterima</label>
                             <TextInput type="number" value={receiveForm[i]?.qty ?? remaining} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], qty: e.target.value } })} colorConfig={colorConfig} />
                           </div>
                           <div>
-                            <label className="text-[10px] block text-gray-500 font-mono">No. Batch</label>
+                            <label className="text-[10px] block text-gray-500 tabular-nums">No. Batch</label>
                             <TextInput placeholder="No. Batch" value={receiveForm[i]?.batchNo || ""} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], batchNo: e.target.value } })} colorConfig={colorConfig} />
                           </div>
                           <div>
-                            <label className="text-[10px] block text-gray-500 font-mono">Exp Date</label>
+                            <label className="text-[10px] block text-gray-500 tabular-nums">Exp Date</label>
                             <TextInput type="date" value={receiveForm[i]?.expiryDate || todayISO()} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], expiryDate: e.target.value } })} colorConfig={colorConfig} />
                           </div>
                         </div>
@@ -885,9 +885,9 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
                 return (
                   <tr key={i} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
                     <td className="px-3 py-2" style={{ color: colorConfig?.ink }}>{p?.name}</td>
-                    <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{it.qty} {p?.unit}</td>
-                    <td className="px-3 py-2 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{it.batchNo}</td>
-                    <td className="px-3 py-2 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(it.expiryDate)}</td>
+                    <td className="px-3 py-2 tabular-nums" style={{ color: colorConfig?.inkSoft }}>{it.qty} {p?.unit}</td>
+                    <td className="px-3 py-2 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{it.batchNo}</td>
+                    <td className="px-3 py-2 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(it.expiryDate)}</td>
                   </tr>
                 );
               })}
@@ -1327,11 +1327,11 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
             const canEditOrCancel = pInvoicePaidAmount(inv.id) === 0 && !(pReturns || []).some((r) => r.pInvoiceId === inv.id);
             return (
               <tr key={inv.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
-                <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: colorConfig?.ink }}>{inv.noFaktur}<div className="mt-1 font-sans"><QABadge doc={inv} colorConfig={colorConfig} compact /></div></td>
+                <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: colorConfig?.ink }}>{inv.noFaktur}<div className="mt-1 font-sans"><QABadge doc={inv} colorConfig={colorConfig} compact /></div></td>
                 <td className="px-4 py-2.5"><Badge tone={inv.isDirect ? "warn" : "neutral"} colorConfig={colorConfig}>{inv.isDirect ? "Langsung" : po?.poNumber || "PO"}</Badge></td>
                 <td className="px-4 py-2.5" style={{ color: colorConfig?.ink }}>{findName(suppliers, inv.supplierId)}</td>
-                <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(inv.date)}</td>
-                <td className="px-4 py-2.5 font-mono" style={{ color: colorConfig?.ink }}>{fmtIDR(total)}</td>
+                <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(inv.date)}</td>
+                <td className="px-4 py-2.5 tabular-nums" style={{ color: colorConfig?.ink }}>{fmtIDR(total)}</td>
                 <td className="px-4 py-2.5"><Badge tone={sisa > 0 ? "danger" : "good"} colorConfig={colorConfig}>{sisa > 0 ? fmtIDR(sisa) : "Lunas"}</Badge></td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
                   <div className="flex items-center justify-end gap-2">
@@ -1355,12 +1355,12 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         <Modal title={editingId ? `Edit Faktur Pembelian — ${noFakturDirect}` : "Buat Faktur Pembelian Langsung (Tanpa PO)"} onClose={() => { setModalDirect(false); setEditingId(null); }} wide xwide colorConfig={colorConfig}>
           <div className="grid grid-cols-3 gap-3 mb-4">
             <Field label="Nomor Faktur Vendor" colorConfig={colorConfig}>
-              <TextInput value={noFakturDirect} onChange={(e) => setNoFakturDirect(e.target.value)} placeholder="Contoh: VINV/2026/001" className="font-mono" colorConfig={colorConfig} />
+              <TextInput value={noFakturDirect} onChange={(e) => setNoFakturDirect(e.target.value)} placeholder="Contoh: VINV/2026/001" className="tabular-nums" colorConfig={colorConfig} />
             </Field>
             <Field label="Supplier / PBF" colorConfig={colorConfig}>
               <Select value={supplierId} onChange={(e) => handleSelectSupplier(e.target.value)} colorConfig={colorConfig}>
                 {(suppliers || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                <option value="__ADD_NEW__" className="font-bold text-teal-800 bg-teal-50">+ Tambah Supplier Baru...</option>
+                <option value="__ADD_NEW__" className="font-bold text-emerald-800 bg-emerald-50">+ Tambah Supplier Baru...</option>
               </Select>
             </Field>
             <Field label="Tanggal Faktur" colorConfig={colorConfig}>
@@ -1393,7 +1393,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
                 <div key={prod.id} className="flex items-center justify-between p-2 rounded-lg bg-white border text-xs" style={{ borderColor: colorConfig?.border }}>
                   <div>
                     <span className="font-semibold" style={{ color: colorConfig?.ink }}>{prod.name}</span>
-                    <span className="ml-2 text-[11px] font-mono" style={{ color: colorConfig?.inkSoft }}>({prod.category})</span><AddedBadge items={items} productId={prod.id} colorConfig={colorConfig} />
+                    <span className="ml-2 text-[11px] tabular-nums" style={{ color: colorConfig?.inkSoft }}>({prod.category})</span><AddedBadge items={items} productId={prod.id} colorConfig={colorConfig} />
                   </div>
                   <Button variant="ghost" onClick={() => addProductToDirect(prod)} className="!py-0.5 !px-2 text-xs" colorConfig={colorConfig}>
                     <Plus size={12} /> Tambah
@@ -1446,10 +1446,10 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
           return (
             <tr key={i} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
               <td className="px-3 py-2" style={{ color: colorConfig?.ink }}>{p?.name}</td>
-              <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{it.qty} {p?.unit}</td>
-              <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
-              <td className="px-3 py-2 font-mono text-teal-800 font-semibold">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
-              <td className="px-3 py-2 font-mono" style={{ color: colorConfig?.ink }}>{fmtIDR(lineTotal)}</td>
+              <td className="px-3 py-2 tabular-nums" style={{ color: colorConfig?.inkSoft }}>{it.qty} {p?.unit}</td>
+              <td className="px-3 py-2 tabular-nums" style={{ color: colorConfig?.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
+              <td className="px-3 py-2 tabular-nums text-emerald-800 font-semibold">{discAmt > 0 ? (it.discountType === "amount" ? fmtIDR(it.discountPercent) : `${it.discountPercent}%`) : "-"}</td>
+              <td className="px-3 py-2 tabular-nums" style={{ color: colorConfig?.ink }}>{fmtIDR(lineTotal)}</td>
             </tr>
           );
         })}
@@ -1473,7 +1473,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       const ongkirVal = Number(detailInv.ongkir) || 0;
 
       return (
-        <div className="text-right font-mono text-sm mb-2" style={{ color: colorConfig?.ink }}>
+        <div className="text-right tabular-nums text-sm mb-2" style={{ color: colorConfig?.ink }}>
           {_bill.diskon > 0 && <div className="font-normal" style={{ color: colorConfig?.danger }}>Diskon Nota: - {fmtIDR(_bill.diskon)}</div>}
           {_bill.fee > 0 && <div className="font-normal" style={{ color: colorConfig?.danger }}>Fee: - {fmtIDR(_bill.fee)}</div>}
           {ongkirVal > 0 && <div className="font-normal">Ongkir: {fmtIDR(ongkirVal)}</div>}
@@ -1616,10 +1616,10 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
               const value = (r.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0);
               return (
                 <tr key={r.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
-                  <td className="px-4 py-2.5 font-mono" style={{ color: colorConfig?.ink }}>{r.noRetur}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{inv?.noFaktur || "-"}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(r.date)}</td>
-                  <td className="px-4 py-2.5 font-mono font-medium" style={{ color: colorConfig?.good }}>{fmtIDR(value)}</td>
+                  <td className="px-4 py-2.5 tabular-nums" style={{ color: colorConfig?.ink }}>{r.noRetur}</td>
+                  <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{inv?.noFaktur || "-"}</td>
+                  <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(r.date)}</td>
+                  <td className="px-4 py-2.5 tabular-nums font-medium" style={{ color: colorConfig?.good }}>{fmtIDR(value)}</td>
                   <td className="px-4 py-2.5 text-right">
                     <button onClick={() => setPrintRet(r)} className="text-xs font-semibold cursor-pointer mr-3 inline-flex items-center gap-1" style={{ color: colorConfig?.primary }}><Printer size={13} /> Cetak</button>
                     <button onClick={() => cancelReturn(r)} className="text-xs cursor-pointer" style={{ color: colorConfig?.danger }}>Batalkan Retur</button>
@@ -1686,14 +1686,14 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
 
               {selectedInvoice && (
                 <div className="flex flex-col gap-2 mt-2">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-teal-800">Isi Qty Barang yang Dikembalikan Ke Supplier</div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-emerald-800">Isi Qty Barang yang Dikembalikan Ke Supplier</div>
                   {(selectedInvoice.items || []).map((it) => {
                     const p = (products || []).find((x) => x.id === it.productId);
                     const maxReturn = it.qty - alreadyReturnedQty(selectedInvoice.id, it.productId);
                     if (maxReturn <= 0) return null;
                     return (
                       <div key={it.productId} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border" style={{ borderColor: colorConfig?.border }}>
-                        <div className="flex-1 text-sm font-medium" style={{ color: colorConfig?.ink }}>{p?.name} <span className="text-xs font-mono font-normal" style={{ color: colorConfig?.inkSoft }}>(maks {maxReturn} {p?.unit})</span></div>
+                        <div className="flex-1 text-sm font-medium" style={{ color: colorConfig?.ink }}>{p?.name} <span className="text-xs tabular-nums font-normal" style={{ color: colorConfig?.inkSoft }}>(maks {maxReturn} {p?.unit})</span></div>
                         <TextInput type="number" value={returnQty[it.productId] || 0} onChange={(e) => setReturnQty({ ...returnQty, [it.productId]: Number(e.target.value) })} className="w-24 text-center" colorConfig={colorConfig} />
                       </div>
                     );

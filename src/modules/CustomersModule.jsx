@@ -99,7 +99,7 @@ export default function CustomersView({ customers, sos, invoices, save, notify, 
                 <div className="font-medium text-sm" style={{ color: colorConfig?.ink }}>{c.name}</div>
                 <div className="flex items-center gap-2 mt-0.5">
                   <Badge tone="neutral" colorConfig={colorConfig}>{c.type}</Badge>
-                  {c.npwp && <span className="text-[11px] font-mono text-teal-700 font-medium">NPWP: {c.npwp}</span>}
+                  {c.npwp && <span className="text-[11px] tabular-nums text-emerald-700 font-medium">NPWP: {c.npwp}</span>}
                 </div>
                 <div className="text-xs mt-1" style={{ color: colorConfig?.inkSoft }}>{c.contact}</div>
                 <div className="text-xs" style={{ color: colorConfig?.inkSoft }}>{c.address}</div>

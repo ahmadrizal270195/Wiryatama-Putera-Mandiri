@@ -20,7 +20,7 @@ export default function AuthGate() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#5C7873",
+          color: "#64748B",
           fontFamily: "ui-sans-serif, system-ui, sans-serif",
         }}
       >

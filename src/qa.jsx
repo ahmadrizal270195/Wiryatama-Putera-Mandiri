@@ -181,9 +181,9 @@ export function QABadge({ doc, colorConfig, compact = false }) {
   const r = doc.qaReview;
   const roles = r.required.map((c) => QA_CLASSES[c].role).join("+");
   const map = {
-    pending: [colorConfig?.warnSoft || "#FBF1E1", colorConfig?.warn || "#C97F1E", compact ? `${roles}: menunggu` : `Menunggu ${pendingRoles(doc).join(" & ")}`],
-    approved: [colorConfig?.goodSoft || "#E9F3ED", colorConfig?.good || "#357A5D", `${roles}: disetujui`],
-    rejected: [colorConfig?.dangerSoft || "#FBEAE8", colorConfig?.danger || "#B84438", `HOLD: ditolak ${rejectedRoles(doc).join(" & ")}`],
+    pending: [colorConfig?.warnSoft || "#FFFBEB", colorConfig?.warn || "#D97706", compact ? `${roles}: menunggu` : `Menunggu ${pendingRoles(doc).join(" & ")}`],
+    approved: [colorConfig?.goodSoft || "#ECFDF5", colorConfig?.good || "#059669", `${roles}: disetujui`],
+    rejected: [colorConfig?.dangerSoft || "#FEF2F2", colorConfig?.danger || "#DC2626", `HOLD: ditolak ${rejectedRoles(doc).join(" & ")}`],
   };
   const [bg, fg, text] = map[st];
   return (

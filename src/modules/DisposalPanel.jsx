@@ -140,12 +140,12 @@ export default function DisposalPanel({
               {list.length === 0 && <tr><td colSpan={7} className="text-center py-6 text-sm" style={{ color: c?.inkSoft }}>Belum ada pemusnahan.</td></tr>}
               {list.map((d) => (
                 <tr key={d.id} style={{ borderTop: `1px solid ${c?.border}` }}>
-                  <td className="px-3 py-2 font-mono font-semibold" style={{ color: c?.ink }}>{d.noBA}</td>
-                  <td className="px-3 py-2 font-mono text-xs" style={{ color: c?.inkSoft }}>{fmtDate(d.date)}</td>
+                  <td className="px-3 py-2 tabular-nums font-semibold" style={{ color: c?.ink }}>{d.noBA}</td>
+                  <td className="px-3 py-2 tabular-nums text-xs" style={{ color: c?.inkSoft }}>{fmtDate(d.date)}</td>
                   <td className="px-3 py-2 text-xs" style={{ color: c?.ink }}>{(d.items || []).length} batch · {(d.items || []).reduce((s, it) => s + Number(it.qty || 0), 0)} unit</td>
                   <td className="px-3 py-2 text-xs" style={{ color: c?.ink }}>{d.reason}</td>
                   <td className="px-3 py-2 text-xs" style={{ color: c?.inkSoft }}>{d.method}</td>
-                  <td className="px-3 py-2 font-mono text-xs" style={{ color: c?.ink }}>{fmtIDR(totalValue(d))}</td>
+                  <td className="px-3 py-2 tabular-nums text-xs" style={{ color: c?.ink }}>{fmtIDR(totalValue(d))}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     <button onClick={() => setPrintBA(d)} className="text-xs font-semibold mr-3 inline-flex items-center gap-1 cursor-pointer" style={{ color: c?.primary }}><Printer size={13} /> Cetak BA</button>
                     <button onClick={() => cancelBA(d)} className="text-xs cursor-pointer" style={{ color: c?.danger }}>Batalkan</button>
@@ -160,7 +160,7 @@ export default function DisposalPanel({
       {modal && form && (
         <Modal title="Buat Berita Acara Pemusnahan" onClose={() => setModal(false)} wide xwide colorConfig={c}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-            <Field label="Nomor Berita Acara" colorConfig={c}><TextInput value={form.noBA} onChange={(e) => setForm({ ...form, noBA: e.target.value })} className="font-mono" colorConfig={c} /></Field>
+            <Field label="Nomor Berita Acara" colorConfig={c}><TextInput value={form.noBA} onChange={(e) => setForm({ ...form, noBA: e.target.value })} className="tabular-nums" colorConfig={c} /></Field>
             <Field label="Tanggal Pemusnahan" colorConfig={c}><TextInput type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} colorConfig={c} /></Field>
             <Field label="Tempat" colorConfig={c}><TextInput value={form.place} onChange={(e) => setForm({ ...form, place: e.target.value })} colorConfig={c} /></Field>
             <Field label="Alasan" colorConfig={c}>
@@ -192,7 +192,7 @@ export default function DisposalPanel({
                 return (
                   <div key={b.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border text-xs" style={{ borderColor: c?.border, background: c?.surface }}>
                     <span style={{ color: c?.ink }}>
-                      <b>{p?.name || "-"}</b> · <span className="font-mono">{b.batchNo}</span> · <span style={{ color: expired ? c?.danger : c?.inkSoft }}>ED {b.expiryDate ? fmtDate(b.expiryDate) : "-"}</span> · stok {b.qty} {p?.unit || ""}
+                      <b>{p?.name || "-"}</b> · <span className="tabular-nums">{b.batchNo}</span> · <span style={{ color: expired ? c?.danger : c?.inkSoft }}>ED {b.expiryDate ? fmtDate(b.expiryDate) : "-"}</span> · stok {b.qty} {p?.unit || ""}
                     </span>
                     <button disabled={added} onClick={() => addBatch(b)} className="text-xs font-semibold px-2 py-0.5 rounded border disabled:opacity-50 cursor-pointer" style={{ color: c?.primary, borderColor: c?.primary }}>
                       {added ? "✓ Dipilih" : "Pilih"}
@@ -220,9 +220,9 @@ export default function DisposalPanel({
                   <tr key={l.batchId} style={{ borderTop: `1px solid ${c?.border}` }}>
                     <td className="px-3 py-1.5 text-xs" style={{ color: c?.inkSoft }}>{i + 1}</td>
                     <td className="px-3 py-1.5 text-xs font-semibold" style={{ color: c?.ink }}>{p?.name}</td>
-                    <td className="px-3 py-1.5 text-xs font-mono" style={{ color: c?.ink }}>{b?.batchNo}</td>
-                    <td className="px-3 py-1.5 text-xs font-mono" style={{ color: c?.ink }}>{b?.expiryDate ? fmtDate(b.expiryDate) : "-"}</td>
-                    <td className="px-3 py-1.5 text-xs font-mono" style={{ color: c?.inkSoft }}>{b?.qty}</td>
+                    <td className="px-3 py-1.5 text-xs tabular-nums" style={{ color: c?.ink }}>{b?.batchNo}</td>
+                    <td className="px-3 py-1.5 text-xs tabular-nums" style={{ color: c?.ink }}>{b?.expiryDate ? fmtDate(b.expiryDate) : "-"}</td>
+                    <td className="px-3 py-1.5 text-xs tabular-nums" style={{ color: c?.inkSoft }}>{b?.qty}</td>
                     <td className="px-3 py-1.5 w-32">
                       <TextInput type="number" value={l.qty} onChange={(e) => setLines(lines.map((x) => (x.batchId === l.batchId ? { ...x, qty: e.target.value === "" ? "" : Math.max(0, Number(e.target.value)) } : x)))}
                         className="text-right" style={over ? { borderColor: c?.danger } : undefined} colorConfig={c} />

@@ -10,7 +10,7 @@ import {
   AlertTriangle, Plus, X, Trash2, Search, Boxes, ArrowUpRight, ArrowDownRight,
   Loader2, Calendar, Printer, Wallet, Receipt, CreditCard, PiggyBank, BarChart3,
   FileText, LogOut, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare, ShieldAlert, Download, Upload,
-  Moon, Database, SlidersHorizontal, ChevronDown, ClipboardCheck
+  Moon, Sun, ChevronLeft, ChevronRight, Database, SlidersHorizontal, ChevronDown, ClipboardCheck
 } from "lucide-react";
 import { 
   auth, 
@@ -35,23 +35,23 @@ import { setPaymentSettings, PAYMENT_GROUPS } from "./print";
 
 const THEME = {
   light: {
-    bg: "#F5F8F7",
+    bg: "#F1F5F9",
     surface: "#FFFFFF",     // Kotak dashboard berwarna putih di mode terang
     card: "#FFFFFF",
-    cardSoft: "#F1F5F9",
-    border: "#E2E9E7",
-    ink: "#15302D",          // Teks gelap
-    inkSoft: "#5C7873",
-    primary: "#0E4749",
-    primarySoft: "#E8F0EF",
-    sidebarBg: "#0E4749",    // Sidebar hijau teal di mode terang
-    accent: "#1B6B6E",
-    danger: "#B84438",
-    dangerSoft: "#FBEAE8",
-    warn: "#C97F1E",
-    warnSoft: "#FBF1E1",
-    good: "#357A5D",
-    goodSoft: "#E9F3ED",
+    cardSoft: "#F8FAFC",
+    border: "#E2E8F0",
+    ink: "#1E293B",          // Teks gelap
+    inkSoft: "#64748B",
+    primary: "#059669",
+    primarySoft: "#ECFDF5",
+    sidebarBg: "#FFFFFF",    // Sidebar putih di mode terang (gaya WHISys)
+    accent: "#10B981",
+    danger: "#DC2626",
+    dangerSoft: "#FEF2F2",
+    warn: "#D97706",
+    warnSoft: "#FFFBEB",
+    good: "#059669",
+    goodSoft: "#ECFDF5",
   },
   dark: {
     bg: "#080D1A",          // Background paling luar
@@ -348,7 +348,7 @@ function PublicLandingPage({ isLoggedIn }) {
 
       <header className="py-16 px-4 text-center bg-white border-b" style={{ borderColor: COLOR.border }}>
         <div className="max-w-3xl mx-auto">
-          <span className="inline-block px-3 py-1 rounded-full text-xs font-mono font-medium mb-3" style={{ background: COLOR.primarySoft, color: COLOR.primary }}>
+          <span className="inline-block px-3 py-1 rounded-full text-xs tabular-nums font-medium mb-3" style={{ background: COLOR.primarySoft, color: COLOR.primary }}>
             PEDAGANG BESAR FARMASI & ALKES
           </span>
           <h1 className="text-3xl sm:text-4xl font-extrabold mb-4 leading-tight" style={{ color: COLOR.primary }}>
@@ -423,7 +423,7 @@ function PublicLandingPage({ isLoggedIn }) {
                 <div>
                   <Badge tone="neutral">{p.category}</Badge>
                   <h3 className="font-semibold text-base mt-2" style={{ color: COLOR.ink }}>{p.name}</h3>
-                  <div className="text-xs mt-1 font-mono" style={{ color: COLOR.inkSoft }}>Satuan Kemasan: {p.unit}</div>
+                  <div className="text-xs mt-1 tabular-nums" style={{ color: COLOR.inkSoft }}>Satuan Kemasan: {p.unit}</div>
                 </div>
                 <div className="mt-4 pt-3 border-t flex items-center justify-between" style={{ borderColor: COLOR.border }}>
                   <div className="text-xs font-semibold" style={{ color: COLOR.good }}>Tersedia / Ready</div>
@@ -528,7 +528,7 @@ function LoginScreen() {
 
 // ---------- UI HELPER COMPONENTS ----------
 function Eyebrow({ children }) {
-  return <div style={{ color: COLOR.inkSoft, letterSpacing: "0.08em" }} className="text-[11px] font-mono uppercase mb-1">{children}</div>;
+  return <div style={{ color: COLOR.inkSoft, letterSpacing: "0.08em" }} className="text-[11px] tabular-nums uppercase mb-1">{children}</div>;
 }
 
 function Card({ children, style, className = "" }) {
@@ -539,6 +539,7 @@ function Card({ children, style, className = "" }) {
         background: COLOR.surface, 
         border: `1px solid ${COLOR.border}`, 
         color: COLOR.ink, 
+        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.04)",
         ...style 
       }}
     >
@@ -566,7 +567,7 @@ function Badge({ tone = "good", children }) {
 
   return (
     <span
-      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold border"
+      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] tabular-nums font-bold border"
       style={{ background: bg, color: fg, borderColor: COLOR.border }}
     >
       {children}
@@ -769,6 +770,18 @@ function PharmaERP({ userEmail, onLogout }) {
     setIsDarkMode((prev) => {
       const next = !prev;
       localStorage.setItem("erp-theme", next ? "dark" : "light");
+      return next;
+    });
+  };
+
+  // Sidebar bisa dilipat jadi rail ikon (desktop), diingat per browser
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem("erp-sidebar-collapsed") === "1"; } catch { return false; }
+  });
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("erp-sidebar-collapsed", next ? "1" : "0"); } catch {}
       return next;
     });
   };
@@ -1199,6 +1212,10 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpe
     margin: 0; 
   }
 
+  /* Sembunyikan scrollbar sidebar (scroll tetap jalan) */
+  .hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+  .hide-scrollbar::-webkit-scrollbar { display: none; }
+
   /* HILANGKAN PANAH SPINNER PADA INPUT NUMBER (FIREFOX) */
   input[type=number] {
     -moz-appearance: textfield;
@@ -1217,7 +1234,7 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpe
     color: #0F172A !important;
   }
   .batch-chip .batch-no {
-    color: #0E4749 !important;
+    color: #059669 !important;
   }
   .batch-chip .batch-qty {
     color: #0F172A !important;
@@ -1246,7 +1263,7 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpe
     }
 
     /* General Dark Mode Fixes */
-    .bg-white, .bg-gray-50, .bg-gray-100, .bg-teal-50, .bg-amber-50, 
+    .bg-white, .bg-gray-50, .bg-gray-100, .bg-emerald-50, .bg-amber-50, 
     div[style*="background: rgb(255, 255, 255)"], 
     div[style*="background-color: rgb(255, 255, 255)"],
     div[style*="background: #FFFFFF"], 
@@ -1259,8 +1276,8 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpe
     }
 
     table thead tr,
-    tr[style*="background: rgb(232, 240, 239)"],
-    tr[style*="background: #E8F0EF"] {
+    tr[style*="background: rgb(236, 253, 245)"],
+    tr[style*="background: #ECFDF5"] {
       background-color: #1E293B !important;
     }
     table thead th,
@@ -1271,16 +1288,16 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpe
 
     h1, h2, h3, h4, h5, h6,
     p, a, td,
-    div[style*="color: rgb(21, 48, 45)"],
-    div[style*="color: #15302D"],
-    span[style*="color: rgb(21, 48, 45)"],
-    span[style*="color: #15302D"] {
+    div[style*="color: rgb(30, 41, 59)"],
+    div[style*="color: #1E293B"],
+    span[style*="color: rgb(30, 41, 59)"],
+    span[style*="color: #1E293B"] {
       color: #F8FAFC !important;
     }
 
     .text-gray-500, .text-gray-400,
-    div[style*="color: rgb(92, 120, 115)"],
-    div[style*="color: #5C7873"] {
+    div[style*="color: rgb(100, 116, 139)"],
+    div[style*="color: #64748B"] {
       color: #94A3B8 !important;
     }
 
@@ -1315,13 +1332,13 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpe
     /* FIX INPUT FIELD MODE TERANG */
     input, select, textarea {
       background-color: #FFFFFF !important;
-      color: #15302D !important;
-      border-color: #E2E9E7 !important;
+      color: #1E293B !important;
+      border-color: #E2E8F0 !important;
     }
 
     select option {
       background-color: #FFFFFF !important;
-      color: #15302D !important;
+      color: #1E293B !important;
     }
 
     table tbody tr:hover {
@@ -1380,7 +1397,7 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpe
             <button
               type="button"
               onClick={toggleTheme}
-              className="p-1.5 rounded-lg border border-teal-700 bg-teal-800 text-white text-xs cursor-pointer"
+              className="p-1.5 rounded-lg border border-emerald-700 bg-emerald-800 text-white text-xs cursor-pointer"
               title="Ganti Mode"
             >
               {isDarkMode ? "🌙" : "☀️"}
@@ -1390,97 +1407,164 @@ const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpe
             <button 
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
-              className="px-2.5 py-1.5 rounded-lg border border-teal-700 bg-teal-800 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer"
+              className="px-2.5 py-1.5 rounded-lg border border-emerald-700 bg-emerald-800 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer"
             >
-              {mobileMenuOpen ? <X size={18} /> : <span className="font-mono text-xs">Menu ☰</span>}
+              {mobileMenuOpen ? <X size={18} /> : <span className="tabular-nums text-xs">Menu ☰</span>}
             </button>
           </div>
         </div>
       )}
 
-      {/* SIDEBAR RESPONSIVE */}
-      <div 
-        className={`w-56 shrink-0 flex flex-col py-5 px-3 no-print z-40 ${
-          isMobile 
-            ? (mobileMenuOpen ? "fixed inset-y-0 left-0 shadow-2xl" : "hidden") 
-            : "flex"
-        }`} 
-        style={{ background: COLOR.sidebarBg }}
-      >
-        <div className="px-2 mb-6">
-          <button onClick={() => navigate("/")} className="text-[10px] text-teal-200 hover:underline mb-1 block">
-            &larr; Lihat Web Publik
-          </button>
-          <div className="text-white font-semibold text-sm leading-tight">PT Wiryatama Putera Mandiri</div>
-          <div className="font-mono text-[11px] uppercase tracking-wider" style={{ color: "#8FC2C0" }}>ERP SYSTEM</div>
-          {/* ---------- SISIPKAN TOMBOL TEMA DI SINI ---------- */}
-          <button
-            onClick={toggleTheme}
-            type="button"
-            className="mt-3 flex items-center justify-between w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all border cursor-pointer"
-            style={{
-              background: isDarkMode ? "#131B2E" : "rgba(255,255,255,0.15)",
-              color: "#FFFFFF",
-              borderColor: isDarkMode ? "#2A354B" : "rgba(255,255,255,0.2)"
-            }}
+      {/* SIDEBAR RESPONSIVE (gaya WHISys: putih/slate, menu dikelompokkan, bisa dilipat, motif bulb) */}
+      {(() => {
+        const collapsed = sidebarCollapsed && !isMobile;
+        const SB = {
+          bg: isDarkMode ? "#0F172A" : "#FFFFFF",
+          border: isDarkMode ? "#1E293B" : "#E2E8F0",
+          title: isDarkMode ? "#64748B" : "#94A3B8",
+        };
+        const GROUPS = [
+          { title: "Utama", ids: ["dashboard"] },
+          { title: "Master Data", ids: ["products", "stock", "suppliers", "customers"] },
+          { title: "Transaksi", ids: ["purchases", "sales", "finance"] },
+          { title: "Laporan & Kontrol", ids: ["reports", "qa", "settings"] },
+        ];
+        const grouped = new Set(GROUPS.flatMap((g) => g.ids));
+        const sections = GROUPS.map((g) => ({ ...g, items: NAV.filter((n) => g.ids.includes(n.id)) }));
+        const others = NAV.filter((n) => !grouped.has(n.id));
+        if (others.length) sections[sections.length - 1].items.push(...others);
+        const hasAlert = lowStock.length > 0 || nearExpiry.length > 0 || expired.length > 0;
+        const syncColor = syncState === "error" ? "#EF4444" : syncState === "syncing" ? "#F59E0B" : "#10B981";
+        const syncText = syncState === "syncing" ? "Menyinkron..." : syncState === "error" ? "Gagal sync" : `Tersinkron ${new Date(lastSync).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`;
+        return (
+          <div
+            className={`shrink-0 flex flex-col border-r no-print z-40 transition-all duration-300 ${collapsed ? "w-[68px]" : "w-60"} ${
+              isMobile ? (mobileMenuOpen ? "fixed inset-y-0 left-0 shadow-2xl" : "hidden") : "sticky top-0 h-screen"
+            }`}
+            style={{ background: SB.bg, borderColor: SB.border }}
           >
-            <span>{isDarkMode ? "🌙 Mode Gelap" : "☀️ Mode Terang"}</span>
-            <span className="text-[10px] opacity-75 font-mono">Ubah</span>
-          </button>
-          {/* ------------------------------------------------- */}
-          <div className="flex items-center gap-1.5 mt-2 text-[11px] font-mono" style={{ color: syncState === "error" ? "#F0A69B" : "#8FC2C0" }}>
-            <span
-              className="inline-block w-1.5 h-1.5 rounded-full"
-              style={{ background: syncState === "error" ? "#E07A6C" : syncState === "syncing" ? "#F5C089" : "#7FCBA4" }}
-            />
-            {syncState === "syncing" ? "Menyinkron..." : syncState === "error" ? "Gagal sync" : `Tersinkron ${new Date(lastSync).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`}
-          </div>
-        </div>
-        <div className="flex flex-col gap-1">
-          {NAV.map((n) => {
-            const Icon = n.icon;
-            const active = tab === n.id;
-            return (
+            {/* Tombol lipat sidebar (desktop) */}
+            {!isMobile && (
               <button
-                key={n.id}
-                onClick={() => setTab(n.id)}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors cursor-pointer"
-                style={{ 
-  background: active ? (isDarkMode ? "#00C48C" : "rgba(255,255,255,0.15)") : "transparent", 
-  color: active ? (isDarkMode ? "#0B101D" : "#ffffff") : "#94A3B8",
-  fontWeight: active ? "bold" : "normal"
-}}
+                type="button"
+                onClick={toggleSidebar}
+                className="absolute -right-3 top-8 z-20 w-6 h-6 rounded-full border flex items-center justify-center shadow-sm cursor-pointer hover:text-emerald-500"
+                style={{ background: SB.bg, borderColor: SB.border, color: COLOR.inkSoft }}
+                title={collapsed ? "Buka Sidebar" : "Tutup Sidebar"}
               >
-                <Icon size={16} /> {n.label}
+                {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
               </button>
-            );
-          })}
-        </div>
-        <div className="mt-auto px-2 pt-4">
-          {(lowStock.length > 0 || nearExpiry.length > 0 || expired.length > 0) && (
-            <div className="rounded-lg p-2.5 mb-2" style={{ background: "rgba(255,255,255,0.08)" }}>
-              <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase mb-1" style={{ color: "#F5C089" }}>
-                <AlertTriangle size={12} /> Perhatian
+            )}
+
+            {/* Motif dekoratif: bulb oranye di atas, hijau di bawah (disembunyikan saat dilipat) */}
+            {!collapsed && (
+              <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
+                <svg className="absolute top-0 left-0 w-full" style={{ height: 44 }} viewBox="0 0 220 60" preserveAspectRatio="none">
+                  <path fill="#f97316" d="M0,0 L220,0 L220,24 C220,40 180,53 130,50 C95,49 78,60 40,58 C18,56 0,47 0,36 Z" />
+                </svg>
+                <svg className="absolute bottom-0 left-0 w-full" style={{ height: 44 }} viewBox="0 0 220 60" preserveAspectRatio="none">
+                  <path fill="#10b981" d="M0,60 L220,60 L220,35 C220,19 182,6 132,9 C97,11 80,0 42,2 C20,4 0,13 0,24 Z" />
+                </svg>
               </div>
-              <div className="text-xs text-white leading-relaxed">
-                {lowStock.length > 0 && <div>{lowStock.length} produk stok menipis</div>}
-                {nearExpiry.length > 0 && <div>{nearExpiry.length} batch mendekati exp</div>}
-                {expired.length > 0 && <div>{expired.length} batch kedaluwarsa</div>}
+            )}
+
+            {/* Header: logo + nama perusahaan (di bawah motif oranye) */}
+            <div className={`relative shrink-0 ${collapsed ? "px-2 pt-4" : "px-4 pt-11"}`}>
+              <div className={`flex items-center gap-3 pb-4 mb-3 border-b ${collapsed ? "justify-center pt-4" : "px-1"}`} style={{ borderColor: SB.border }}>
+                <img src={COMPANY_PROFILE.logoUrl} alt="Logo" className="w-10 h-10 rounded-lg object-contain bg-white shrink-0 shadow-sm" style={{ border: `1px solid ${SB.border}` }} />
+                {!collapsed && (
+                  <div className="min-w-0">
+                    <div className="font-bold text-sm leading-tight" style={{ color: isDarkMode ? "#34D399" : "#059669" }}>PT Wiryatama Putera Mandiri</div>
+                    <div className="text-[11px] tracking-wider mt-0.5" style={{ color: COLOR.inkSoft }}>ERP SYSTEM</div>
+                  </div>
+                )}
               </div>
             </div>
-          )}
-          {userEmail && (
-            <div className="flex flex-col gap-2 border-t pt-3" style={{ borderColor: "rgba(255,255,255,0.15)" }}>
-              <div className="flex items-center justify-between px-1">
-                <div className="text-[11px] font-mono truncate" style={{ color: "#8FC2C0" }} title={userEmail}>{userEmail}</div>
-                <button onClick={onLogout} className="flex items-center gap-1 text-[11px] shrink-0 cursor-pointer" style={{ color: "#B7D6D4" }} title="Keluar">
-                  <LogOut size={12} /> Keluar
+
+            <div className={`relative flex-1 min-h-0 overflow-y-auto hide-scrollbar ${collapsed ? "px-2" : "px-4"}`}>
+              {/* Menu per kelompok */}
+              <nav className="space-y-1 pb-2">
+                {sections.filter((s) => s.items.length).map((s, si) => (
+                  <div key={s.title} className="space-y-1">
+                    {!collapsed ? (
+                      <div className={`px-3 text-[11px] font-semibold uppercase tracking-wider mb-2 ${si === 0 ? "" : "mt-5"}`} style={{ color: SB.title }}>{s.title}</div>
+                    ) : (
+                      si > 0 && <div className="my-3 mx-2 border-t" style={{ borderColor: SB.border }} />
+                    )}
+                    {s.items.map((n) => {
+                      const Icon = n.icon;
+                      const active = tab === n.id;
+                      return (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => { setTab(n.id); if (isMobile) setMobileMenuOpen(false); }}
+                          title={collapsed ? n.label : undefined}
+                          className={`w-full flex items-center gap-3 py-2 rounded-lg text-sm font-medium text-left transition-all cursor-pointer ${collapsed ? "justify-center px-0" : "px-3"} ${
+                            active ? "bg-emerald-600 text-white shadow-md" : `${isDarkMode ? "text-slate-400" : "text-slate-500"} hover:bg-emerald-500/10 hover:text-emerald-500`
+                          }`}
+                          style={active ? { boxShadow: "0 4px 12px -2px rgba(5, 150, 105, 0.35)" } : undefined}
+                        >
+                          <Icon size={16} className="shrink-0" />
+                          {!collapsed && <span className="truncate">{n.label}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </nav>
+            </div>
+
+            {/* Footer: peringatan stok, tema, sinkron, akun */}
+            <div className={`relative shrink-0 ${collapsed ? "px-2 pb-4" : "px-4 pb-12"} pt-3 space-y-2`}>
+              {hasAlert && (
+                <button
+                  type="button"
+                  onClick={() => { setTab("stock"); if (isMobile) setMobileMenuOpen(false); }}
+                  title={`${lowStock.length} produk stok menipis\n${nearExpiry.length} batch mendekati exp\n${expired.length} batch kedaluwarsa`}
+                  className={`w-full flex items-center gap-1.5 rounded-lg border text-xs font-medium cursor-pointer ${collapsed ? "justify-center py-2" : "px-2.5 py-2"}`}
+                  style={{ background: isDarkMode ? "rgba(245,158,11,0.10)" : "#FFFBEB", borderColor: isDarkMode ? "rgba(245,158,11,0.3)" : "#FDE68A", color: isDarkMode ? "#FCD34D" : "#B45309" }}
+                >
+                  <AlertTriangle size={14} className="shrink-0" />
+                  {!collapsed && <span className="truncate">{lowStock.length + nearExpiry.length + expired.length} peringatan stok & exp</span>}
                 </button>
+              )}
+
+              <div className="rounded-lg border p-2 space-y-2" style={{ background: SB.bg, borderColor: SB.border }}>
+                <div className={`flex items-center ${collapsed ? "flex-col gap-2" : "justify-between gap-2"}`}>
+                  <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium cursor-pointer hover:bg-emerald-500/10"
+                    style={{ color: COLOR.inkSoft }}
+                    title={isDarkMode ? "Ganti ke Mode Terang" : "Ganti ke Mode Gelap"}
+                  >
+                    {isDarkMode ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-indigo-500" />}
+                    {!collapsed && (isDarkMode ? "Mode Terang" : "Mode Gelap")}
+                  </button>
+                  <div className="flex items-center gap-1.5 text-[11px]" style={{ color: COLOR.inkSoft }} title={syncText}>
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: syncColor }} />
+                    {!collapsed && <span>{syncState === "error" ? "Gagal sync" : syncState === "syncing" ? "Sync..." : "Online"}</span>}
+                  </div>
+                </div>
+                {userEmail && (
+                  <div className={`flex items-center border-t pt-2 ${collapsed ? "justify-center" : "justify-between gap-2"}`} style={{ borderColor: SB.border }}>
+                    {!collapsed && <div className="text-[11px] truncate" style={{ color: COLOR.inkSoft }} title={userEmail}>{userEmail}</div>}
+                    <button type="button" onClick={onLogout} className="flex items-center gap-1 text-[11px] shrink-0 cursor-pointer text-red-500 hover:text-red-600" title="Keluar">
+                      <LogOut size={13} /> {!collapsed && "Keluar"}
+                    </button>
+                  </div>
+                )}
               </div>
+              {!collapsed && (
+                <button onClick={() => navigate("/")} className="text-[11px] hover:underline px-1 cursor-pointer" style={{ color: COLOR.inkSoft }}>
+                  &larr; Lihat Web Publik
+                </button>
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        );
+      })()}
 
       {/* BACKDROP GELAP SAAT MENU HP TERBUKA */}
       {isMobile && mobileMenuOpen && (
@@ -1700,19 +1784,19 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
       <div className="grid grid-cols-4 gap-3 mb-4">
         <Card>
   <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total SKU</div>
-  <div className="text-2xl font-mono font-semibold" style={{ color: COLOR.good }}>{(products || []).length}</div>
+  <div className="text-2xl tabular-nums font-semibold" style={{ color: COLOR.good }}>{(products || []).length}</div>
 </Card>
 <Card>
   <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Nilai Stok</div>
-  <div className="text-2xl font-mono font-semibold" style={{ color: COLOR.good }}>{fmtIDR(totalStockValue)}</div>
+  <div className="text-2xl tabular-nums font-semibold" style={{ color: COLOR.good }}>{fmtIDR(totalStockValue)}</div>
 </Card>
         <Card style={{ borderColor: lowStock.length ? COLOR.warn : COLOR.border }}>
           <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Stok Menipis</div>
-          <div className="text-2xl font-mono font-semibold" style={{ color: lowStock.length ? COLOR.warn : COLOR.ink }}>{lowStock.length}</div>
+          <div className="text-2xl tabular-nums font-semibold" style={{ color: lowStock.length ? COLOR.warn : COLOR.ink }}>{lowStock.length}</div>
         </Card>
         <Card style={{ borderColor: (nearExpiry.length || expired.length) ? COLOR.danger : COLOR.border }}>
           <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Mendekati / Lewat Exp</div>
-          <div className="text-2xl font-mono font-semibold" style={{ color: (nearExpiry.length || expired.length) ? COLOR.danger : COLOR.ink }}>{nearExpiry.length + expired.length}</div>
+          <div className="text-2xl tabular-nums font-semibold" style={{ color: (nearExpiry.length || expired.length) ? COLOR.danger : COLOR.ink }}>{nearExpiry.length + expired.length}</div>
         </Card>
       </div>
 
@@ -1723,23 +1807,23 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
     <div className="grid grid-cols-5 gap-3 mb-6">
       <Card>
         <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Piutang (AR)</div>
-        <div className="text-lg font-mono font-semibold" style={{ color: COLOR.warn }}>{fmtIDR(arOutstanding)}</div>
+        <div className="text-lg tabular-nums font-semibold" style={{ color: COLOR.warn }}>{fmtIDR(arOutstanding)}</div>
       </Card>
       <Card>
         <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Hutang (AP)</div>
-        <div className="text-lg font-mono font-semibold" style={{ color: COLOR.danger }}>{fmtIDR(apOutstanding)}</div>
+        <div className="text-lg tabular-nums font-semibold" style={{ color: COLOR.danger }}>{fmtIDR(apOutstanding)}</div>
       </Card>
       <Card>
         <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Kas Masuk</div>
-        <div className="text-lg font-mono font-semibold" style={{ color: COLOR.good }}>{fmtIDR(cashInMonth)}</div>
+        <div className="text-lg tabular-nums font-semibold" style={{ color: COLOR.good }}>{fmtIDR(cashInMonth)}</div>
       </Card>
       <Card>
         <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Kas Keluar</div>
-        <div className="text-lg font-mono font-semibold" style={{ color: COLOR.danger }}>{fmtIDR(cashOutMonth)}</div>
+        <div className="text-lg tabular-nums font-semibold" style={{ color: COLOR.danger }}>{fmtIDR(cashOutMonth)}</div>
       </Card>
       <Card style={{ borderColor: grossProfitMonth >= 0 ? COLOR.good : COLOR.danger }}>
         <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Laba Kotor (Margin)</div>
-        <div className="text-lg font-mono font-semibold" style={{ color: grossProfitMonth >= 0 ? COLOR.good : COLOR.danger }}>{fmtIDR(grossProfitMonth)}</div>
+        <div className="text-lg tabular-nums font-semibold" style={{ color: grossProfitMonth >= 0 ? COLOR.good : COLOR.danger }}>{fmtIDR(grossProfitMonth)}</div>
       </Card>
     </div>
   </>
@@ -1761,7 +1845,7 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
               const p = (products || []).find((x) => x.id === b.productId);
               return (
                 <div key={b.id} className="flex items-center justify-between text-sm py-1.5" style={{ borderBottom: `1px solid ${COLOR.border}` }}>
-                  <span style={{ color: COLOR.ink }}>{p ? p.name : "-"} <span className="font-mono text-xs" style={{ color: COLOR.inkSoft }}>({b.batchNo})</span></span>
+                  <span style={{ color: COLOR.ink }}>{p ? p.name : "-"} <span className="tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>({b.batchNo})</span></span>
                   <Badge tone={urgencyOf(b.expiryDate).tone}>{urgencyOf(b.expiryDate).label}</Badge>
                 </div>
               );
@@ -1778,13 +1862,13 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
             {recentPOs.map((po) => (
               <div key={po.id} className="flex items-center justify-between text-sm py-1.5" style={{ borderBottom: `1px solid ${COLOR.border}` }}>
                 <span className="flex items-center gap-1.5" style={{ color: COLOR.ink }}><ArrowDownRight size={14} color={COLOR.warn} /> {po.poNumber} · {findName(suppliers, po.supplierId)}</span>
-                <span className="font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(po.date)}</span>
+                <span className="tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(po.date)}</span>
               </div>
             ))}
             {recentSOs.map((so) => (
               <div key={so.id} className="flex items-center justify-between text-sm py-1.5" style={{ borderBottom: `1px solid ${COLOR.border}` }}>
                 <span className="flex items-center gap-1.5" style={{ color: COLOR.ink }}><ArrowUpRight size={14} color={COLOR.good} /> {so.soNumber} · {findName(customers, so.customerId)}</span>
-                <span className="font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(so.date)}</span>
+                <span className="tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(so.date)}</span>
               </div>
             ))}
             {recentPOs.length === 0 && recentSOs.length === 0 && (
@@ -2029,7 +2113,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         <div className="flex items-end gap-3 mb-5 p-3 bg-white rounded-xl border no-print" style={{ borderColor: COLOR.border }}>
           <Field label="Dari Tanggal"><TextInput type="date" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
           <Field label="Sampai Tanggal"><TextInput type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
-          <div className="pb-3 text-xs font-mono text-teal-800 font-semibold">
+          <div className="pb-3 text-xs tabular-nums text-emerald-800 font-semibold">
             Periode: {fmtDate(start)} s/d {fmtDate(end)}
           </div>
         </div>
@@ -2083,7 +2167,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
 
             <div className="flex justify-between items-center mt-4 pt-3 border-t" style={{ borderColor: COLOR.border }}>
               <div className="text-sm font-semibold" style={{ color: COLOR.ink }}>
-                Total Piutang Terfilter: <span className="font-mono text-teal-700">{fmtIDR(totalARAging)}</span>
+                Total Piutang Terfilter: <span className="tabular-nums text-emerald-700">{fmtIDR(totalARAging)}</span>
               </div>
               <div className="flex gap-2">
                 <Button onClick={exportAgingCSV} variant="ghost">
@@ -2111,16 +2195,16 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
               <tbody>
                 {agingData.map((item) => (
                   <tr key={item.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{item.noFaktur}</td>
+                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{item.noFaktur}</td>
                     <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(customers, item.customerId)}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(item.date)}</td>
-                    <td className="px-4 py-2.5 font-mono text-center font-bold" style={{ color: COLOR.ink }}>{item.ageDays} Hari</td>
+                    <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(item.date)}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-center font-bold" style={{ color: COLOR.ink }}>{item.ageDays} Hari</td>
                     <td className="px-4 py-2.5">
                       <Badge tone={item.bucket === "current" ? "good" : item.bucket === "over90" ? "danger" : "warn"}>
                         {item.bucket === "current" ? "0-30 Hari" : item.bucket === "31-60" ? "31-60 Hari" : item.bucket === "61-90" ? "61-90 Hari" : "> 90 Hari"}
                       </Badge>
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-right font-bold" style={{ color: COLOR.ink }}>{fmtIDR(item.sisaHutang)}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-right font-bold" style={{ color: COLOR.ink }}>{fmtIDR(item.sisaHutang)}</td>
                   </tr>
                 ))}
                 {agingData.length === 0 && (
@@ -2150,7 +2234,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
               </Button>
             </div>
 
-            <div className="space-y-3 text-sm font-mono">
+            <div className="space-y-3 text-sm tabular-nums">
               {pnlData.salesReturnsVal > 0 ? (
                 <>
                   <div className="flex justify-between py-1.5 border-b text-gray-700">
@@ -2161,13 +2245,13 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
                     <span>(-) Retur Penjualan</span>
                     <span className="font-semibold">- {fmtIDR(pnlData.salesReturnsVal)}</span>
                   </div>
-                  <div className="flex justify-between py-2 border-b-2 font-bold text-teal-900 bg-teal-50/50 px-2 rounded">
+                  <div className="flex justify-between py-2 border-b-2 font-bold text-emerald-900 bg-emerald-50/50 px-2 rounded">
                     <span>Penjualan Bersih (Net Sales)</span>
                     <span>{fmtIDR(pnlData.netSales)}</span>
                   </div>
                 </>
               ) : (
-                <div className="flex justify-between py-2 border-b-2 font-bold text-teal-900 bg-teal-50/50 px-2 rounded">
+                <div className="flex justify-between py-2 border-b-2 font-bold text-emerald-900 bg-emerald-50/50 px-2 rounded">
                   <span>Penjualan Bersih (Sales DPP)</span>
                   <span>{fmtIDR(pnlData.netSales)}</span>
                 </div>
@@ -2177,7 +2261,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
                 <span>(-) Harga Pokok Penjualan (HPP)</span>
                 <span className="text-red-600">- {fmtIDR(pnlData.totalCOGS)}</span>
               </div>
-              <div className="flex justify-between py-2 border-b-2 font-bold text-teal-900 bg-teal-50 px-2 rounded">
+              <div className="flex justify-between py-2 border-b-2 font-bold text-emerald-900 bg-emerald-50 px-2 rounded">
                 <span>Laba Kotor (Gross Profit)</span>
                 <span>{fmtIDR(pnlData.grossProfit)}</span>
               </div>
@@ -2219,7 +2303,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         <div>
           <Card className="mb-4">
             <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total Penjualan Berdasarkan Faktur ({fmtDate(start)} – {fmtDate(end)})</div>
-            <div className="text-xl font-mono font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(salesTotal)}</div>
+            <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(salesTotal)}</div>
           </Card>
 
           <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Rekap Produk Difakturkan</div>
@@ -2238,8 +2322,8 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
                   return (
                     <tr key={pid} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                       <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{p?.name || "-"}</td>
-                      <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.inkSoft }}>{agg.qty} {p?.unit}</td>
-                      <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(agg.value)}</td>
+                      <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.inkSoft }}>{agg.qty} {p?.unit}</td>
+                      <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.ink }}>{fmtIDR(agg.value)}</td>
                     </tr>
                   );
                 })}
@@ -2261,11 +2345,11 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
               <tbody>
                 {allSalesDocs.map((doc) => (
                   <tr key={doc.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
+                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
                     <td className="px-4 py-2.5"><Badge tone={doc.type === "Langsung" ? "warn" : "neutral"}>{doc.type}</Badge></td>
                     <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{doc.partyName}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
-                    <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
+                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
                   </tr>
                 ))}
                 {allSalesDocs.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Penjualan di periode ini.</td></tr>}
@@ -2280,7 +2364,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         <div>
           <Card className="mb-4">
             <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total Pembelian Berdasarkan Faktur Vendor ({fmtDate(start)} – {fmtDate(end)})</div>
-            <div className="text-xl font-mono font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(purchaseTotal)}</div>
+            <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(purchaseTotal)}</div>
           </Card>
 
           <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Rekap Produk Difakturkan</div>
@@ -2299,8 +2383,8 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
                   return (
                     <tr key={pid} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                       <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{p?.name || "-"}</td>
-                      <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.inkSoft }}>{agg.qty} {p?.unit}</td>
-                      <td className="px-4 py-2.5 font-mono" style={{ color: COLOR.ink }}>{fmtIDR(agg.value)}</td>
+                      <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.inkSoft }}>{agg.qty} {p?.unit}</td>
+                      <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.ink }}>{fmtIDR(agg.value)}</td>
                     </tr>
                   );
                 })}
@@ -2322,11 +2406,11 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
               <tbody>
                 {allPurchaseDocs.map((doc) => (
                   <tr key={doc.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
+                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
                     <td className="px-4 py-2.5"><Badge tone={doc.type === "Langsung" ? "warn" : "neutral"}>{doc.type}</Badge></td>
                     <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{doc.partyName}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
-                    <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
+                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
                   </tr>
                 ))}
                 {allPurchaseDocs.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian di periode ini.</td></tr>}
@@ -2406,7 +2490,7 @@ function PaymentAccountsSettings({ notify }) {
   return (
     <Card className="max-w-3xl !p-6 space-y-6">
       <div>
-        <div className="font-bold text-sm text-teal-900 border-b pb-2 uppercase tracking-wide">Rekening Pembayaran di Faktur</div>
+        <div className="font-bold text-sm text-emerald-900 border-b pb-2 uppercase tracking-wide">Rekening Pembayaran di Faktur</div>
         <p className="text-xs mt-2 opacity-80">
           Rekening yang tercetak di faktur penjualan dipilih otomatis sesuai jenis pajaknya. Bisa isi lebih dari 1 rekening per jenis.
         </p>
@@ -2782,7 +2866,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
       {/* TAB 1: PROFIL PERUSAHAAN (SUPER ADMIN) */}
       {subTab === "company" && isSuperAdmin && (
         <Card className="max-w-3xl !p-6 space-y-4">
-          <div className="font-bold text-sm text-teal-900 border-b pb-2 uppercase tracking-wide">
+          <div className="font-bold text-sm text-emerald-900 border-b pb-2 uppercase tracking-wide">
             Identitas Perusahaan & Legalitas Penyalur PBF/Alkes
           </div>
 
@@ -2812,7 +2896,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
             </Field>
           </div>
 
-          <div className="border-t pt-3 mt-4 font-bold text-sm text-teal-900 border-b pb-2 uppercase tracking-wide">
+          <div className="border-t pt-3 mt-4 font-bold text-sm text-emerald-900 border-b pb-2 uppercase tracking-wide">
             Pengaturan Tanda Tangan & Stempel PJT (Dokumen PO)
           </div>
 
@@ -2842,7 +2926,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
           
           {/* 1. FORM GANTI PASSWORD (TAMPIL UNTUK SEMUA USER: SUPER ADMIN, FINANCE, STAFF) */}
           <Card className="max-w-md !p-6">
-            <div className="font-bold text-sm text-teal-900 border-b pb-2 mb-4 uppercase tracking-wide">
+            <div className="font-bold text-sm text-emerald-900 border-b pb-2 mb-4 uppercase tracking-wide">
               Ganti Password Login Akun Saya
             </div>
             <form onSubmit={handleChangePassword} className="space-y-3">
@@ -2852,7 +2936,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
                   type="text" 
                   disabled 
                   value={currentUserEmail || ""} 
-                  className="w-full p-2 bg-gray-100 text-gray-500 rounded text-xs border font-mono cursor-not-allowed" 
+                  className="w-full p-2 bg-gray-100 text-gray-500 rounded text-xs border tabular-nums cursor-not-allowed" 
                 />
               </div>
 
@@ -2920,7 +3004,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
                         <tr key={u.id} className="border-t" style={{ borderColor: COLOR.border }}>
                           <td className="px-4 py-3">
                             <div className="font-semibold text-gray-900">{u.name}</div>
-                            <div className="text-xs font-mono text-gray-500">{u.email}</div>
+                            <div className="text-xs tabular-nums text-gray-500">{u.email}</div>
                           </td>
                           <td className="px-4 py-3">
                             <Badge tone={u.role === "admin" ? "good" : "neutral"}>
@@ -2932,7 +3016,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
                               {(u.access || []).map((accId) => {
                                 const m = MODULE_LIST.find((x) => x.id === accId);
                                 return (
-                                  <span key={accId} className="text-[10px] bg-teal-50 text-teal-800 border border-teal-200 px-2 py-0.5 rounded font-mono">
+                                  <span key={accId} className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded tabular-nums">
                                     {m?.label || accId}
                                   </span>
                                 );
@@ -2940,7 +3024,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
                             </div>
                           </td>
                           <td className="px-4 py-3 text-right whitespace-nowrap">
-                            <button onClick={() => openEditUser(u)} className="text-xs font-semibold text-teal-700 mr-3 hover:underline">
+                            <button onClick={() => openEditUser(u)} className="text-xs font-semibold text-emerald-700 mr-3 hover:underline">
                               Edit Akses
                             </button>
 
@@ -2949,7 +3033,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
                                 Hapus
                               </button>
                             ) : (
-                              <span className="text-[10px] text-gray-400 font-mono italic">Protected</span>
+                              <span className="text-[10px] text-gray-400 tabular-nums italic">Protected</span>
                             )}
                           </td>
                         </tr>
@@ -2978,21 +3062,21 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
                   </Field>
 
                   <div className="border-t pt-3 mt-3">
-                    <div className="text-xs font-bold text-teal-900 mb-2 uppercase tracking-wide">
+                    <div className="text-xs font-bold text-emerald-900 mb-2 uppercase tracking-wide">
                       Pilih Modul yang Boleh Diakses:
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       {MODULE_LIST.map((m) => {
                         const checked = userForm.access.includes(m.id);
                         return (
-                          <label key={m.id} className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer bg-white text-xs hover:bg-teal-50/50">
+                          <label key={m.id} className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer bg-white text-xs hover:bg-emerald-50/50">
                             <input
                               type="checkbox"
                               checked={checked}
                               onChange={() => toggleModuleAccess(m.id)}
-                              className="rounded text-teal-800"
+                              className="rounded text-emerald-800"
                             />
-                            <span className={checked ? "font-semibold text-teal-900" : "text-gray-600"}>{m.label}</span>
+                            <span className={checked ? "font-semibold text-emerald-900" : "text-gray-600"}>{m.label}</span>
                           </label>
                         );
                       })}
@@ -3040,8 +3124,8 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
                     className="appearance-none bg-transparent text-xs font-medium pr-6 pl-2 py-1 cursor-pointer outline-none"
                     style={{ color: PC.ink }}
                   >
-                    <option value="light" style={{ color: "#15302D" }}>Light Mode (Terang)</option>
-                    <option value="dark" style={{ color: "#15302D" }}>Dark Mode (Gelap)</option>
+                    <option value="light" style={{ color: "#1E293B" }}>Light Mode (Terang)</option>
+                    <option value="dark" style={{ color: "#1E293B" }}>Dark Mode (Gelap)</option>
                   </select>
                   <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: PC.ink }} />
                 </div>
@@ -3107,7 +3191,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
           <Card className="!p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <div className="font-bold text-sm text-teal-900 mb-1 uppercase tracking-wide">
+                <div className="font-bold text-sm text-emerald-900 mb-1 uppercase tracking-wide">
                   Cadangan Data Otomatis
                 </div>
                 <p className="text-xs text-gray-600 leading-relaxed">
@@ -3145,7 +3229,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
           </Card>
 
           <Card className="!p-6">
-            <div className="font-bold text-sm text-teal-900 mb-2 uppercase tracking-wide">
+            <div className="font-bold text-sm text-emerald-900 mb-2 uppercase tracking-wide">
               Unduh Backup Database (1-Click Download)
             </div>
             <p className="text-xs text-gray-600 mb-4 leading-relaxed">

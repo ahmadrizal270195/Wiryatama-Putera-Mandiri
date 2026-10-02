@@ -129,12 +129,12 @@ export default function SuratJalan() {
 
   return (
     <div style={{ padding: "24px", maxWidth: "900px", margin: "0 auto", fontFamily: "sans-serif" }}>
-      <h2 style={{ color: "#15302D", marginBottom: "8px" }}>Buat Surat Jalan (Delivery Order)</h2>
-      <p style={{ color: "#5C7873", fontSize: "14px", marginBottom: "24px" }}>
+      <h2 style={{ color: "#1E293B", marginBottom: "8px" }}>Buat Surat Jalan (Delivery Order)</h2>
+      <p style={{ color: "#64748B", fontSize: "14px", marginBottom: "24px" }}>
         Pengeluaran barang berdasarkan Pesanan Penjualan (SO) beserta nomor batch & kadaluarsa.
       </p>
 
-      <form onSubmit={handleSubmit} style={{ background: "#fff", padding: "24px", borderRadius: "12px", border: "1px solid #E2E9E7" }}>
+      <form onSubmit={handleSubmit} style={{ background: "#fff", padding: "24px", borderRadius: "12px", border: "1px solid #E2E8F0" }}>
         
         {/* PILIH SO */}
         <div style={{ marginBottom: "16px" }}>
@@ -203,8 +203,8 @@ export default function SuratJalan() {
             </div>
 
             {/* STATUS PENERIMAAN BARANG */}
-            <div style={{ background: "#F5F8F7", padding: "16px", borderRadius: "8px", marginBottom: "20px" }}>
-              <h4 style={{ margin: "0 0 12px 0", color: "#0E4749" }}>Status Penerimaan Barang</h4>
+            <div style={{ background: "#F1F5F9", padding: "16px", borderRadius: "8px", marginBottom: "20px" }}>
+              <h4 style={{ margin: "0 0 12px 0", color: "#059669" }}>Status Penerimaan Barang</h4>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
                 <div>
                   <label style={{ fontSize: "12px", fontWeight: "600" }}>Status</label>
@@ -250,7 +250,7 @@ export default function SuratJalan() {
             <h4 style={{ marginBottom: "8px" }}>Detail Barang & Batch (Farmasi/Alkes)</h4>
             <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "20px" }}>
               <thead>
-                <tr style={{ background: "#E2E9E7", textAlign: "left", fontSize: "12px" }}>
+                <tr style={{ background: "#E2E8F0", textAlign: "left", fontSize: "12px" }}>
                   <th style={{ padding: "8px" }}>Nama Produk</th>
                   <th style={{ padding: "8px", width: "80px" }}>Qty Order</th>
                   <th style={{ padding: "8px", width: "90px" }}>Qty Kirim</th>
@@ -303,7 +303,7 @@ export default function SuratJalan() {
               type="submit"
               disabled={loading}
               style={{
-                background: "#0E4749",
+                background: "#059669",
                 color: "#fff",
                 padding: "12px 24px",
                 border: "none",
