@@ -804,8 +804,6 @@ function PharmaERP({ userEmail, onLogout }) {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const isFinanceOrAdmin = ADMIN_FINANCE_EMAILS.includes((userEmail || "").toLowerCase());
-
   const [tab, setTabState] = useState(() => {
     return localStorage.getItem(ACTIVE_TAB_KEY) || "dashboard";
   });
@@ -1196,7 +1194,9 @@ const currentUser = (users || []).find((u) => (u.email || "").toLowerCase() === 
 
 // Ambil daftar aksesnya (jika tidak ditemukan/admin, berikan akses penuh):
 const FULL_ACCESS = ["dashboard", "products", "stock", "suppliers", "customers", "purchases", "sales", "finance", "reports", "qa", "settings"];
-const isHardAdmin = ADMIN_FINANCE_EMAILS.includes((userEmail || "").toLowerCase());
+// Super admin = 3 email bawaan ATAU akun yang role-nya "Super Admin" di menu Pengguna.
+const myRole = currentUser?.role || "";
+const isHardAdmin = ADMIN_FINANCE_EMAILS.includes((userEmail || "").toLowerCase()) || myRole === "admin";
 // Setelah migrasi, email yang tidak terdaftar di daftar pengguna TIDAK lagi dapat akses penuh.
 const currentUserAccess = currentUser
   ? (currentUser.access || [])
@@ -1206,6 +1206,8 @@ const currentUserAccess = currentUser
 // APJ / PJT yang terdaftar otomatis bisa buka menu review walau belum diberi akses "qa".
 const isQAOfficer = myClasses(qaOfficers, userEmail).length > 0;
 const canOpenQA = currentUserAccess.includes("qa") || isQAOfficer || isHardAdmin;
+// Boleh buka Finance & Laba Rugi: super admin, role Finance, atau yang dicentang akses modul Finance.
+const isFinanceOrAdmin = isHardAdmin || myRole === "finance" || currentUserAccess.includes("finance");
 const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpenQA : n.id === "activity" ? isHardAdmin : currentUserAccess.includes(n.id)));
 // Identitas pencatat untuk Log Aktivitas
 setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHardAdmin ? "Super Admin" : (currentUser?.role || "") });
@@ -1731,6 +1733,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
 {tab === "reports" && (
   currentUserAccess.includes("reports") ? (
     <ReportsView 
+      canSeePnL={isFinanceOrAdmin}
       products={products} 
       suppliers={suppliers} 
       customers={customers} 
@@ -1776,7 +1779,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
           currentUserAccess.includes("settings") ? (
             <SettingsView 
               notify={notify} refreshAll={refreshAll} users={users} 
-              saveUsers={persist.users} currentUserEmail={userEmail}
+              saveUsers={persist.users} currentUserEmail={userEmail} isSuperAdminUser={isHardAdmin}
               isDarkMode={isDarkMode} onThemeChange={setThemeMode}
             />
           ) : <AccessDenied />
@@ -1906,8 +1909,8 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
 
 
 // ---------- LAPORAN BERBASIS FAKTUR & LABA RUGI PER PERIODE ----------
-function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvoices, returns, pReturns, paymentsIn, expenses, batches, deliveryNotes, findName, pInvoiceTotal, invoiceTotal, invoiceNetSalesDPP, currentUserEmail }) {
-  const isSuperAdminOrFinance = ADMIN_FINANCE_EMAILS.includes((currentUserEmail || "").toLowerCase());
+function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvoices, returns, pReturns, paymentsIn, expenses, batches, deliveryNotes, findName, pInvoiceTotal, invoiceTotal, invoiceNetSalesDPP, currentUserEmail, canSeePnL }) {
+  const isSuperAdminOrFinance = !!canSeePnL || ADMIN_FINANCE_EMAILS.includes((currentUserEmail || "").toLowerCase());
 
   const [subTab, setSubTab] = useState(isSuperAdminOrFinance ? "pnl" : "sales");
   const [start, setStart] = useState(() => {
@@ -2570,10 +2573,10 @@ function PaymentAccountsSettings({ notify }) {
   );
 }
 
-function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, isDarkMode = false, onThemeChange }) {
+function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, isSuperAdminUser = false, isDarkMode = false, onThemeChange }) {
   const PC = getCOLOR(isDarkMode); // warna panel preferensi, ikut mode terang/gelap
   // Cek apakah user yang sedang login adalah Super Admin / Finance
-  const isSuperAdmin = typeof ADMIN_FINANCE_EMAILS !== "undefined" && ADMIN_FINANCE_EMAILS.includes((currentUserEmail || "").toLowerCase());
+  const isSuperAdmin = isSuperAdminUser || (typeof ADMIN_FINANCE_EMAILS !== "undefined" && ADMIN_FINANCE_EMAILS.includes((currentUserEmail || "").toLowerCase()));
 
   // Default tab: Super Admin ke "company", Staff ke "users" (Profil Diri Sendiri)
   const [subTab, setSubTab] = useState(isSuperAdmin ? "company" : "users");

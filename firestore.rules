@@ -2,14 +2,18 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Super admin: harus SAMA dengan ADMIN_FINANCE_EMAILS di src/App.jsx
+    // Super admin = 3 email bawaan (harus SAMA dengan ADMIN_FINANCE_EMAILS di src/App.jsx)
+    // ATAU akun yang role-nya "admin" (Super Admin) di menu Pengguna.
+    // Aman: dokumen erp_users cuma bisa diubah oleh super admin.
     function isAdmin() {
       return request.auth != null
-        && request.auth.token.email.lower() in [
-          "ahmadrizal270195@gmail.com",
-          "wawakhayrani@gmail.com",
-          "admin@wiryatamaputera.co.id"
-        ];
+        && (request.auth.token.email.lower() in [
+              "ahmadrizal270195@gmail.com",
+              "wawakhayrani@gmail.com",
+              "admin@wiryatamaputera.co.id"
+            ]
+            || (exists(/databases/$(database)/documents/erp_users/$(request.auth.token.email.lower()))
+                && get(/databases/$(database)/documents/erp_users/$(request.auth.token.email.lower())).data.role == "admin"));
     }
     function signedIn() { return request.auth != null; }
     // Staf = login DAN terdaftar di menu Pengguna (erp_users/{email})
