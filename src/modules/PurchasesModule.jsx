@@ -406,7 +406,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
 
       {modal && (
         <Modal title={editingId ? `Edit Purchase Order — ${poNumber}` : "Buat Purchase Order"} onClose={() => { setModal(null); setEditingId(null); }} wide xwide colorConfig={colorConfig}>
-          <div className="grid grid-cols-3 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
             <Field label="Nomor PO" colorConfig={colorConfig}>
               <TextInput value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="Contoh: PO/WPM/2026/001" className="tabular-nums" colorConfig={colorConfig} />
             </Field>
@@ -420,7 +420,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
             <Field label="Opsi PPN (Pajak)" colorConfig={colorConfig}>
               <Select value={taxType} onChange={(e) => setTaxType(e.target.value)} colorConfig={colorConfig}>
                 <option value="none">Non-PPN (Tanpa Pajak)</option>
@@ -460,9 +460,9 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
 
           <DeductionsEditor deductions={deductions} onChange={setDeductions} bill={poBill} colorConfig={colorConfig} fmtIDR={fmtIDR} />
 
-          <div className="flex justify-between items-end mt-4 pt-3 border-t" style={{ borderColor: colorConfig?.border }}>
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-3 mt-4 pt-3 border-t" style={{ borderColor: colorConfig?.border }}>
             <BillSummary bill={poBill} fmtIDR={fmtIDR} colorConfig={colorConfig} totalLabel="Total PO" />
-            <Button onClick={submit} colorConfig={colorConfig}>{editingId ? "Simpan Perubahan PO" : "Simpan & Terbitkan PO"}</Button>
+            <Button onClick={submit} className="justify-center" colorConfig={colorConfig}>{editingId ? "Simpan Perubahan PO" : "Simpan & Terbitkan PO"}</Button>
           </div>
         </Modal>
       )}
@@ -800,7 +800,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
             <div className="text-sm" style={{ color: colorConfig?.inkSoft }}>Tidak ada PO yang aktif/menunggu barang.</div>
           ) : (
             <>
-              <div className="grid grid-cols-3 gap-3 mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                 <Field label="Nomor BPB" colorConfig={colorConfig}>
                   <TextInput value={noBPB} onChange={(e) => setNoBPB(e.target.value)} placeholder="Contoh: BPB/WPM/2026/001" className="tabular-nums" colorConfig={colorConfig} />
                 </Field>
@@ -823,7 +823,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
                     return (
                       <div key={i} className="p-3 rounded-lg mb-2 border flex flex-col gap-2" style={{ background: colorConfig?.bg, borderColor: colorConfig?.border }}>
                         <div className="text-sm font-medium" style={{ color: colorConfig?.ink }}>{p?.name} <span className="text-xs tabular-nums font-normal" style={{ color: colorConfig?.inkSoft }}>(Sisa pesan: {remaining} {p?.unit})</span></div>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[10px] block text-gray-500 tabular-nums">Qty Diterima</label>
                             <TextInput type="number" value={receiveForm[i]?.qty ?? remaining} onChange={(e) => setReceiveForm({ ...receiveForm, [i]: { ...receiveForm[i], qty: e.target.value } })} colorConfig={colorConfig} />
@@ -1273,7 +1273,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
       {/* BARIS TOOLBAR FILTER & SORTING VENDOR */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 no-print">
-        <div className="flex items-center gap-2 w-full sm:w-auto flex-1 max-w-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto flex-1 max-w-lg">
           <TextInput
             placeholder="Cari No. Faktur Vendor / Supplier..."
             value={pInvSearch}
@@ -1352,7 +1352,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
       {modalDirect && (
         <Modal title={editingId ? `Edit Faktur Pembelian — ${noFakturDirect}` : "Buat Faktur Pembelian Langsung (Tanpa PO)"} onClose={() => { setModalDirect(false); setEditingId(null); }} wide xwide colorConfig={colorConfig}>
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             <Field label="Nomor Faktur Vendor" colorConfig={colorConfig}>
               <TextInput value={noFakturDirect} onChange={(e) => setNoFakturDirect(e.target.value)} placeholder="Contoh: VINV/2026/001" className="tabular-nums" colorConfig={colorConfig} />
             </Field>
@@ -1366,7 +1366,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
             </Field>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
             <Field label="Opsi PPN (Pajak)" colorConfig={colorConfig}>
               <Select value={taxType} onChange={(e) => setTaxType(e.target.value)} colorConfig={colorConfig}>
                 <option value="none">Non-PPN (Tanpa Pajak)</option>
@@ -1407,9 +1407,9 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
           <DeductionsEditor deductions={deductions} onChange={setDeductions} bill={dirBill} colorConfig={colorConfig} fmtIDR={fmtIDR} />
 
-          <div className="flex justify-between items-end mt-4 pt-3 border-t" style={{ borderColor: colorConfig?.border }}>
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-3 mt-4 pt-3 border-t" style={{ borderColor: colorConfig?.border }}>
             <BillSummary bill={dirBill} fmtIDR={fmtIDR} colorConfig={colorConfig} totalLabel="Total Tagihan" />
-            <Button onClick={submitDirectPInvoice} colorConfig={colorConfig}>{editingId ? "Simpan Perubahan Faktur" : "Simpan Faktur Pembelian & Tambah Stok"}</Button>
+            <Button onClick={submitDirectPInvoice} className="justify-center" colorConfig={colorConfig}>{editingId ? "Simpan Perubahan Faktur" : "Simpan Faktur Pembelian & Tambah Stok"}</Button>
           </div>
         </Modal>
       )}

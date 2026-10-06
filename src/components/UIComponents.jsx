@@ -196,22 +196,22 @@ export function ResponsiveTable({ children, minWidth = 650, colorConfig }) {
 export function Modal({ title, onClose, children, wide, xwide, isSubModal = false, colorConfig }) {
   return (
     <div
-      className={`fixed inset-0 flex items-center justify-center p-4 modal-backdrop ${isSubModal ? "z-[70]" : "z-50"} print:static print:p-0 print:block`}
+      className={`fixed inset-0 flex items-center justify-center p-2 sm:p-4 modal-backdrop ${isSubModal ? "z-[70]" : "z-50"} print:static print:p-0 print:block`}
       style={{ background: "rgba(0,0,0,0.7)" }}
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className={"rounded-2xl w-full " + (xwide ? "max-w-6xl" : wide ? "max-w-3xl" : "max-w-md") + " max-h-[85vh] overflow-y-auto modal-content shadow-2xl print:max-h-none print:overflow-visible print:h-auto print:shadow-none print:border-none print:w-full print:max-w-none"}
+        className={"rounded-2xl w-full " + (xwide ? "max-w-6xl" : wide ? "max-w-3xl" : "max-w-md") + " max-h-[92vh] sm:max-h-[85vh] overflow-y-auto modal-content shadow-2xl print:max-h-none print:overflow-visible print:h-auto print:shadow-none print:border-none print:w-full print:max-w-none"}
         style={{ background: colorConfig?.surface || "#FFFFFF", color: colorConfig?.ink || "#1E293B", border: `1px solid ${colorConfig?.border || "#E2E8F0"}` }}
       >
-        <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10 no-print" style={{ background: colorConfig?.surface || "#FFFFFF", borderBottom: `1px solid ${colorConfig?.border || "#E2E8F0"}` }}>
+        <div className="flex items-center justify-between gap-2 px-4 sm:px-5 py-3 sm:py-4 sticky top-0 z-10 no-print" style={{ background: colorConfig?.surface || "#FFFFFF", borderBottom: `1px solid ${colorConfig?.border || "#E2E8F0"}` }}>
           <h3 className="font-semibold text-base" style={{ color: colorConfig?.ink || "#1E293B" }}>{title}</h3>
           <button type="button" onClick={onClose} className="p-1 rounded-lg hover:opacity-60 cursor-pointer">
             <X size={18} color={colorConfig?.inkSoft || "#64748B"} />
           </button>
         </div>
-        <div className="p-5 print:p-0">{children}</div>
+        <div className="p-4 sm:p-5 print:p-0">{children}</div>
       </div>
     </div>
   );

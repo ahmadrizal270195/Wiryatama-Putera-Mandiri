@@ -10,7 +10,7 @@ import {
   AlertTriangle, Plus, X, Trash2, Search, Boxes, ArrowUpRight, ArrowDownRight,
   Loader2, Calendar, Printer, Wallet, Receipt, CreditCard, PiggyBank, BarChart3,
   FileText, LogOut, Phone, Mail, MapPin, ShieldCheck, ArrowRight, Lock, MessageSquare, ShieldAlert, Download, Upload,
-  Moon, Sun, ChevronLeft, ChevronRight, Database, SlidersHorizontal, ChevronDown, ClipboardCheck, History
+  Moon, Sun, ChevronLeft, ChevronRight, Menu as MenuIcon, Database, SlidersHorizontal, ChevronDown, ClipboardCheck, History
 } from "lucide-react";
 import { 
   auth, 
@@ -1232,6 +1232,27 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
     margin: 0; 
   }
 
+  /* ===== TAMPILAN HP (layar < 768px) ===== */
+  @media (max-width: 767px) {
+    /* Tabel: judul kolom, nomor dokumen, tanggal, nominal & badge tetap 1 baris (nggak kepecah "PO- / 2026- / 0012").
+       Nama produk/pelanggan tetap boleh turun baris supaya kolom lain masih kelihatan. */
+    .main-container table th,
+    .main-container table td.tabular-nums,
+    .main-container table td .tabular-nums,
+    .main-container table td span.rounded-full,
+    .main-container table td button { white-space: nowrap; }
+    .main-container table td { min-width: 6.5rem; }
+    .main-container table td.font-medium,
+    .main-container table td.font-semibold { min-width: 10rem; }
+    .main-container table td:has(> input[type="checkbox"]),
+    .main-container table th:has(> input[type="checkbox"]) { min-width: 0; width: 2.5rem; }
+    /* Form di dalam pop-up: kolom 2-3 jadi 1 kolom (kecuali pratinjau dokumen cetak) */
+    .modal-content .grid.grid-cols-2:not([id^="printable"] *):not([id^="printable"]),
+    .modal-content .grid.grid-cols-3:not([id^="printable"] *):not([id^="printable"]) { grid-template-columns: minmax(0, 1fr); }
+    /* Kartu ringkasan keuangan dashboard: kartu ke-5 selebar layar */
+    .dash-fin > :last-child { grid-column: span 2 / span 2; }
+  }
+
   /* Sembunyikan scrollbar sidebar (scroll tetap jalan) */
   .hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
   .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -1407,29 +1428,34 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
 
       {/* HEADER HP / MOBILE NAV BAR */}
       {isMobile && (
-        <div className="flex items-center justify-between p-3.5 text-white sticky top-0 z-30 shadow-md no-print" style={{ background: COLOR.primary }}>
-          <div className="flex items-center gap-2">
-            <img src={COMPANY_PROFILE.logoUrl} alt="Logo" className="h-7 object-contain rounded" />
-            <div className="font-bold text-xs">PT WPM ERP</div>
+        <div className="flex items-center justify-between gap-2 px-3 py-2.5 sticky top-0 z-30 border-b no-print"
+          style={{ background: isDarkMode ? "#0F172A" : "#FFFFFF", borderColor: COLOR.border, boxShadow: "0 1px 3px rgba(15,23,42,0.06)" }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <img src={COMPANY_PROFILE.logoUrl} alt="Logo" className="h-8 w-8 rounded-md object-contain bg-white shrink-0" style={{ border: `1px solid ${COLOR.border}` }} />
+            <div className="min-w-0">
+              <div className="font-bold text-sm leading-tight truncate" style={{ color: isDarkMode ? "#34D399" : "#059669" }}>PT Wiryatama Putera Mandiri</div>
+              <div className="text-[10px] tracking-wider" style={{ color: COLOR.inkSoft }}>ERP SYSTEM</div>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            {/* ---------- TOMBOL TEMA DI HP ---------- */}
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
               onClick={toggleTheme}
-              className="p-1.5 rounded-lg border border-emerald-700 bg-emerald-800 text-white text-xs cursor-pointer"
-              title="Ganti Mode"
+              className="w-9 h-9 rounded-lg border flex items-center justify-center cursor-pointer"
+              style={{ borderColor: COLOR.border }}
+              title={isDarkMode ? "Ganti ke Mode Terang" : "Ganti ke Mode Gelap"}
             >
-              {isDarkMode ? "🌙" : "☀️"}
+              {isDarkMode ? <Sun size={17} className="text-amber-400" /> : <Moon size={17} className="text-indigo-500" />}
             </button>
-            {/* -------------------------------------- */}
-
-            <button 
+            <button
               type="button"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
-              className="px-2.5 py-1.5 rounded-lg border border-emerald-700 bg-emerald-800 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer text-white"
+              style={{ background: "#059669" }}
+              title={mobileMenuOpen ? "Tutup menu" : "Buka menu"}
+              aria-label="Menu"
             >
-              {mobileMenuOpen ? <X size={18} /> : <span className="tabular-nums text-xs">Menu ☰</span>}
+              {mobileMenuOpen ? <X size={18} /> : <MenuIcon size={18} />}
             </button>
           </div>
         </div>
@@ -1459,7 +1485,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
         return (
           <div
             className={`shrink-0 flex flex-col border-r no-print z-40 transition-all duration-300 ${collapsed ? "w-[68px]" : "w-60"} ${
-              isMobile ? (mobileMenuOpen ? "fixed inset-y-0 left-0 shadow-2xl" : "hidden") : "sticky top-0 h-screen"
+              isMobile ? (mobileMenuOpen ? "fixed inset-y-0 left-0 shadow-2xl overflow-y-auto hide-scrollbar" : "hidden") : "sticky top-0 h-screen"
             }`}
             style={{ background: SB.bg, borderColor: SB.border }}
           >
@@ -1482,9 +1508,11 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
                 <svg className="absolute top-0 left-0 w-full" style={{ height: 44 }} viewBox="0 0 220 60" preserveAspectRatio="none">
                   <path fill="#f97316" d="M0,0 L220,0 L220,24 C220,40 180,53 130,50 C95,49 78,60 40,58 C18,56 0,47 0,36 Z" />
                 </svg>
-                <svg className="absolute bottom-0 left-0 w-full" style={{ height: 44 }} viewBox="0 0 220 60" preserveAspectRatio="none">
-                  <path fill="#10b981" d="M0,60 L220,60 L220,35 C220,19 182,6 132,9 C97,11 80,0 42,2 C20,4 0,13 0,24 Z" />
-                </svg>
+                {!isMobile && (
+                  <svg className="absolute bottom-0 left-0 w-full" style={{ height: 44 }} viewBox="0 0 220 60" preserveAspectRatio="none">
+                    <path fill="#10b981" d="M0,60 L220,60 L220,35 C220,19 182,6 132,9 C97,11 80,0 42,2 C20,4 0,13 0,24 Z" />
+                  </svg>
+                )}
               </div>
             )}
 
@@ -1501,7 +1529,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
               </div>
             </div>
 
-            <div className={`relative flex-1 min-h-0 overflow-y-auto hide-scrollbar ${collapsed ? "px-2" : "px-4"}`}>
+            <div className={`${isMobile ? "relative" : "relative flex-1 min-h-0 overflow-y-auto hide-scrollbar"} ${collapsed ? "px-2" : "px-4"}`}>
               {/* Menu per kelompok */}
               <nav className="space-y-1 pb-2">
                 {sections.filter((s) => s.items.length).map((s, si) => (
@@ -1536,7 +1564,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
             </div>
 
             {/* Footer: peringatan stok, tema, sinkron, akun */}
-            <div className={`relative shrink-0 ${collapsed ? "px-2 pb-4" : "px-4 pb-12"} pt-3 space-y-2`}>
+            <div className={`relative shrink-0 ${collapsed ? "px-2 pb-4" : isMobile ? "px-4 pb-4" : "px-4 pb-12"} pt-3 space-y-2`}>
               {hasAlert && (
                 <button
                   type="button"
@@ -1582,6 +1610,12 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
                 </button>
               )}
             </div>
+            {/* Di HP motif hijau ikut di ujung bawah daftar (nggak nutupin menu) */}
+            {isMobile && (
+              <svg className="block w-full shrink-0 mt-auto" style={{ height: 44 }} viewBox="0 0 220 60" preserveAspectRatio="none" aria-hidden="true">
+                <path fill="#10b981" d="M0,60 L220,60 L220,35 C220,19 182,6 132,9 C97,11 80,0 42,2 C20,4 0,13 0,24 Z" />
+              </svg>
+            )}
           </div>
         );
       })()}
@@ -1805,14 +1839,14 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
       <Eyebrow>Ringkasan bisnis</Eyebrow>
       <h2 className="text-xl font-semibold mb-5" style={{ color: COLOR.ink }}>Dashboard ERP</h2>
 
-      <div className="grid grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <Card>
   <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total SKU</div>
   <div className="text-2xl tabular-nums font-semibold" style={{ color: COLOR.good }}>{(products || []).length}</div>
 </Card>
 <Card>
   <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Nilai Stok</div>
-  <div className="text-2xl tabular-nums font-semibold" style={{ color: COLOR.good }}>{fmtIDR(totalStockValue)}</div>
+  <div className="text-lg sm:text-2xl tabular-nums font-semibold break-words" style={{ color: COLOR.good }}>{fmtIDR(totalStockValue)}</div>
 </Card>
         <Card style={{ borderColor: lowStock.length ? COLOR.warn : COLOR.border }}>
           <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Stok Menipis</div>
@@ -1828,7 +1862,7 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
 {isFinanceOrAdmin && (
   <>
     <Eyebrow>Ringkasan keuangan (bulan berjalan)</Eyebrow>
-    <div className="grid grid-cols-5 gap-3 mb-6">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6 dash-fin">
       <Card>
         <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Piutang (AR)</div>
         <div className="text-lg tabular-nums font-semibold" style={{ color: COLOR.warn }}>{fmtIDR(arOutstanding)}</div>
@@ -1853,7 +1887,7 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
   </>
 )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <div className="flex items-center justify-between mb-3">
             <div className="font-medium text-sm" style={{ color: COLOR.ink }}>Perlu perhatian — Stok & Expiry</div>
@@ -2134,10 +2168,10 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
       <h2 className="text-xl font-semibold mb-4" style={{ color: COLOR.ink }}>Laporan Per Periode</h2>
 
       {subTab !== "ar_aging" && (
-        <div className="flex items-end gap-3 mb-5 p-3 bg-white rounded-xl border no-print" style={{ borderColor: COLOR.border }}>
+        <div className="flex flex-wrap items-end gap-x-3 gap-y-0 mb-5 p-3 bg-white rounded-xl border no-print" style={{ borderColor: COLOR.border }}>
           <Field label="Dari Tanggal"><TextInput type="date" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
           <Field label="Sampai Tanggal"><TextInput type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
-          <div className="pb-3 text-xs tabular-nums text-emerald-800 font-semibold">
+          <div className="pb-3 text-xs tabular-nums text-emerald-800 font-semibold w-full sm:w-auto">
             Periode: {fmtDate(start)} s/d {fmtDate(end)}
           </div>
         </div>
@@ -2312,7 +2346,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
 
               <div className={`flex justify-between py-3 border-b-2 text-base font-extrabold px-3 rounded mt-4 ${pnlData.netProfit >= 0 ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900'}`}>
                 <span>Laba / (Rugi) Bersih Operasional</span>
-                <span>{fmtIDR(pnlData.netProfit)}</span>
+                <span className="whitespace-nowrap">{fmtIDR(pnlData.netProfit)}</span>
               </div>
             </div>
           </Card>
@@ -2895,7 +2929,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
             Identitas Perusahaan & Legalitas Penyalur PBF/Alkes
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Nama Resmi Perusahaan">
               <TextInput value={companyForm.name || ""} onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })} />
             </Field>
@@ -2912,7 +2946,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
             <TextInput value={companyForm.address || ""} onChange={(e) => setCompanyForm({ ...companyForm, address: e.target.value })} />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Kontak Telepon & Email">
               <TextInput value={companyForm.contact || ""} onChange={(e) => setCompanyForm({ ...companyForm, contact: e.target.value })} />
             </Field>
@@ -2925,7 +2959,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
             Pengaturan Tanda Tangan & Stempel PJT (Dokumen PO)
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Nama PJT / Apoteker Penanggung Jawab">
               <TextInput value={companyForm.pjtName || ""} onChange={(e) => setCompanyForm({ ...companyForm, pjtName: e.target.value })} placeholder="Nama & Gelar PJT" />
             </Field>

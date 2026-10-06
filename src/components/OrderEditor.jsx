@@ -203,7 +203,7 @@ export function DeductionsEditor({ deductions, onChange, bill, colorConfig: c, f
 
   return (
     <div className="mb-4 rounded-lg border p-3" style={{ borderColor: c?.border, background: c?.bg }}>
-      <div className="flex items-center justify-between gap-2 mb-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
         <div>
           <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: c?.primary }}>Pemotongan Tagihan</div>
           <div className="text-[10px]" style={{ color: c?.inkSoft }}>Diskon dipotong sebelum PPN. Fee dipotong setelah PPN (persen dihitung dari DPP).</div>
@@ -258,7 +258,7 @@ export function BillSummary({ bill, fmtIDR, colorConfig: c, totalLabel = "Total"
     </div>
   );
   return (
-    <div className="text-xs flex flex-col gap-0.5 min-w-[260px]">
+    <div className="text-xs flex flex-col gap-0.5 w-full sm:w-auto sm:min-w-[260px]">
       <Row k="Subtotal" v={fmtIDR(bill.raw)} />
       {bill.diskonLines.filter((d) => d.amount > 0).map((d) => <Row key={d.id} k={label(d)} v={`- ${fmtIDR(d.amount)}`} tone={c?.danger} />)}
       <Row k="DPP" v={fmtIDR(bill.dpp)} />

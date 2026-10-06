@@ -76,7 +76,7 @@ export default function CustomersView({ customers, sos, invoices, save, notify, 
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
           <Eyebrow>Master data</Eyebrow>
           <h2 className="text-xl font-semibold" style={{ color: colorConfig?.ink }}>Pelanggan</h2>

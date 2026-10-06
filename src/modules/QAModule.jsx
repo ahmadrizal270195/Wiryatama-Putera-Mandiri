@@ -551,7 +551,7 @@ function MasterTab({ officers, saveOfficers, users, canManage, colorConfig: c, n
             <Field label="Email login" colorConfig={c}>
               <TextInput type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="nama@email.com" colorConfig={c} />
             </Field>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label={form.delegate ? "No. STR / STRTTK (jika ada)" : isObat ? "No. STRA" : "No. STR"} colorConfig={c}>
                 <TextInput value={form.str} onChange={(e) => setForm({ ...form, str: e.target.value })} colorConfig={c} />
               </Field>
@@ -559,7 +559,7 @@ function MasterTab({ officers, saveOfficers, users, canManage, colorConfig: c, n
                 <TextInput value={form.sipa} onChange={(e) => setForm({ ...form, sipa: e.target.value })} colorConfig={c} />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label={form.delegate ? "Delegasi berlaku s.d." : "Izin berlaku s.d."} colorConfig={c}>
                 <TextInput type="date" value={form.validUntil} onChange={(e) => setForm({ ...form, validUntil: e.target.value })} colorConfig={c} />
               </Field>

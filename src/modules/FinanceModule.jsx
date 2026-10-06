@@ -298,22 +298,22 @@ export default function FinanceView(props) {
       <h2 className="text-xl font-semibold mb-5" style={{ color: COLOR.ink }}>Finance</h2>
 
       {/* 4 CARD RINGKASAN ATAS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
         <Card colorConfig={COLOR}>
           <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: COLOR.inkSoft }}><Wallet size={13} /> Total Piutang Running</div>
-          <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.warn }}>{fmtIDR(arOutstanding)}</div>
+          <div className="text-base sm:text-xl tabular-nums font-semibold break-words" style={{ color: COLOR.warn }}>{fmtIDR(arOutstanding)}</div>
         </Card>
         <Card colorConfig={COLOR}>
           <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: COLOR.inkSoft }}><CreditCard size={13} /> Total Hutang Running</div>
-          <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.danger }}>{fmtIDR(apOutstanding)}</div>
+          <div className="text-base sm:text-xl tabular-nums font-semibold break-words" style={{ color: COLOR.danger }}>{fmtIDR(apOutstanding)}</div>
         </Card>
         <Card colorConfig={COLOR}>
           <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: COLOR.inkSoft }}><Receipt size={13} /> Beban Operasional Bulan Ini</div>
-          <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(expensesMonth)}</div>
+          <div className="text-base sm:text-xl tabular-nums font-semibold break-words" style={{ color: COLOR.ink }}>{fmtIDR(expensesMonth)}</div>
         </Card>
         <Card colorConfig={COLOR}>
           <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: COLOR.inkSoft }}><PiggyBank size={13} /> Laba Kotor (Margin) Bulan Ini</div>
-          <div className="text-xl tabular-nums font-semibold" style={{ color: grossProfitMonth >= 0 ? COLOR.good : COLOR.danger }}>{fmtIDR(grossProfitMonth)}</div>
+          <div className="text-base sm:text-xl tabular-nums font-semibold break-words" style={{ color: grossProfitMonth >= 0 ? COLOR.good : COLOR.danger }}>{fmtIDR(grossProfitMonth)}</div>
         </Card>
       </div>
 
@@ -322,12 +322,12 @@ export default function FinanceView(props) {
         <Card className="mb-4 no-print !p-3">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-              <div className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-emerald-800 mr-1">
+              <div className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-emerald-800 mr-1 w-full sm:w-auto">
                 <Filter size={14} /> Filter Periode:
               </div>
-              <TextInput type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="!w-36 !py-1" colorConfig={COLOR} />
+              <div className="w-[9.5rem]"><TextInput type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="!py-1" colorConfig={COLOR} /></div>
               <span className="text-xs text-gray-400">s/d</span>
-              <TextInput type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="!w-36 !py-1" colorConfig={COLOR} />
+              <div className="w-[9.5rem]"><TextInput type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="!py-1" colorConfig={COLOR} /></div>
             </div>
 
             <div className="flex items-center gap-1.5 text-xs flex-wrap">

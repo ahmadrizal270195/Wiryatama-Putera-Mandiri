@@ -241,12 +241,12 @@ export default function StockView(props) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
         <div>
           <Eyebrow>Traceability</Eyebrow>
           <h2 className="text-xl font-semibold" style={{ color: colorConfig?.ink }}>Stok & Batch</h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* TOMBOL EKSPOR DITAMBAHKAN DI SINI */}
           <Button onClick={exportStockCSV} variant="secondary" colorConfig={colorConfig}>
             <Download size={15} /> Export Data Stok
@@ -453,7 +453,7 @@ export default function StockView(props) {
               </Button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Pilih Asal Masuk Produk" colorConfig={colorConfig}>
                 <Select value={sourceType} onChange={(e) => setSourceType(e.target.value)} colorConfig={colorConfig}>
                   <option value="opname_awal">Stok Opname Awal / Adjustment Gudang</option>
