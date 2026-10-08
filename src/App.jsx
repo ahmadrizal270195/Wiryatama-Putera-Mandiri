@@ -35,6 +35,8 @@ import { setPaymentSettings, PAYMENT_GROUPS } from "./print";
 import SearchableSelect from "./components/SearchableSelect";
 import ActivityLogView from "./modules/ActivityLogModule";
 import { logActivity, logListChange, setActivityActor } from "./activityLog";
+import { todayISO, toLocalDateStr, startOfMonthISO, isThisMonth, fmtDate, daysUntil } from "./dateUtils";
+
 
 const THEME = {
   light: {
@@ -97,7 +99,7 @@ const ADMIN_FINANCE_EMAILS = [
   "admin@wiryatamaputera.co.id"
 ];
 
-const COMPANY_PROFILE = {
+const DEFAULT_COMPANY_PROFILE = {
   name: "PT WIRYATAMA PUTERA MANDIRI",
   tagline: "Distributor Penyalur Farmasi & Alat Kesehatan (Alkes) Terpercaya",
   address: "Ruko New Aruna Residence, Jl. Serua Raya No.9, Bojongsari, Depok, Jawa Barat 16517",
@@ -116,19 +118,21 @@ const COMPANY_PROFILE = {
   paymentNotes: "Pembayaran dianggap sah apabila uang telah masuk ke rekening atas nama PT Wiryatama Putera Mandiri."
 };
 
-
-const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + "-" + Math.random().toString(16).slice(2));
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const fmtIDR = (n) => "Rp" + Math.round(n || 0).toLocaleString("id-ID");
-
-const fmtDate = (d) => {
-  if (!d) return "-";
-  const [year, month, day] = String(d).slice(0, 10).split("-");
-  if (year && month && day) return `${day.padStart(2, "0")}/${month.padStart(2, "0")}/${year}`;
-  return d;
+const getInitialCompanyProfile = () => {
+  try {
+    const saved = typeof localStorage !== "undefined" ? localStorage.getItem("erp-company-profile") : null;
+    if (saved) return { ...DEFAULT_COMPANY_PROFILE, ...JSON.parse(saved) };
+  } catch (_) {}
+  return { ...DEFAULT_COMPANY_PROFILE };
 };
 
-const daysUntil = (d) => Math.ceil((new Date(d) - new Date(todayISO())) / (1000 * 60 * 60 * 24));
+const COMPANY_PROFILE = getInitialCompanyProfile();
+
+
+
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + "-" + Math.random().toString(16).slice(2));
+const fmtIDR = (n) => "Rp" + Math.round(n || 0).toLocaleString("id-ID");
+
 
 const KEYS = {
   products: "erp-products",
@@ -203,11 +207,6 @@ const EXPENSE_CATEGORIES = [
 ];
 const PAYMENT_METHODS = ["Transfer Bank", "Tunai", "Giro/Cek", "Lainnya"];
 
-function isThisMonth(dateStr) {
-  const d = new Date(dateStr);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-}
 
 function calcTax(rawSubtotal, taxType, discountPercentHeader = 0) {
   const discHeaderAmount = rawSubtotal * (Number(discountPercentHeader || 0) / 100);
@@ -316,12 +315,25 @@ export default function App() {
 function PublicLandingPage({ isLoggedIn }) {
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState("");
+  const [profile, setProfile] = useState(() => ({ ...COMPANY_PROFILE }));
   const navigate = useNavigate();
 
   useEffect(() => {
     (async () => {
-      const p = await loadList(KEYS.products);
-      setProducts(p || []);
+      try {
+        const [p, st] = await Promise.all([
+          loadList(KEYS.products),
+          loadKey(KEYS.settings),
+        ]);
+        setProducts(p || []);
+        if (st && !Array.isArray(st) && st.companyProfile) {
+          Object.assign(COMPANY_PROFILE, st.companyProfile);
+          setProfile({ ...DEFAULT_COMPANY_PROFILE, ...st.companyProfile });
+          try { localStorage.setItem("erp-company-profile", JSON.stringify(st.companyProfile)); } catch (_) {}
+        }
+      } catch (err) {
+        console.error("Gagal memuat data landing page:", err);
+      }
     })();
   }, []);
 
@@ -332,10 +344,10 @@ function PublicLandingPage({ isLoggedIn }) {
       <nav className="bg-white border-b sticky top-0 z-40" style={{ borderColor: COLOR.border }}>
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src={COMPANY_PROFILE.logoUrl} alt="Logo WPM" className="h-10 object-contain rounded" />
+            <img src={profile.logoUrl} alt="Logo Perusahaan" className="h-10 object-contain rounded" />
             <div>
-              <div className="font-bold text-sm" style={{ color: COLOR.primary }}>PT WIRYATAMA PUTERA MANDIRI</div>
-              <div className="text-[10px]" style={{ color: COLOR.inkSoft }}>Distributor Farmasi & Alkes</div>
+              <div className="font-bold text-sm" style={{ color: COLOR.primary }}>{profile.name}</div>
+              <div className="text-[10px]" style={{ color: COLOR.inkSoft }}>{profile.tagline || "Distributor Farmasi & Alkes"}</div>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -366,7 +378,7 @@ function PublicLandingPage({ isLoggedIn }) {
           </p>
           <div className="flex items-center justify-center gap-3 flex-wrap">
             <a
-              href={`https://wa.me/${COMPANY_PROFILE.whatsapp}?text=Halo%20PT%20Wiryatama%20Putera%20Mandiri,%20saya%20ingin%20mengajukan%20pemesanan%20produk.`}
+              href={`https://wa.me/${profile.whatsapp}?text=Halo%20${encodeURIComponent(profile.name)},%20saya%20ingin%20mengajukan%20pemesanan%20produk.`}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm text-white shadow-md hover:opacity-90"
@@ -374,6 +386,7 @@ function PublicLandingPage({ isLoggedIn }) {
             >
               <MessageSquare size={16} /> Hubungi Sales via WhatsApp
             </a>
+
             <a href="#katalog" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm border hover:bg-gray-50" style={{ borderColor: COLOR.border }}>
               Lihat Katalog Produk <ArrowRight size={15} />
             </a>
@@ -435,7 +448,7 @@ function PublicLandingPage({ isLoggedIn }) {
                 <div className="mt-4 pt-3 border-t flex items-center justify-between" style={{ borderColor: COLOR.border }}>
                   <div className="text-xs font-semibold" style={{ color: COLOR.good }}>Tersedia / Ready</div>
                   <a
-                    href={`https://wa.me/${COMPANY_PROFILE.whatsapp}?text=Halo%20Admin,%20saya%20ingin%20menanyakan%20ketersediaan%20produk:%20${encodeURIComponent(p.name)}`}
+                    href={`https://wa.me/${profile.whatsapp}?text=Halo%20Admin,%20saya%20ingin%20menanyakan%20ketersediaan%20produk:%20${encodeURIComponent(p.name)}`}
                     target="_blank"
                     rel="noreferrer"
                     className="text-xs font-semibold hover:underline"
@@ -459,22 +472,22 @@ function PublicLandingPage({ isLoggedIn }) {
         <div className="max-w-6xl mx-auto px-4 grid grid-cols-1 md:grid-cols-2 gap-8">
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <img src={COMPANY_PROFILE.logoUrl} alt="Logo WPM" className="h-8 object-contain rounded" />
-              <div className="font-bold text-base" style={{ color: COLOR.primary }}>{COMPANY_PROFILE.name}</div>
+              <img src={profile.logoUrl} alt="Logo" className="h-8 object-contain rounded" />
+              <div className="font-bold text-base" style={{ color: COLOR.primary }}>{profile.name}</div>
             </div>
             <p className="text-xs leading-relaxed max-w-sm" style={{ color: COLOR.inkSoft }}>
-              {COMPANY_PROFILE.tagline}. Melayani distribusi terpadu produk farmasi dan alat kesehatan resmi untuk mitra fasilitas kesehatan.
+              {profile.tagline}. Melayani distribusi terpadu produk farmasi dan alat kesehatan resmi untuk mitra fasilitas kesehatan.
             </p>
           </div>
           <div className="flex flex-col gap-2 text-xs" style={{ color: COLOR.inkSoft }}>
             <div className="font-bold text-sm mb-1 text-gray-900">Alamat Kantor & Gudang</div>
-            <div className="flex items-center gap-2"><MapPin size={14} /> {COMPANY_PROFILE.address}</div>
+            <div className="flex items-center gap-2"><MapPin size={14} /> {profile.address}</div>
             <div className="flex items-center gap-2"><Mail size={14} /> finance@wiryatamaputera.co.id</div>
-            <div className="flex items-center gap-2"><Phone size={14} /> (021) 7437964 / WhatsApp: 0817-773-791</div>
+            <div className="flex items-center gap-2"><Phone size={14} /> {profile.contact || "(021) 7437964"}</div>
           </div>
         </div>
         <div className="max-w-6xl mx-auto px-4 mt-8 pt-4 border-t text-center text-[11px]" style={{ borderColor: COLOR.border, color: COLOR.inkSoft }}>
-          &copy; 2026 PT Wiryatama Putera Mandiri. All rights reserved.
+          &copy; {new Date().getFullYear()} {profile.name}. All rights reserved.
         </div>
       </footer>
     </div>
@@ -836,9 +849,25 @@ function PharmaERP({ userEmail, onLogout }) {
   const [users, setUsers] = useState([]);
   const [qaOfficers, setQaOfficers] = useState([]);
   useEffect(() => { setOfficersCache(qaOfficers); }, [qaOfficers]);
-  // Pengaturan rekening pembayaran (PPN / Non-PPN) disinkron realtime dari cloud
-  useEffect(() => subscribeKey(KEYS.settings, (v) => setPaymentSettings(v), () => {}), []);
   const [disposals, setDisposals] = useState([]);
+  const [companyProfile, setCompanyProfile] = useState(() => ({ ...COMPANY_PROFILE }));
+
+  // Pengaturan rekening pembayaran (PPN / Non-PPN) & profil perusahaan disinkron realtime dari cloud
+  useEffect(() => {
+    return subscribeKey(
+      KEYS.settings,
+      (v) => {
+        setPaymentSettings(v);
+        if (v && !Array.isArray(v) && v.companyProfile) {
+          Object.assign(COMPANY_PROFILE, v.companyProfile);
+          setCompanyProfile({ ...DEFAULT_COMPANY_PROFILE, ...v.companyProfile });
+          try { localStorage.setItem("erp-company-profile", JSON.stringify(v.companyProfile)); } catch (_) {}
+        }
+      },
+      () => {}
+    );
+  }, []);
+
 
   const idleTimerRef = useRef(null);
 
@@ -1431,11 +1460,12 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
         <div className="flex items-center justify-between gap-2 px-3 py-2.5 sticky top-0 z-30 border-b no-print"
           style={{ background: isDarkMode ? "#0F172A" : "#FFFFFF", borderColor: COLOR.border, boxShadow: "0 1px 3px rgba(15,23,42,0.06)" }}>
           <div className="flex items-center gap-2 min-w-0">
-            <img src={COMPANY_PROFILE.logoUrl} alt="Logo" className="h-8 w-8 rounded-md object-contain bg-white shrink-0" style={{ border: `1px solid ${COLOR.border}` }} />
+            <img src={companyProfile.logoUrl} alt="Logo" className="h-8 w-8 rounded-md object-contain bg-white shrink-0" style={{ border: `1px solid ${COLOR.border}` }} />
             <div className="min-w-0">
-              <div className="font-bold text-sm leading-tight truncate" style={{ color: isDarkMode ? "#34D399" : "#059669" }}>PT Wiryatama Putera Mandiri</div>
+              <div className="font-bold text-sm leading-tight truncate" style={{ color: isDarkMode ? "#34D399" : "#059669" }}>{companyProfile.name}</div>
               <div className="text-[10px] tracking-wider" style={{ color: COLOR.inkSoft }}>ERP SYSTEM</div>
             </div>
+
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <button
@@ -1519,13 +1549,14 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
             {/* Header: logo + nama perusahaan (di bawah motif oranye) */}
             <div className={`relative shrink-0 ${collapsed ? "px-2 pt-4" : "px-4 pt-11"}`}>
               <div className={`flex items-center gap-3 pb-4 mb-3 border-b ${collapsed ? "justify-center pt-4" : "px-1"}`} style={{ borderColor: SB.border }}>
-                <img src={COMPANY_PROFILE.logoUrl} alt="Logo" className="w-10 h-10 rounded-lg object-contain bg-white shrink-0 shadow-sm" style={{ border: `1px solid ${SB.border}` }} />
+                <img src={companyProfile.logoUrl} alt="Logo" className="w-10 h-10 rounded-lg object-contain bg-white shrink-0 shadow-sm" style={{ border: `1px solid ${SB.border}` }} />
                 {!collapsed && (
                   <div className="min-w-0">
-                    <div className="font-bold text-sm leading-tight" style={{ color: isDarkMode ? "#34D399" : "#059669" }}>PT Wiryatama Putera Mandiri</div>
+                    <div className="font-bold text-sm leading-tight truncate" style={{ color: isDarkMode ? "#34D399" : "#059669" }}>{companyProfile.name}</div>
                     <div className="text-[11px] tracking-wider mt-0.5" style={{ color: COLOR.inkSoft }}>ERP SYSTEM</div>
                   </div>
                 )}
+
               </div>
             </div>
 
@@ -1672,8 +1703,9 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       CATEGORIES={CATEGORIES} 
       disposals={disposals}
       saveDisposals={persist.disposals}
-      COMPANY_PROFILE={COMPANY_PROFILE}
+      COMPANY_PROFILE={companyProfile}
     />
+
   ) : <AccessDenied />
 )}
         {/* SUPPLIER */}
@@ -1719,7 +1751,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       pInvoicePaidAmount={pInvoicePaidAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount} 
       pInvoiceSisa={pInvoiceSisa} stockByProduct={stockByProduct}
       colorConfig={COLOR} uid={uid} todayISO={todayISO} fmtDate={fmtDate} fmtIDR={fmtIDR}
-      calcTax={calcTax} COMPANY_PROFILE={COMPANY_PROFILE}
+      calcTax={calcTax} COMPANY_PROFILE={companyProfile}
     />
   ) : <AccessDenied />
 )}
@@ -1736,8 +1768,9 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       soTotal={soTotal} invoiceTotal={invoiceTotal} soDPAmount={soDPAmount}
       invoicePaidAmount={invoicePaidAmount} invoiceReturnedAmount={invoiceReturnedAmount}
       colorConfig={COLOR} uid={uid} todayISO={todayISO} fmtDate={fmtDate} fmtIDR={fmtIDR}
-      calcTax={calcTax} COMPANY_PROFILE={COMPANY_PROFILE} CUSTOMER_TYPES={CUSTOMER_TYPES}
+      calcTax={calcTax} COMPANY_PROFILE={companyProfile} CUSTOMER_TYPES={CUSTOMER_TYPES}
     />
+
   ) : <AccessDenied />
 )}
 
@@ -1800,8 +1833,9 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
               savePReceipts={persist.pReceipts} savePInvoices={persist.pInvoices} saveBatches={persist.batches}
               userEmail={userEmail} canManage={isHardAdmin || currentUserAccess.includes("settings")}
               findName={findName} notify={notify} colorConfig={COLOR} fmtDate={fmtDate} uid={uid}
-              company={COMPANY_PROFILE}
+              company={companyProfile}
             />
+
           ) : <AccessDenied />
         )}
 
@@ -1947,12 +1981,9 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
   const isSuperAdminOrFinance = !!canSeePnL || ADMIN_FINANCE_EMAILS.includes((currentUserEmail || "").toLowerCase());
 
   const [subTab, setSubTab] = useState(isSuperAdminOrFinance ? "pnl" : "sales");
-  const [start, setStart] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d.toISOString().slice(0, 10);
-  });
+  const [start, setStart] = useState(() => startOfMonthISO());
   const [end, setEnd] = useState(todayISO());
+
 
   // State Khusus Filter AR Aging
   const [agingCust, setAgingCust] = useState("ALL");
@@ -2679,8 +2710,14 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
       const settings = (raw && !Array.isArray(raw)) ? raw : {};
       setAutoBackupEnabled(!!settings.autoBackupEnabled);
       setAutoBackupInfo({ lastAutoBackupAt: settings.lastAutoBackupAt || null, backupDates: settings.backupDates || [] });
+      if (settings.companyProfile) {
+        setCompanyForm((prev) => ({ ...prev, ...settings.companyProfile }));
+        Object.assign(COMPANY_PROFILE, settings.companyProfile);
+        try { localStorage.setItem("erp-company-profile", JSON.stringify(settings.companyProfile)); } catch (_) {}
+      }
     })();
   }, []);
+
 
   async function toggleAutoBackup() {
     setSavingAutoBackup(true);
@@ -2727,11 +2764,34 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
     { id: "settings", label: "Menu Pengaturan (Settings)" },
   ];
 
-  function handleSaveProfile() {
-    localStorage.setItem("erp-company-profile", JSON.stringify(companyForm));
-    if (typeof COMPANY_PROFILE !== "undefined") Object.assign(COMPANY_PROFILE, companyForm);
-    notify("Profil perusahaan & konfigurasi legalitas berhasil diperbarui!");
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  async function handleSaveProfile() {
+    setSavingProfile(true);
+    try {
+      const raw = await loadKey(KEYS.settings);
+      const settings = (raw && !Array.isArray(raw)) ? raw : {};
+      const next = { ...settings, companyProfile: companyForm };
+      const ok = await saveKey(KEYS.settings, next);
+      if (!ok) throw new Error("Gagal menyimpan ke server");
+
+      localStorage.setItem("erp-company-profile", JSON.stringify(companyForm));
+      if (typeof COMPANY_PROFILE !== "undefined") Object.assign(COMPANY_PROFILE, companyForm);
+      notify("Profil perusahaan & konfigurasi legalitas berhasil disimpan ke cloud!");
+      logActivity({
+        action: "update",
+        module: "Pengaturan",
+        targetLabel: "Profil Perusahaan",
+        details: `Simpan identitas perusahaan: ${companyForm.name || ""}, PJT: ${companyForm.pjtName || ""}`,
+      });
+    } catch (e) {
+      console.error(e);
+      notify("Gagal menyimpan profil perusahaan ke server", "danger");
+    } finally {
+      setSavingProfile(false);
+    }
   }
+
 
   // FUNGSI GANTI PASSWORD LOGIC (FIREBASE AUTH)
   async function handleChangePassword(e) {
@@ -2969,8 +3029,11 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
           </div>
 
           <div className="flex justify-end pt-3 border-t">
-            <Button onClick={handleSaveProfile}>Simpan Perubahan Profil</Button>
+            <Button onClick={handleSaveProfile} disabled={savingProfile}>
+              {savingProfile ? "Menyimpan ke Cloud..." : "Simpan Perubahan Profil"}
+            </Button>
           </div>
+
         </Card>
       )}
 

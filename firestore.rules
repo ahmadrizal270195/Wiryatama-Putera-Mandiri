@@ -4,7 +4,6 @@ service cloud.firestore {
 
     // Super admin = 3 email bawaan (harus SAMA dengan ADMIN_FINANCE_EMAILS di src/App.jsx)
     // ATAU akun yang role-nya "admin" (Super Admin) di menu Pengguna.
-    // Aman: dokumen erp_users cuma bisa diubah oleh super admin.
     function isAdmin() {
       return request.auth != null
         && (request.auth.token.email.lower() in [
@@ -15,12 +14,25 @@ service cloud.firestore {
             || (exists(/databases/$(database)/documents/erp_users/$(request.auth.token.email.lower()))
                 && get(/databases/$(database)/documents/erp_users/$(request.auth.token.email.lower())).data.role == "admin"));
     }
+
     function signedIn() { return request.auth != null; }
+
     // Staf = login DAN terdaftar di menu Pengguna (erp_users/{email})
     function isMember() {
       return isAdmin()
         || (signedIn() && exists(/databases/$(database)/documents/erp_users/$(request.auth.token.email.lower())));
     }
+
+    // Role Finance atau Super Admin yang berhak mengelola keuangan
+    function isFinanceOrAdmin() {
+      return isAdmin()
+        || (signedIn()
+            && exists(/databases/$(database)/documents/erp_users/$(request.auth.token.email.lower()))
+            && (get(/databases/$(database)/documents/erp_users/$(request.auth.token.email.lower())).data.role == "finance"
+                || ("access" in get(/databases/$(database)/documents/erp_users/$(request.auth.token.email.lower())).data
+                    && "finance" in get(/databases/$(database)/documents/erp_users/$(request.auth.token.email.lower())).data.access)));
+    }
+
     function migrated() {
       return exists(/databases/$(database)/documents/erp_meta/schema)
         && get(/databases/$(database)/documents/erp_meta/schema).data.version >= 2;
@@ -39,20 +51,38 @@ service cloud.firestore {
     }
 
     // Data ERP format baru (dipecah per bagian)
+    // - erp-products: publik bisa baca (katalog landing page)
+    // - erp-payments-out & erp-expenses: hanya Finance & Admin
+    // - erp-payments-in: anggota bisa baca (cek pelunasan & DP faktur), tulis hanya Finance & Admin
+    // - erp-qa-officers: anggota bisa baca, tulis hanya Super Admin
+    // - modul operasional lain (sales, purchases, stock, customers, dll): anggota aktif
     match /erp_store/{key} {
-      allow read: if key == "erp-products" || isMember();
-      allow write: if isMember();
+      allow read: if key == "erp-products" 
+                  || (key in ["erp-payments-out", "erp-expenses"] ? isFinanceOrAdmin() : isMember());
+      allow write: if key == "erp-qa-officers" 
+                      ? isAdmin() 
+                      : (key in ["erp-payments-in", "erp-payments-out", "erp-expenses"] 
+                          ? isFinanceOrAdmin() 
+                          : isMember());
+
       match /shards/{shardId} {
-        allow read: if key == "erp-products" || isMember();
-        allow write: if isMember();
+        allow read: if key == "erp-products" 
+                    || (key in ["erp-payments-out", "erp-expenses"] ? isFinanceOrAdmin() : isMember());
+        allow write: if key == "erp-qa-officers" 
+                        ? isAdmin() 
+                        : (key in ["erp-payments-in", "erp-payments-out", "erp-expenses"] 
+                            ? isFinanceOrAdmin() 
+                            : isMember());
       }
     }
 
-    // Data format lama. Setelah migrasi cuma bisa dibaca (jadi cadangan),
-    // kecuali pengaturan aplikasi yang masih disimpan di sini.
+    // Data format lama. Setelah migrasi cuma bisa dibaca (cadangan).
+    // Pengaturan aplikasi (rekening bank & backup) hanya boleh diubah Super Admin.
     match /erp_data/{docId} {
-      allow read: if docId == "erp-products" || (signedIn() && (!migrated() || isMember()));
-      allow write: if signedIn() && (!migrated() || (docId == "erp-app-settings" && isMember()));
+      allow read: if docId == "erp-products" || (signedIn() && isMember());
+      allow write: if docId == "erp-app-settings" 
+        ? isAdmin() 
+        : (signedIn() && !migrated() && isMember());
     }
 
     // Log Aktivitas Sistem: tiap anggota boleh MENULIS log atas namanya sendiri,
@@ -71,5 +101,6 @@ service cloud.firestore {
   }
 }
 
-// Tetap matikan pendaftaran akun di:
-// Firebase Console -> Authentication -> Settings -> User actions -> "Enable create (sign-up)".
+// Catatan Keamanan:
+// Tetap matikan pendaftaran mandiri publik di:
+// Firebase Console -> Authentication -> Settings -> User actions -> matikan "Enable create (sign-up)".

@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { History, RefreshCw, Search, LogIn, LogOut, PlusCircle, Pencil, Trash2, Activity, Download } from "lucide-react";
 import { Eyebrow, Card, Button, TextInput, Select } from "../components/UIComponents";
 import { fetchActivityLogs, ACTIVITY_FETCH_LIMIT } from "../activityLog";
+import { todayISO, toLocalDateStr } from "../dateUtils";
+
+
 
 // Riwayat Aktivitas Sistem (meniru WHISys). Khusus super admin.
 const ACTION_META = {
@@ -77,7 +80,7 @@ export default function ActivityLogView({ users = [], colorConfig: c }) {
       if (action !== "all" && l.action !== action) return false;
       if (module !== "all" && l.module !== module) return false;
       if (user !== "all" && l.userEmail !== user) return false;
-      const day = (l.createdAt || "").slice(0, 10);
+      const day = toLocalDateStr(l.createdAt);
       if (from && day < from) return false;
       if (to && day > to) return false;
       if (!q) return true;
@@ -92,7 +95,7 @@ export default function ActivityLogView({ users = [], colorConfig: c }) {
     const blob = new Blob(["﻿" + rows.map((r) => r.map(esc).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `log-aktivitas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `log-aktivitas-${todayISO()}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   }

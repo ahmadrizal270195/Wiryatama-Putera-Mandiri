@@ -3,6 +3,8 @@ import { Wallet, CreditCard, Receipt, PiggyBank, Plus, Calendar, Filter, Search,
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import { isCleared, blockedReason } from "../qa";
 import { computeBill } from "../billing";
+import { startOfMonthISO, startOfLastMonthISO, endOfLastMonthISO } from "../dateUtils";
+
 
 const EXPENSE_CATEGORIES = [
   "Sewa Gudang (Bulanan)",
@@ -59,11 +61,7 @@ export default function FinanceView(props) {
   const [subTab, setSubTab] = useState("ar");
 
   // --- STATE FILTER PERIODE TANGGAL ---
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    d.setDate(1); // Default ke tanggal 1 bulan berjalan
-    return d.toISOString().slice(0, 10);
-  });
+  const [startDate, setStartDate] = useState(() => startOfMonthISO());
   const [endDate, setEndDate] = useState(todayISO());
 
   // Helper filter tanggal
@@ -75,16 +73,12 @@ export default function FinanceView(props) {
 
   // Preset Filter Tanggal Cepat
   const setPresetPeriod = (preset) => {
-    const today = new Date();
     if (preset === "thisMonth") {
-      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
-      setStartDate(firstDay);
+      setStartDate(startOfMonthISO());
       setEndDate(todayISO());
     } else if (preset === "lastMonth") {
-      const firstDayLast = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().slice(0, 10);
-      const lastDayLast = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().slice(0, 10);
-      setStartDate(firstDayLast);
-      setEndDate(lastDayLast);
+      setStartDate(startOfLastMonthISO());
+      setEndDate(endOfLastMonthISO());
     } else if (preset === "all") {
       setStartDate("2020-01-01");
       setEndDate(todayISO());

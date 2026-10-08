@@ -1,4 +1,6 @@
 import React from "react";
+import { todayISO } from "./dateUtils";
+
 
 // =====================================================================
 //  CDOB: REVIEW APJ (OBAT) & PJT (ALKES)
@@ -109,7 +111,7 @@ export function applyDecision(doc, cls, status, officer, note) {
 }
 
 // Petugas aktif & masih berlaku untuk email yang sedang login.
-export function officerStatus(o, today = new Date().toISOString().slice(0, 10)) {
+export function officerStatus(o, today = todayISO()) {
   if (!o) return "none";
   if (o.active === false) return "inactive";
   if (o.validUntil && o.validUntil < today) return "expired";
