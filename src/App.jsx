@@ -31,7 +31,7 @@ import FinanceView from "./modules/FinanceModule";
 import QAView from "./modules/QAModule";
 import { myClasses, setOfficersCache } from "./qa";
 import { computeBill } from "./billing";
-import { setPaymentSettings, PAYMENT_GROUPS, DocHeader } from "./print";
+import { setPaymentSettings, PAYMENT_GROUPS } from "./print";
 import SearchableSelect from "./components/SearchableSelect";
 import ActivityLogView from "./modules/ActivityLogModule";
 import { logActivity, logListChange, setActivityActor } from "./activityLog";
@@ -2718,18 +2718,16 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
       {subTab === "pnl" && isSuperAdminOrFinance && (
         <div className="space-y-4 max-w-3xl">
           <Card className="!p-6 bg-white printable-area">
-            <div className="flex justify-end mb-2 no-print">
-              <Button onClick={() => window.print()} variant="ghost" className="text-xs">
+            <div className="border-b pb-3 mb-4 flex justify-between items-center">
+              <div>
+                <div className="text-sm font-bold uppercase tracking-wide" style={{ color: COLOR.ink }}>{(company || COMPANY_PROFILE)?.name || "PT WIRYATAMA PUTERA MANDIRI"}</div>
+                <h3 className="font-bold text-base uppercase" style={{ color: COLOR.primary }}>Laporan Laba Rugi Operasional</h3>
+                <p className="text-xs text-gray-500">Periode: {fmtDate(start)} s/d {fmtDate(end)}</p>
+              </div>
+              <Button onClick={() => window.print()} variant="ghost" className="no-print text-xs">
                 <Printer size={14} /> Cetak Laporan
               </Button>
             </div>
-            {/* Kop surat PT (sama dengan dokumen cetak lain) */}
-            <DocHeader
-              company={company || COMPANY_PROFILE}
-              title="Laporan Laba Rugi"
-              number="Operasional"
-              subtitle={`Periode: ${fmtDate(start)} s/d ${fmtDate(end)}`}
-            />
 
             <div className="space-y-3 text-sm tabular-nums">
               {pnlData.salesReturnsVal > 0 ? (
