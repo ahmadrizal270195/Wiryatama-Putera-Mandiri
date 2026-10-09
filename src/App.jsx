@@ -282,24 +282,27 @@ function originalSaleCostPerUnit(inv, productId, batches, deliveryNotes, costOf)
 function makeCostResolver(batches, pInvoices, pReceipts) {
   const byId = {};
   const byNo = {};
-  const put = (id, pid, no, cost) => {
+  const put = (id, pid, no, cost, src) => {
     if (!(cost > 0)) return;
-    if (id && byId[id] == null) byId[id] = cost;
+    if (id && byId[id] == null) byId[id] = { cost, src };
     const k = `${pid}|${String(no || "").trim().toLowerCase()}`;
-    if (pid && no && byNo[k] == null) byNo[k] = cost;
+    if (pid && no && byNo[k] == null) byNo[k] = { cost, src };
   };
-  (batches || []).forEach((b) => put(b.id, b.productId, b.batchNo, Number(b.costPrice)));
+  (batches || []).forEach((b) => put(b.id, b.productId, b.batchNo, Number(b.costPrice), "Stok"));
   (pInvoices || []).forEach((pi) => (pi.items || []).forEach((it) => {
     const q = Number(it.qty) || 0;
-    put(it.batchId, it.productId, it.batchNo, q > 0 ? itemLineTotal(it) / q : 0);
+    put(it.batchId, it.productId, it.batchNo, q > 0 ? itemLineTotal(it) / q : 0, `Faktur Beli ${pi.noFaktur || ""}`.trim());
   }));
-  (pReceipts || []).forEach((pr) => (pr.items || []).forEach((it) => put(it.batchId, it.productId, it.batchNo, Number(it.unitPrice))));
-  return (batchId, productId, batchNo) => {
-    if (batchId && byId[batchId] != null) return byId[batchId];
+  (pReceipts || []).forEach((pr) => (pr.items || []).forEach((it) => put(it.batchId, it.productId, it.batchNo, Number(it.unitPrice), `BPB ${pr.noBPB || ""}`.trim())));
+  const explain = (batchId, productId, batchNo) => {
+    if (batchId && byId[batchId] != null) return { ...byId[batchId], match: "id" };
     const k = `${productId}|${String(batchNo || "").trim().toLowerCase()}`;
-    if (productId && batchNo && byNo[k] != null) return byNo[k];
-    return 0;
+    if (productId && batchNo && byNo[k] != null) return { ...byNo[k], match: "no" };
+    return { cost: 0, src: "-", match: null };
   };
+  const costOf = (batchId, productId, batchNo) => explain(batchId, productId, batchNo).cost;
+  costOf.explain = explain;
+  return costOf;
 }
 
 // ---------- MAIN APP ROUTER ----------
@@ -2289,6 +2292,11 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR,
                                   {showHpp && <td style={{ textAlign: "right", padding: "3px 6px", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>
                                     {it.hppUnit > 0 ? fmtIDR(it.hppUnit) : null}
                                     {it.hppIssue && <div style={{ color: "#D97706", fontSize: 10, fontWeight: 600 }}>{HPP_ISSUE_LABEL[it.hppIssue]}</div>}
+                                    {(it.trace || []).map((t, ti) => (
+                                      <div key={ti} style={{ fontSize: 9.5, color: "#64748B", whiteSpace: "nowrap" }}>
+                                        Batch {t.batchNo}: {t.qty} × {fmtIDR(t.unit)} · {t.src}{t.byNo ? " (cocok No. Batch)" : ""}
+                                      </div>
+                                    ))}
                                   </td>}
                                   {showHpp && <td style={{ textAlign: "right", padding: "3px 6px", color: "#DC2626", fontVariantNumeric: "tabular-nums" }}>{fmtIDR(it.hppTotal)}</td>}
                                   {showHpp && <td style={{ textAlign: "right", padding: "3px 0", fontWeight: 600, color: margin < 0 ? "#DC2626" : "#047857", fontVariantNumeric: "tabular-nums" }}>{fmtIDR(margin)}</td>}
@@ -2347,112 +2355,221 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR,
   );
 }
 
-function PurchaseReportTab({ start, end, purchaseTotal, purchaseAgg, allPurchaseDocs, products, COLOR, fmtDate, fmtIDR }) {
+function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, products, COLOR, fmtDate, fmtIDR, companyName }) {
   const [expanded, setExpanded] = useState(new Set());
+  const [expandedProd, setExpandedProd] = useState(new Set());
+  const [prodSearch, setProdSearch] = useState("");
   const toggle = (id) => setExpanded((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const toggleProd = (id) => setExpandedProd((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const productOf = (pid) => (products || []).find((x) => x.id === pid);
+  const netUnit = (it) => { const q = Number(it.qty) || 0; return q > 0 ? itemLineTotal(it) / q : 0; };
+
+  // Rekap per produk + daftar faktur pembelian asalnya (buat tracking harga beli)
+  const prodMap = {};
+  allPurchaseDocs.forEach((doc) => {
+    (doc.items || []).forEach((it) => {
+      const pid = it.productId;
+      if (!prodMap[pid]) prodMap[pid] = { qty: 0, value: 0, lines: [] };
+      const q = Number(it.qty) || 0;
+      const lt = itemLineTotal(it);
+      prodMap[pid].qty += q;
+      prodMap[pid].value += lt;
+      prodMap[pid].lines.push({
+        key: `${doc.id}-${prodMap[pid].lines.length}`,
+        docNumber: doc.docNumber, partyName: doc.partyName, date: doc.date, type: doc.type,
+        batchNo: it.batchNo || "-", qty: q, unitPrice: Number(it.unitPrice) || 0,
+        discAmt: Math.max(0, q * (Number(it.unitPrice) || 0) - lt), netUnit: netUnit(it), lineTotal: lt,
+      });
+    });
+  });
+  const q = prodSearch.trim().toLowerCase();
+  const prodRows = Object.entries(prodMap)
+    .filter(([pid]) => !q || (productOf(pid)?.name || "").toLowerCase().includes(q))
+    .sort((a, b) => b[1].value - a[1].value);
+  const allProdOpen = prodRows.length > 0 && prodRows.every(([pid]) => expandedProd.has(pid));
+  const allInvOpen = allPurchaseDocs.length > 0 && allPurchaseDocs.every((d) => expanded.has(d.id));
+
+  const th = "text-left px-3 py-2 text-xs uppercase tracking-wide whitespace-nowrap";
+  const thR = "text-right px-3 py-2 text-xs uppercase tracking-wide whitespace-nowrap";
+  const sub = { textAlign: "right", padding: "3px 6px", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
 
   return (
-    <div>
+    <div className="printable-area">
       <style>{REPORT_PRINT_STYLE}</style>
+
+      <div className="flex justify-end gap-2 mb-2 no-print">
+        <Button onClick={() => window.print()} variant="ghost" className="text-xs"><Printer size={14} /> Cetak Laporan</Button>
+      </div>
+      <div className="border-b pb-3 mb-4 text-center">
+        <div className="text-base font-bold uppercase tracking-wide" style={{ color: COLOR.ink }}>{companyName || "PT WIRYATAMA PUTERA MANDIRI"}</div>
+        <h3 className="font-bold text-sm uppercase" style={{ color: COLOR.primary }}>Laporan Pembelian</h3>
+        <p className="text-xs text-gray-500">Periode: {fmtDate(start)} s/d {fmtDate(end)}</p>
+      </div>
+
       <Card className="mb-4">
         <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total Pembelian Berdasarkan Faktur Vendor ({fmtDate(start)} – {fmtDate(end)})</div>
         <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(purchaseTotal)}</div>
       </Card>
 
-      <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Rekap Produk Difakturkan</div>
-      <Card className="!p-0 overflow-hidden mb-5">
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ background: COLOR.primarySoft }}>
-              {["Produk", "Qty Dibeli", "Nilai Beli (Subtotal)"].map((h) => (
-                <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(purchaseAgg).sort((a, b) => b[1].value - a[1].value).map(([pid, agg]) => {
-              const p = (products || []).find((x) => x.id === pid);
-              return (
-                <tr key={pid} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                  <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{p?.name || "-"}</td>
-                  <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.inkSoft }}>{agg.qty} {p?.unit}</td>
-                  <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.ink }}>{fmtIDR(agg.value)}</td>
-                </tr>
-              );
-            })}
-            {Object.keys(purchaseAgg).length === 0 && <tr><td colSpan={3} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian di periode ini.</td></tr>}
-          </tbody>
-        </table>
+      <div className="flex flex-wrap items-end justify-between gap-2 mb-2">
+        <div className="text-xs font-medium" style={{ color: COLOR.inkSoft }}>Rekap Produk Difakturkan (klik produk buat lihat faktur pembelian asalnya)</div>
+        <div className="flex gap-2 no-print">
+          <TextInput placeholder="Cari produk..." value={prodSearch} onChange={(e) => setProdSearch(e.target.value)} />
+          <Button onClick={() => setExpandedProd(allProdOpen ? new Set() : new Set(prodRows.map(([pid]) => pid)))} variant="ghost" className="text-xs whitespace-nowrap">{allProdOpen ? "Tutup Semua" : "Buka Semua"}</Button>
+        </div>
+      </div>
+      <Card className="!p-0 mb-5">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: COLOR.primarySoft }}>
+                <th className="w-8 px-2 py-2 report-toggle-btn" />
+                <th className={th} style={{ color: COLOR.primary }}>Produk</th>
+                <th className={thR} style={{ color: COLOR.primary }}>Jml. Faktur</th>
+                <th className={thR} style={{ color: COLOR.primary }}>Qty Dibeli</th>
+                <th className={thR} style={{ color: COLOR.primary }}>Rata-rata Harga Beli</th>
+                <th className={thR} style={{ color: COLOR.primary }}>Nilai Beli</th>
+              </tr>
+            </thead>
+            <tbody>
+              {prodRows.map(([pid, a]) => {
+                const p = productOf(pid);
+                const isOpen = expandedProd.has(pid);
+                const prices = a.lines.map((l) => Math.round(l.netUnit));
+                const priceVaries = new Set(prices).size > 1;
+                return (
+                  <Fragment key={pid}>
+                    <tr style={{ borderTop: `1px solid ${COLOR.border}`, cursor: "pointer" }} onClick={() => toggleProd(pid)}>
+                      <td className="px-2 py-2.5 text-center select-none report-toggle-btn" style={{ color: COLOR.primary }}>
+                        <span style={{ display: "inline-block", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", fontSize: 11, fontWeight: 700 }}>▶</span>
+                      </td>
+                      <td className="px-3 py-2.5" style={{ color: COLOR.ink }}>
+                        {p?.name || "-"}
+                        {priceVaries && <span className="ml-2 text-[10px] font-semibold" style={{ color: "#B45309" }}>harga beli beda-beda</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{a.lines.length}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: COLOR.inkSoft }}>{a.qty} {p?.unit}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: COLOR.ink }}>{fmtIDR(a.qty > 0 ? a.value / a.qty : 0)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(a.value)}</td>
+                    </tr>
+                    <tr className="report-invoice-detail" style={{ background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}>
+                      <td className="report-toggle-btn" />
+                      <td colSpan={5} style={{ padding: "6px 12px 10px" }}>
+                        <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
+                          <thead>
+                            <tr style={{ color: COLOR.inkSoft }}>
+                              <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>No. Faktur Vendor</th>
+                              <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>Supplier</th>
+                              <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>Tanggal</th>
+                              <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>No. Batch</th>
+                              <th style={{ ...sub, fontWeight: 600 }}>Qty</th>
+                              <th style={{ ...sub, fontWeight: 600 }}>Harga Beli</th>
+                              <th style={{ ...sub, fontWeight: 600 }}>Diskon</th>
+                              <th style={{ ...sub, fontWeight: 600 }}>Harga Net / {p?.unit || "unit"}</th>
+                              <th style={{ ...sub, fontWeight: 600 }}>Subtotal</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {a.lines.map((l) => (
+                              <tr key={l.key} style={{ borderTop: "1px dashed #dbe3ee" }}>
+                                <td style={{ padding: "3px 0", fontWeight: 600, color: COLOR.ink, whiteSpace: "nowrap" }}>{l.docNumber}</td>
+                                <td style={{ padding: "3px 6px", color: COLOR.ink }}>{l.partyName}</td>
+                                <td style={{ padding: "3px 6px", color: COLOR.inkSoft, whiteSpace: "nowrap" }}>{fmtDate(l.date)}</td>
+                                <td style={{ padding: "3px 6px", color: COLOR.inkSoft }}>{l.batchNo}</td>
+                                <td style={{ ...sub, color: COLOR.inkSoft }}>{l.qty} {p?.unit || ""}</td>
+                                <td style={{ ...sub, color: COLOR.inkSoft }}>{fmtIDR(l.unitPrice)}</td>
+                                <td style={{ ...sub, color: l.discAmt > 0 ? "#DC2626" : COLOR.inkSoft }}>{l.discAmt > 0 ? `- ${fmtIDR(l.discAmt)}` : "-"}</td>
+                                <td style={{ ...sub, fontWeight: 700, color: COLOR.ink }}>{fmtIDR(l.netUnit)}</td>
+                                <td style={{ ...sub, fontWeight: 600, color: COLOR.ink }}>{fmtIDR(l.lineTotal)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  </Fragment>
+                );
+              })}
+              {prodRows.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>{q ? `Nggak ada produk yang cocok dengan "${prodSearch}" di periode ini.` : "Tidak ada Faktur Pembelian di periode ini."}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-3 py-2 text-[11px] border-t" style={{ color: COLOR.inkSoft, borderColor: COLOR.border }}>
+          Harga Net = harga beli setelah diskon item, sebelum diskon nota & PPN. Ini angka yang sama dipakai jadi harga modal (HPP) batch.
+          Kalau faktur yang dicari nggak muncul, lebarin rentang tanggal di atas.
+        </div>
       </Card>
 
-      <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Daftar Faktur Pembelian</div>
-      <Card className="!p-0 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ background: COLOR.primarySoft }}>
-              <th className="w-8 px-2 py-2" />
-              {["No. Faktur Vendor", "Tipe", "Supplier", "Tanggal", "Total Tagihan"].map((h) => (
-                <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {allPurchaseDocs.map((doc) => {
-              const isOpen = expanded.has(doc.id);
-              return (
-                <Fragment key={doc.id}>
-                  <tr
-                    style={{ borderTop: `1px solid ${COLOR.border}`, cursor: "pointer" }}
-                    onClick={() => toggle(doc.id)}
-                  >
-                    <td className="px-2 py-2.5 text-center select-none report-toggle-btn" style={{ color: COLOR.primary }}>
-                      <span style={{ display: "inline-block", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", fontSize: 11, fontWeight: 700 }}>▶</span>
-                    </td>
-                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
-                    <td className="px-4 py-2.5"><Badge tone={doc.type === "Langsung" ? "warn" : "neutral"}>{doc.type}</Badge></td>
-                    <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{doc.partyName}</td>
-                    <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
-                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
-                  </tr>
-                  {/* Detail item – tersembunyi di layar jika belum di-expand, selalu muncul saat print */}
-                  <tr
-                    className="report-invoice-detail"
-                    style={{ borderTop: `1px solid ${COLOR.border}`, background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}
-                  >
-                    <td />
-                    <td colSpan={5} style={{ paddingBottom: 8, paddingLeft: 12 }}>
-                      <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
-                        <thead>
-                          <tr>
-                            <th style={{ textAlign: "left", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Produk</th>
-                            <th style={{ textAlign: "center", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Qty</th>
-                            <th style={{ textAlign: "right", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Harga Beli</th>
-                            <th style={{ textAlign: "right", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Subtotal</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(doc.items || []).map((it, idx) => {
-                            const p = (products || []).find((x) => x.id === it.productId);
-                            const lineTotal = (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
-                            return (
-                              <tr key={idx}>
-                                <td style={{ padding: "2px 0", color: COLOR.ink }}>{p?.name || "-"}</td>
-                                <td style={{ textAlign: "center", padding: "2px 4px", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>{it.qty} {p?.unit || ""}</td>
-                                <td style={{ textAlign: "right", padding: "2px 0", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(it.unitPrice)}</td>
-                                <td style={{ textAlign: "right", padding: "2px 0", fontWeight: 600, color: COLOR.ink, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(lineTotal)}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </td>
-                  </tr>
-                </Fragment>
-              );
-            })}
-            {allPurchaseDocs.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian di periode ini.</td></tr>}
-          </tbody>
-        </table>
+      <div className="flex items-end justify-between gap-2 mb-2">
+        <div className="text-xs font-medium" style={{ color: COLOR.inkSoft }}>Daftar Faktur Pembelian</div>
+        <Button onClick={() => setExpanded(allInvOpen ? new Set() : new Set(allPurchaseDocs.map((d) => d.id)))} variant="ghost" className="text-xs no-print">{allInvOpen ? "Tutup Semua" : "Buka Semua"}</Button>
+      </div>
+      <Card className="!p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: COLOR.primarySoft }}>
+                <th className="w-8 px-2 py-2 report-toggle-btn" />
+                {["No. Faktur Vendor", "Tipe", "Supplier", "Tanggal"].map((h) => (
+                  <th key={h} className={th} style={{ color: COLOR.primary }}>{h}</th>
+                ))}
+                <th className={thR} style={{ color: COLOR.primary }}>Total Tagihan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allPurchaseDocs.map((doc) => {
+                const isOpen = expanded.has(doc.id);
+                return (
+                  <Fragment key={doc.id}>
+                    <tr style={{ borderTop: `1px solid ${COLOR.border}`, cursor: "pointer" }} onClick={() => toggle(doc.id)}>
+                      <td className="px-2 py-2.5 text-center select-none report-toggle-btn" style={{ color: COLOR.primary }}>
+                        <span style={{ display: "inline-block", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", fontSize: 11, fontWeight: 700 }}>▶</span>
+                      </td>
+                      <td className="px-3 py-2.5 tabular-nums font-semibold whitespace-nowrap" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
+                      <td className="px-3 py-2.5"><Badge tone={doc.type === "Langsung" ? "warn" : "neutral"}>{doc.type}</Badge></td>
+                      <td className="px-3 py-2.5" style={{ color: COLOR.ink }}>{doc.partyName}</td>
+                      <td className="px-3 py-2.5 tabular-nums text-xs whitespace-nowrap" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
+                    </tr>
+                    <tr className="report-invoice-detail" style={{ borderTop: `1px solid ${COLOR.border}`, background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}>
+                      <td className="report-toggle-btn" />
+                      <td colSpan={5} style={{ padding: "6px 12px 10px" }}>
+                        <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
+                          <thead>
+                            <tr style={{ color: COLOR.inkSoft }}>
+                              <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>Produk</th>
+                              <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>No. Batch</th>
+                              <th style={{ ...sub, fontWeight: 600 }}>Qty</th>
+                              <th style={{ ...sub, fontWeight: 600 }}>Harga Beli</th>
+                              <th style={{ ...sub, fontWeight: 600 }}>Harga Net</th>
+                              <th style={{ ...sub, fontWeight: 600 }}>Subtotal</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(doc.items || []).map((it, idx) => {
+                              const p = productOf(it.productId);
+                              return (
+                                <tr key={idx} style={{ borderTop: "1px dashed #dbe3ee" }}>
+                                  <td style={{ padding: "3px 0", color: COLOR.ink }}>{p?.name || "-"}</td>
+                                  <td style={{ padding: "3px 6px", color: COLOR.inkSoft }}>{it.batchNo || "-"}</td>
+                                  <td style={{ ...sub, color: COLOR.inkSoft }}>{it.qty} {p?.unit || ""}</td>
+                                  <td style={{ ...sub, color: COLOR.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
+                                  <td style={{ ...sub, fontWeight: 600, color: COLOR.ink }}>{fmtIDR(netUnit(it))}</td>
+                                  <td style={{ ...sub, fontWeight: 600, color: COLOR.ink }}>{fmtIDR(itemLineTotal(it))}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  </Fragment>
+                );
+              })}
+              {allPurchaseDocs.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian di periode ini.</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </Card>
     </div>
   );
@@ -2621,12 +2738,14 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
       let invCogs = 0;
       const costByProduct = {};
       const addAllocs = (pid, allocs) => {
-        if (!costByProduct[pid]) costByProduct[pid] = { qty: 0, cost: 0, missingBatch: 0, zeroCost: 0, recovered: 0 };
+        if (!costByProduct[pid]) costByProduct[pid] = { qty: 0, cost: 0, missingBatch: 0, zeroCost: 0, recovered: 0, trace: [] };
         (allocs || []).forEach((a) => {
           const q = Number(a.qty) || 0;
           const b = (batches || []).find((x) => x.id === a.batchId);
-          const unit = batchCost(a.batchId, pid, a.batchNo);
+          const ex = costOf.explain(a.batchId, pid, a.batchNo);
+          const unit = ex.cost;
           const c = a.qty * unit;
+          costByProduct[pid].trace.push({ batchNo: a.batchNo || b?.batchNo || "-", qty: q, unit, src: ex.src, byNo: ex.match === "no" });
           invCogs += c;
           costByProduct[pid].qty += q;
           costByProduct[pid].cost += c;
@@ -2657,7 +2776,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         else if (cp.missingBatch > 0) hppIssue = "batch_terhapus";
         else if (cp.zeroCost > 0) hppIssue = "modal_nol";
         else if (cp.recovered > 0) hppIssue = "dipulihkan";
-        return { productId: it.productId, qty, unitPrice: Number(it.unitPrice) || 0, lineTotal: itemLineTotal(it), hppUnit, hppTotal: qty * hppUnit, hppIssue };
+        return { productId: it.productId, qty, unitPrice: Number(it.unitPrice) || 0, lineTotal: itemLineTotal(it), hppUnit, hppTotal: qty * hppUnit, hppIssue, trace: cp?.trace || [] };
       });
       const itemsHpp = items.reduce((s, x) => s + x.hppTotal, 0);
 
@@ -3063,6 +3182,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
           start={start} end={end}
           purchaseTotal={purchaseTotal} purchaseAgg={purchaseAgg} allPurchaseDocs={allPurchaseDocs}
           products={products} COLOR={COLOR} fmtDate={fmtDate} fmtIDR={fmtIDR}
+          companyName={(company || COMPANY_PROFILE)?.name}
         />
       )}
     </div>
