@@ -241,8 +241,9 @@ function headerDiscountToPct(rawSubtotal, discountType, discountValue) {
 // Dipakai untuk HPP retur yang TIDAK di-restock ke stok (barang rusak/dimusnahkan),
 // supaya nilainya akurat sesuai batch asal penjualan -- bukan tebakan dari batch
 // pertama yang kebetulan ada di array stok saat ini (yang costnya bisa beda jauh).
-function originalSaleCostPerUnit(inv, productId, batches, deliveryNotes) {
-  const batchCostOf = (batchId) => {
+function originalSaleCostPerUnit(inv, productId, batches, deliveryNotes, costOf) {
+  const batchCostOf = (batchId, batchNo) => {
+    if (costOf) return costOf(batchId, productId, batchNo);
     const b = (batches || []).find((x) => x.id === batchId);
     return b ? b.costPrice : 0;
   };
@@ -259,7 +260,7 @@ function originalSaleCostPerUnit(inv, productId, batches, deliveryNotes) {
   }
   const totalQty = allocs.reduce((s, a) => s + (Number(a.qty) || 0), 0);
   if (totalQty > 0) {
-    const totalCost = allocs.reduce((s, a) => s + (Number(a.qty) || 0) * batchCostOf(a.batchId), 0);
+    const totalCost = allocs.reduce((s, a) => s + (Number(a.qty) || 0) * batchCostOf(a.batchId, a.batchNo), 0);
     return totalCost / totalQty;
   }
   // Fallback kalau data alokasi historis tidak ditemukan (kasus lama/edge case):
@@ -267,6 +268,38 @@ function originalSaleCostPerUnit(inv, productId, batches, deliveryNotes) {
   const matchingBatches = (batches || []).filter((b) => b.productId === productId);
   if (matchingBatches.length === 0) return 0;
   return matchingBatches.reduce((s, b) => s + (Number(b.costPrice) || 0), 0) / matchingBatches.length;
+}
+
+// ---------------------------------------------------------------------
+//  PEMULIH HARGA MODAL (HPP) PER BATCH
+//  Urutan cari harga modal sebuah alokasi penjualan:
+//    1. batch di Stok (by ID) yang harga modalnya > 0
+//    2. item Faktur Pembelian / BPB yang nyimpan batchId itu
+//    3. produk + No. Batch yang sama (batch di Stok, Faktur Pembelian, BPB)
+//  Dipakai supaya penjualan lama yang batch-nya sudah kehapus / dibikin ulang
+//  (bug lama edit & batal faktur pembelian) tetap punya HPP yang benar.
+// ---------------------------------------------------------------------
+function makeCostResolver(batches, pInvoices, pReceipts) {
+  const byId = {};
+  const byNo = {};
+  const put = (id, pid, no, cost) => {
+    if (!(cost > 0)) return;
+    if (id && byId[id] == null) byId[id] = cost;
+    const k = `${pid}|${String(no || "").trim().toLowerCase()}`;
+    if (pid && no && byNo[k] == null) byNo[k] = cost;
+  };
+  (batches || []).forEach((b) => put(b.id, b.productId, b.batchNo, Number(b.costPrice)));
+  (pInvoices || []).forEach((pi) => (pi.items || []).forEach((it) => {
+    const q = Number(it.qty) || 0;
+    put(it.batchId, it.productId, it.batchNo, q > 0 ? itemLineTotal(it) / q : 0);
+  }));
+  (pReceipts || []).forEach((pr) => (pr.items || []).forEach((it) => put(it.batchId, it.productId, it.batchNo, Number(it.unitPrice))));
+  return (batchId, productId, batchNo) => {
+    if (batchId && byId[batchId] != null) return byId[batchId];
+    const k = `${productId}|${String(batchNo || "").trim().toLowerCase()}`;
+    if (productId && batchNo && byNo[k] != null) return byNo[k];
+    return 0;
+  };
 }
 
 // ---------- MAIN APP ROUTER ----------
@@ -1108,15 +1141,16 @@ function PharmaERP({ userEmail, onLogout }) {
   function soDPAmount(soId) { return (paymentsIn || []).filter((p) => p.soId === soId && p.type === "DP").reduce((s, p) => s + p.amount, 0); }
   function invoicePaidAmount(invId) { return (paymentsIn || []).filter((p) => p.invoiceId === invId).reduce((s, p) => s + p.amount, 0); }
   function invoiceReturnedAmount(invId) { return (returns || []).filter((r) => r.invoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
-  function batchCost(batchId) { const b = (batches || []).find((x) => x.id === batchId); return b ? b.costPrice : 0; }
+  const costOf = useMemo(() => makeCostResolver(batches, pInvoices, pReceipts), [batches, pInvoices, pReceipts]);
+  function batchCost(batchId, productId, batchNo) { return costOf(batchId, productId, batchNo); }
   
   function invoiceCOGS(inv) {
     let cogs = 0;
     if (inv.isDirect) {
-      cogs = (inv.items || []).reduce((s, it) => s + (it.allocations || []).reduce((s2, a) => s2 + a.qty * batchCost(a.batchId), 0), 0);
+      cogs = (inv.items || []).reduce((s, it) => s + (it.allocations || []).reduce((s2, a) => s2 + a.qty * batchCost(a.batchId, it.productId, a.batchNo), 0), 0);
     } else {
       cogs = (deliveryNotes || []).filter((dn) => dn.soId === inv.soId && dn.status === "diterima")
-        .reduce((s, dn) => s + (dn.items || []).reduce((s2, it) => s2 + (it.allocations || []).reduce((s3, a) => s3 + a.qty * batchCost(a.batchId), 0), 0), 0);
+        .reduce((s, dn) => s + (dn.items || []).reduce((s2, it) => s2 + (it.allocations || []).reduce((s3, a) => s3 + a.qty * batchCost(a.batchId, it.productId, a.batchNo), 0), 0), 0);
     }
 
     const returList = (returns || []).filter((r) => r.invoiceId === inv.id || (inv.soId && r.soId === inv.soId));
@@ -1126,10 +1160,10 @@ function PharmaERP({ userEmail, onLogout }) {
       (r.items || []).forEach((it) => {
         if (it.restockedBatches && it.restockedBatches.length > 0) {
           it.restockedBatches.forEach((rb) => {
-            returnedCOGS += rb.qty * batchCost(rb.batchId);
+            returnedCOGS += rb.qty * batchCost(rb.batchId, it.productId, rb.batchNo);
           });
         } else {
-          const costPerUnit = originalSaleCostPerUnit(inv, it.productId, batches, deliveryNotes);
+          const costPerUnit = originalSaleCostPerUnit(inv, it.productId, batches, deliveryNotes, costOf);
           returnedCOGS += it.qty * costPerUnit;
         }
       });
@@ -1727,6 +1761,8 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       disposals={disposals}
       saveDisposals={persist.disposals}
       COMPANY_PROFILE={companyProfile}
+      invoices={invoices}
+      deliveryNotes={deliveryNotes}
     />
 
   ) : <AccessDenied />
@@ -1832,6 +1868,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       sos={sos} 
       invoices={invoices} 
       pInvoices={pInvoices} 
+      pReceipts={pReceipts}
       returns={returns} 
       pReturns={pReturns} 
       paymentsIn={paymentsIn} /* <-- PASTIKAN PROP INI DISERTAKAN */
@@ -2056,6 +2093,21 @@ const REPORT_PRINT_STYLE = `
   }
 `;
 
+const HPP_ISSUE_LABEL = {
+  sj_belum_diterima: "SJ belum diterima",
+  tanpa_alokasi: "tanpa alokasi batch",
+  batch_terhapus: "batch sudah terhapus",
+  modal_nol: "harga modal batch 0",
+  dipulihkan: "modal dipulihkan dari faktur beli",
+};
+const HPP_ISSUE_HELP = {
+  sj_belum_diterima: "Surat Jalan untuk SO ini belum dikonfirmasi diterima.",
+  tanpa_alokasi: "Produk ini nggak tercatat ambil dari batch mana (data lama / SJ nggak memuat produk ini).",
+  batch_terhapus: "Batch yang dipakai waktu jual udah nggak ada di Stok (kehapus waktu edit/batal faktur pembelian langsung, atau dihapus manual).",
+  modal_nol: "Batch-nya ada tapi harga modalnya 0 / kosong (biasanya dari input stok manual atau import CSV).",
+  dipulihkan: "Batch aslinya sudah hilang / modalnya 0, harga modal diambil dari Faktur Pembelian / BPB dengan batch yang sama. Ini info aja, HPP-nya udah keisi.",
+};
+
 function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR, fmtDate, fmtIDR, profitById = {}, showHpp = false, pnlData, companyName }) {
   const [expanded, setExpanded] = useState(new Set());
   const toggle = (id) => setExpanded((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
@@ -2075,6 +2127,13 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR,
     });
   });
   const aggRows = Object.entries(agg).sort((a, b) => b[1].value - a[1].value);
+
+  // Hitung item yang HPP-nya bermasalah, per penyebab
+  const issueCount = {};
+  allSalesDocs.forEach((doc) => (profitById[doc.id]?.items || []).forEach((it) => {
+    if (it.hppIssue) issueCount[it.hppIssue] = (issueCount[it.hppIssue] || 0) + 1;
+  }));
+  const issueEntries = Object.entries(issueCount);
 
   const th = "text-left px-3 py-2 text-xs uppercase tracking-wide whitespace-nowrap";
   const thR = "text-right px-3 py-2 text-xs uppercase tracking-wide whitespace-nowrap";
@@ -2112,6 +2171,15 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR,
         <Card className="mb-4">
           <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total Penjualan Berdasarkan Faktur ({fmtDate(start)} – {fmtDate(end)})</div>
           <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(salesTotal)}</div>
+        </Card>
+      )}
+
+      {showHpp && issueEntries.length > 0 && (
+        <Card className="mb-4 !p-3" style={{ borderColor: "#FCD34D", background: "#FFFBEB" }}>
+          <div className="text-xs font-semibold mb-1" style={{ color: "#92400E" }}>Ada item yang HPP-nya kosong / nggak lengkap di periode ini:</div>
+          <ul className="text-xs space-y-0.5" style={{ color: "#92400E" }}>
+            {issueEntries.map(([k, n]) => <li key={k}>• <b>{HPP_ISSUE_LABEL[k]}</b>: {n} item. {HPP_ISSUE_HELP[k]}</li>)}
+          </ul>
         </Card>
       )}
 
@@ -2218,7 +2286,10 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR,
                                   <td style={{ textAlign: "right", padding: "3px 6px", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{it.qty} {p?.unit || ""}</td>
                                   <td style={{ textAlign: "right", padding: "3px 6px", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(it.unitPrice)}</td>
                                   <td style={{ textAlign: "right", padding: "3px 6px", fontWeight: 600, color: COLOR.ink, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(it.lineTotal)}</td>
-                                  {showHpp && <td style={{ textAlign: "right", padding: "3px 6px", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>{it.hppUnit > 0 ? fmtIDR(it.hppUnit) : <span style={{ color: "#D97706" }}>belum ada</span>}</td>}
+                                  {showHpp && <td style={{ textAlign: "right", padding: "3px 6px", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>
+                                    {it.hppUnit > 0 ? fmtIDR(it.hppUnit) : null}
+                                    {it.hppIssue && <div style={{ color: "#D97706", fontSize: 10, fontWeight: 600 }}>{HPP_ISSUE_LABEL[it.hppIssue]}</div>}
+                                  </td>}
                                   {showHpp && <td style={{ textAlign: "right", padding: "3px 6px", color: "#DC2626", fontVariantNumeric: "tabular-nums" }}>{fmtIDR(it.hppTotal)}</td>}
                                   {showHpp && <td style={{ textAlign: "right", padding: "3px 0", fontWeight: 600, color: margin < 0 ? "#DC2626" : "#047857", fontVariantNumeric: "tabular-nums" }}>{fmtIDR(margin)}</td>}
                                 </tr>
@@ -2387,7 +2458,7 @@ function PurchaseReportTab({ start, end, purchaseTotal, purchaseAgg, allPurchase
   );
 }
 
-function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvoices, returns, pReturns, paymentsIn, expenses, batches, deliveryNotes, findName, pInvoiceTotal, invoiceTotal, invoiceNetSalesDPP, currentUserEmail, canSeePnL, company }) {
+function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvoices, pReceipts, returns, pReturns, paymentsIn, expenses, batches, deliveryNotes, findName, pInvoiceTotal, invoiceTotal, invoiceNetSalesDPP, currentUserEmail, canSeePnL, company }) {
   const isSuperAdminOrFinance = !!canSeePnL || ADMIN_FINANCE_EMAILS.includes((currentUserEmail || "").toLowerCase());
 
   const [subTab, setSubTab] = useState(isSuperAdminOrFinance ? "pnl" : "sales");
@@ -2440,7 +2511,8 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
     }).sort((a, b) => new Date(b.date) - new Date(a.date));
   }, [filteredInvoices, sos, customers, invoiceTotal]);
 
-  function batchCost(batchId) { const b = (batches || []).find((x) => x.id === batchId); return b ? b.costPrice : 0; }
+  const costOf = useMemo(() => makeCostResolver(batches, pInvoices, pReceipts), [batches, pInvoices, pReceipts]);
+  function batchCost(batchId, productId, batchNo) { return costOf(batchId, productId, batchNo); }
 
   // 3. KALKULASI AR AGING (UMUR PIUTANG)
   const agingData = useMemo(() => {
@@ -2549,13 +2621,21 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
       let invCogs = 0;
       const costByProduct = {};
       const addAllocs = (pid, allocs) => {
+        if (!costByProduct[pid]) costByProduct[pid] = { qty: 0, cost: 0, missingBatch: 0, zeroCost: 0, recovered: 0 };
         (allocs || []).forEach((a) => {
           const q = Number(a.qty) || 0;
-          const c = a.qty * batchCost(a.batchId);
+          const b = (batches || []).find((x) => x.id === a.batchId);
+          const unit = batchCost(a.batchId, pid, a.batchNo);
+          const c = a.qty * unit;
           invCogs += c;
-          if (!costByProduct[pid]) costByProduct[pid] = { qty: 0, cost: 0 };
           costByProduct[pid].qty += q;
           costByProduct[pid].cost += c;
+          if (!(unit > 0)) {
+            if (!b) costByProduct[pid].missingBatch += q;
+            else costByProduct[pid].zeroCost += q;
+          } else if (!b || !(Number(b.costPrice) > 0)) {
+            costByProduct[pid].recovered += q;
+          }
         });
       };
       if (inv.isDirect) {
@@ -2565,11 +2645,19 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
           .forEach((dn) => (dn.items || []).forEach((it) => addAllocs(it.productId, it.allocations)));
       }
 
+      const hasReceivedDN = inv.isDirect || (deliveryNotes || []).some((dn) => dn.soId === inv.soId && dn.status === "diterima");
       const items = (inv.items || []).map((it) => {
         const qty = Number(it.qty) || 0;
         const cp = costByProduct[it.productId];
         const hppUnit = cp && cp.qty > 0 ? cp.cost / cp.qty : 0;
-        return { productId: it.productId, qty, unitPrice: Number(it.unitPrice) || 0, lineTotal: itemLineTotal(it), hppUnit, hppTotal: qty * hppUnit };
+        // Alasan HPP kosong / kurang (buat audit)
+        let hppIssue = null;
+        if (!hasReceivedDN) hppIssue = "sj_belum_diterima";
+        else if (!cp || cp.qty === 0) hppIssue = "tanpa_alokasi";
+        else if (cp.missingBatch > 0) hppIssue = "batch_terhapus";
+        else if (cp.zeroCost > 0) hppIssue = "modal_nol";
+        else if (cp.recovered > 0) hppIssue = "dipulihkan";
+        return { productId: it.productId, qty, unitPrice: Number(it.unitPrice) || 0, lineTotal: itemLineTotal(it), hppUnit, hppTotal: qty * hppUnit, hppIssue };
       });
       const itemsHpp = items.reduce((s, x) => s + x.hppTotal, 0);
 
@@ -2580,9 +2668,9 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         (r.items || []).forEach((it) => {
           retVal += (it.qty * it.unitPrice);
           if (it.restockedBatches && it.restockedBatches.length > 0) {
-            it.restockedBatches.forEach((rb) => { retCogs += rb.qty * batchCost(rb.batchId); });
+            it.restockedBatches.forEach((rb) => { retCogs += rb.qty * batchCost(rb.batchId, it.productId, rb.batchNo); });
           } else {
-            const costPerUnit = originalSaleCostPerUnit(inv, it.productId, batches, deliveryNotes);
+            const costPerUnit = originalSaleCostPerUnit(inv, it.productId, batches, deliveryNotes, costOf);
             retCogs += it.qty * costPerUnit;
           }
         });
@@ -2597,7 +2685,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         grossProfit: dpp - retVal - cogsNet,
       };
     });
-  }, [filteredInvoices, returns, deliveryNotes, batches]);
+  }, [filteredInvoices, returns, deliveryNotes, batches, costOf]);
 
   const profitById = useMemo(() => {
     const m = {};

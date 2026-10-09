@@ -1073,30 +1073,27 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   // 1. Ambil data batch yang ada
   let working = (batches || []).map((b) => ({ ...b }));
 
-  // 2. Kalau EDIT: batch lama TIDAK dihapus lagi, tapi di-update di tempat (ID batch tetap).
-  //    Dulu batch dihapus lalu dibikin ulang dengan ID baru -> penjualan yang sudah ambil
-  //    dari batch itu kehilangan harga modal (HPP jadi 0) dan qty stok ke-reset penuh.
-  const oldInvEdit = editingId ? (pInvoices || []).find((x) => x.id === editingId) : null;
-  const oldPairs = []; // { oldItem, batch } -> batch lama milik faktur ini
-  if (oldInvEdit && oldInvEdit.isDirect) {
-    const takenBatch = new Set();
-    (oldInvEdit.items || []).forEach((oi) => {
-      let b = oi.batchId ? working.find((x) => x.id === oi.batchId) : null;
-      // Faktur lama tanpa batchId: cari batch pembelian langsung yang cocok
-      if (!b) b = working.find((x) => !takenBatch.has(x.id) && x.productId === oi.productId && (x.batchNo || "") === (oi.batchNo || "")
-        && x.sourceType === "pembelian" && !x.poId && x.supplierId === oldInvEdit.supplierId && x.receivedDate === oldInvEdit.date);
-      if (b) takenBatch.add(b.id);
-      oldPairs.push({ oldItem: oi, batch: b || null, used: false });
-    });
+  // 2. PERBAIKAN TOTAL: Jika sedang EDIT, hapus semua batch lama milik faktur ini
+  if (editingId) {
+    const oldInv = (pInvoices || []).find(x => x.id === editingId);
+    if (oldInv && oldInv.isDirect) {
+      // Ambil daftar batchId lama & daftar productId di faktur tersebut
+      const oldBatchIds = (oldInv.items || []).map(it => it.batchId).filter(Boolean);
+      const oldProdIds = (oldInv.items || []).map(it => it.productId);
+
+      working = working.filter(b => {
+        // Hapus jika ID batch cocok
+        if (oldBatchIds.length > 0 && oldBatchIds.includes(b.id)) return false;
+        
+        // Fallback untuk faktur lama (jika batchId kosong):
+        // Hapus batch pembelian langsung dari supplier ini dengan produk yang sama pada tanggal faktur tersebut
+        if (b.sourceType === "pembelian" && !b.poId && b.supplierId === oldInv.supplierId && oldProdIds.includes(b.productId) && b.receivedDate === oldInv.date) {
+          return false;
+        }
+        return true;
+      });
+    }
   }
-  const pairForNewItem = (it) => {
-    let pr = it.batchId ? oldPairs.find((x) => !x.used && (x.oldItem.batchId === it.batchId || x.batch?.id === it.batchId)) : null;
-    if (!pr) pr = oldPairs.find((x) => !x.used && x.oldItem.productId === it.productId && (x.oldItem.batchNo || "") === (it.batchNo || ""));
-    if (!pr) pr = oldPairs.find((x) => !x.used && x.oldItem.productId === it.productId);
-    if (pr) pr.used = true;
-    return pr;
-  };
-  const prodName = (pid) => (products || []).find((x) => x.id === pid)?.name || "produk";
 
   // CDOB: pembelian langsung = penerimaan barang, wajib review APJ/PJT.
   const oldInvQA = editingId ? (pInvoices || []).find((x) => x.id === editingId) : null;
@@ -1109,62 +1106,13 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   const newBatches = [];
   const invItems = [];
 
-  // Validasi dulu sebelum ada yang disimpan
-  const plan = items.map((it) => ({ it, pr: oldPairs.length ? pairForNewItem(it) : null }));
-  for (const { it, pr } of plan) {
-    if (pr && pr.batch) {
-      const terpakai = Math.max(0, (Number(pr.oldItem.qty) || 0) - (Number(pr.batch.qty) || 0));
-      if (Number(it.qty) < terpakai) {
-        return notify(`Gagal simpan: ${prodName(it.productId)} sudah terjual/terpakai ${terpakai}, qty faktur nggak boleh kurang dari itu.`, "danger");
-      }
-    }
-  }
-  const removedPairs = oldPairs.filter((x) => !x.used && x.batch);
-  for (const pr of removedPairs) {
-    const terpakai = Math.max(0, (Number(pr.oldItem.qty) || 0) - (Number(pr.batch.qty) || 0));
-    if (terpakai > 0) {
-      return notify(`Gagal simpan: item ${prodName(pr.oldItem.productId)} nggak bisa dihapus dari faktur, barangnya sudah terjual/terpakai ${terpakai}.`, "danger");
-    }
-  }
-  // Item yang dihapus dari faktur & belum terpakai -> batch-nya ikut dibuang
-  const removeIds = new Set(removedPairs.map((x) => x.batch.id));
-  working = working.filter((b) => !removeIds.has(b.id));
-
-  plan.forEach(({ it, pr }) => {
+  items.forEach((it) => {
+    const batchId = uid();
     const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
     const gross = it.qty * it.unitPrice;
     const netTotal = Math.max(0, gross - discAmt);
     const netUnitPrice = it.qty > 0 ? netTotal / it.qty : 0;
 
-    // Batch lama ketemu -> update di tempat, qty = qty baru - yang sudah terpakai
-    if (pr && pr.batch) {
-      const terpakai = Math.max(0, (Number(pr.oldItem.qty) || 0) - (Number(pr.batch.qty) || 0));
-      const wb = working.find((b) => b.id === pr.batch.id);
-      Object.assign(wb, {
-        productId: it.productId,
-        batchNo: it.batchNo,
-        expiryDate: it.expiryDate,
-        qty: Number(it.qty) - terpakai,
-        costPrice: netUnitPrice,
-        receivedDate: date,
-        supplierId: supplierId,
-        quarantine: needQuarantine,
-        qaDocId: invId,
-      });
-      invItems.push({
-        productId: it.productId,
-        qty: it.qty,
-        unitPrice: it.unitPrice,
-        discountType: it.discountType || "percent",
-        discountPercent: Number(it.discountPercent || 0),
-        batchId: wb.id,
-        batchNo: it.batchNo,
-        expiryDate: it.expiryDate
-      });
-      return;
-    }
-
-    const batchId = uid();
     newBatches.push({
       id: batchId,
       productId: it.productId,
@@ -1192,7 +1140,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     });
   });
 
-  // 4. Simpan batch (yang lama sudah ter-update) + batch baru
+  // 4. Simpan batch yang sudah dibersihkan + batch baru
   await saveBatches([...working, ...newBatches]);
 
   const payload = {
@@ -1294,13 +1242,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         if (b) b.qty -= it.qty;
       });
 
-      // Cuma batch milik faktur ini yang dibuang kalau qty-nya habis.
-      // (Dulu semua batch qty 0 di seluruh sistem ikut kehapus -> HPP penjualan lama jadi 0.)
-      const ownIds = new Set((inv.items || []).map((it) => {
-        const b = working.find((x) => x.id === it.batchId || (x.batchNo === it.batchNo && x.productId === it.productId));
-        return b?.id;
-      }).filter(Boolean));
-      const finalBatches = working.filter((b) => !ownIds.has(b.id) || b.qty > 0);
+      const finalBatches = working.filter((b) => b.qty > 0);
       await saveBatches(finalBatches);
     }
 
