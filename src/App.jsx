@@ -1989,6 +1989,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
   const [agingCust, setAgingCust] = useState("ALL");
   const [agingBucket, setAgingBucket] = useState("ALL");
   const [agingSearch, setAgingSearch] = useState("");
+  const [expandedAgingCusts, setExpandedAgingCusts] = useState(new Set());
 
   function inRange(dateStr) { return dateStr >= start && dateStr <= end; }
 
@@ -2078,7 +2079,33 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
 
   const totalARAging = agingData.reduce((s, i) => s + i.sisaHutang, 0);
 
-  // Export CSV Laporan Aging
+  // Group per pelanggan untuk tampilan akumulasi (accordion)
+  const agingByCustomer = useMemo(() => {
+    const map = {};
+    agingData.forEach((item) => {
+      const cid = item.customerId || "__unknown__";
+      if (!map[cid]) {
+        map[cid] = {
+          customerId: cid,
+          customerName: findName(customers, cid),
+          totalSisa: 0,
+          invoices: [],
+          // bucket terburuk untuk badge summary
+          worstBucket: "current",
+        };
+      }
+      map[cid].totalSisa += item.sisaHutang;
+      map[cid].invoices.push(item);
+      // tentukan bucket terburuk
+      const bucketOrder = { current: 0, "31-60": 1, "61-90": 2, over90: 3 };
+      if ((bucketOrder[item.bucket] ?? 0) > (bucketOrder[map[cid].worstBucket] ?? 0)) {
+        map[cid].worstBucket = item.bucket;
+      }
+    });
+    return Object.values(map).sort((a, b) => b.totalSisa - a.totalSisa);
+  }, [agingData, customers, findName]);
+
+
   const exportAgingCSV = () => {
     const headers = ["No. Faktur", "Pelanggan", "Tanggal Faktur", "Umur (Hari)", "Status Aging", "Sisa Piutang"];
     const rows = agingData.map((d) => [
@@ -2270,36 +2297,109 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
-                  <th className="text-left px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>No. Faktur</th>
+                  {/* kolom chevron / expand */}
+                  <th className="w-8 px-2 py-2" />
                   <th className="text-left px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Pelanggan</th>
-                  <th className="text-left px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Tgl Faktur</th>
-                  <th className="text-center px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Umur</th>
+                  <th className="text-center px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Jml. Faktur</th>
                   <th className="text-left px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Status Aging</th>
-                  <th className="text-right px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Sisa Piutang</th>
+                  <th className="text-right px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Total Piutang</th>
                 </tr>
               </thead>
               <tbody>
-                {agingData.map((item) => (
-                  <tr key={item.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{item.noFaktur}</td>
-                    <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{findName(customers, item.customerId)}</td>
-                    <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(item.date)}</td>
-                    <td className="px-4 py-2.5 tabular-nums text-center font-bold" style={{ color: COLOR.ink }}>{item.ageDays} Hari</td>
-                    <td className="px-4 py-2.5">
-                      <Badge tone={item.bucket === "current" ? "good" : item.bucket === "over90" ? "danger" : "warn"}>
-                        {item.bucket === "current" ? "0-30 Hari" : item.bucket === "31-60" ? "31-60 Hari" : item.bucket === "61-90" ? "61-90 Hari" : "> 90 Hari"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-2.5 tabular-nums text-right font-bold" style={{ color: COLOR.ink }}>{fmtIDR(item.sisaHutang)}</td>
-                  </tr>
-                ))}
-                {agingData.length === 0 && (
+                {agingByCustomer.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>
+                    <td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>
                       Tidak ada piutang yang sesuai dengan filter.
                     </td>
                   </tr>
                 )}
+                {agingByCustomer.map((grp) => {
+                  const isOpen = expandedAgingCusts.has(grp.customerId);
+                  const toggleOpen = () =>
+                    setExpandedAgingCusts((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(grp.customerId)) next.delete(grp.customerId);
+                      else next.add(grp.customerId);
+                      return next;
+                    });
+                  const bucketLabel = (b) =>
+                    b === "current" ? "0-30 Hari" : b === "31-60" ? "31-60 Hari" : b === "61-90" ? "61-90 Hari" : "> 90 Hari";
+                  const bucketTone = (b) =>
+                    b === "current" ? "good" : b === "over90" ? "danger" : "warn";
+
+                  return [
+                    /* ── BARIS SUMMARY CUSTOMER ── */
+                    <tr
+                      key={`cust-${grp.customerId}`}
+                      onClick={toggleOpen}
+                      className="cursor-pointer transition-colors"
+                      style={{
+                        borderTop: `1px solid ${COLOR.border}`,
+                        background: isOpen ? COLOR.primarySoft : undefined,
+                      }}
+                      onMouseEnter={(e) => { if (!isOpen) e.currentTarget.style.background = "#f8fafc"; }}
+                      onMouseLeave={(e) => { if (!isOpen) e.currentTarget.style.background = ""; }}
+                    >
+                      <td className="px-2 py-3 text-center select-none" style={{ color: COLOR.primary }}>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                            transition: "transform 0.18s",
+                            fontSize: 12,
+                            fontWeight: 700,
+                          }}
+                        >▶</span>
+                      </td>
+                      <td className="px-4 py-3 font-semibold" style={{ color: COLOR.ink }}>
+                        {grp.customerName}
+                      </td>
+                      <td className="px-4 py-3 text-center tabular-nums text-xs font-medium" style={{ color: COLOR.inkSoft }}>
+                        {grp.invoices.length} faktur
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge tone={bucketTone(grp.worstBucket)}>
+                          {bucketLabel(grp.worstBucket)}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 tabular-nums text-right font-bold text-base" style={{ color: COLOR.ink }}>
+                        {fmtIDR(grp.totalSisa)}
+                      </td>
+                    </tr>,
+
+                    /* ── BARIS DETAIL INVOICE (accordion expand) ── */
+                    isOpen && grp.invoices.map((item) => (
+                      <tr
+                        key={`inv-${item.id}`}
+                        style={{ borderTop: `1px solid ${COLOR.border}`, background: "#f4f7fb" }}
+                      >
+                        {/* indent spacer */}
+                        <td />
+                        <td className="px-4 py-2" colSpan={4}>
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                            <span className="tabular-nums font-semibold w-36" style={{ color: COLOR.primary }}>
+                              {item.noFaktur}
+                            </span>
+                            <span className="tabular-nums w-28" style={{ color: COLOR.inkSoft }}>
+                              {fmtDate(item.date)}
+                            </span>
+                            <span className="tabular-nums w-20" style={{ color: COLOR.ink }}>
+                              {item.ageDays} hari
+                            </span>
+                            <span className="w-24">
+                              <Badge tone={bucketTone(item.bucket)}>
+                                {bucketLabel(item.bucket)}
+                              </Badge>
+                            </span>
+                            <span className="tabular-nums font-bold ml-auto" style={{ color: COLOR.ink }}>
+                              {fmtIDR(item.sisaHutang)}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    )),
+                  ];
+                })}
               </tbody>
             </table>
           </Card>
