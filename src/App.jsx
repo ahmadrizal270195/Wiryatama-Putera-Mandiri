@@ -1452,6 +1452,10 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       max-height: none !important;
       overflow: visible !important;
     }
+    /* Saat cetak, paksa semua detail invoice aging tampil */
+    .aging-invoice-detail {
+      display: table-row !important;
+    }
   }
 `}</style>
 
@@ -1977,6 +1981,283 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
 
 
 // ---------- LAPORAN BERBASIS FAKTUR & LABA RUGI PER PERIODE ----------
+
+// --- Komponen baris detail item (dipakai oleh Sales & Purchase report tab) ---
+// Di layar: tersembunyi by default, muncul kalau induk di-expand.
+// Di print: selalu muncul (CSS @media print).
+function InvoiceItemRows({ doc, products, fmtIDR, COLOR, colSpan }) {
+  return (
+    <tr
+      className="report-invoice-detail"
+      style={{ borderTop: `1px solid ${COLOR.border}`, background: "#f4f7fb" }}
+    >
+      <td />
+      <td colSpan={colSpan}>
+        <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Produk</th>
+              <th style={{ textAlign: "center", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Qty</th>
+              <th style={{ textAlign: "right", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Harga Satuan</th>
+              <th style={{ textAlign: "right", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(doc.items || []).map((it, idx) => {
+              const p = (products || []).find((x) => x.id === it.productId);
+              const lineTotal = (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
+              return (
+                <tr key={idx}>
+                  <td style={{ padding: "2px 0", color: COLOR.ink }}>{p?.name || "-"}</td>
+                  <td style={{ textAlign: "center", padding: "2px 4px", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>
+                    {it.qty} {p?.unit || ""}
+                  </td>
+                  <td style={{ textAlign: "right", padding: "2px 0", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>
+                    {fmtIDR(it.unitPrice)}
+                  </td>
+                  <td style={{ textAlign: "right", padding: "2px 0", fontWeight: 600, color: COLOR.ink, fontVariantNumeric: "tabular-nums" }}>
+                    {fmtIDR(lineTotal)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </td>
+    </tr>
+  );
+}
+
+// Style global: baris detail SELALU tampil saat print
+const REPORT_PRINT_STYLE = `
+  @media print {
+    .report-invoice-detail { display: table-row !important; }
+    .report-toggle-btn { display: none !important; }
+  }
+`;
+
+function SalesReportTab({ start, end, salesTotal, salesAgg, allSalesDocs, products, COLOR, fmtDate, fmtIDR }) {
+  const [expanded, setExpanded] = React.useState(new Set());
+  const toggle = (id) => setExpanded((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+
+  return (
+    <div>
+      <style>{REPORT_PRINT_STYLE}</style>
+      <Card className="mb-4">
+        <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total Penjualan Berdasarkan Faktur ({fmtDate(start)} – {fmtDate(end)})</div>
+        <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(salesTotal)}</div>
+      </Card>
+
+      <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Rekap Produk Difakturkan</div>
+      <Card className="!p-0 overflow-hidden mb-5">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: COLOR.primarySoft }}>
+              {["Produk", "Qty Terjual", "Nilai Penjualan (Subtotal)"].map((h) => (
+                <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(salesAgg).sort((a, b) => b[1].value - a[1].value).map(([pid, agg]) => {
+              const p = (products || []).find((x) => x.id === pid);
+              return (
+                <tr key={pid} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                  <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{p?.name || "-"}</td>
+                  <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.inkSoft }}>{agg.qty} {p?.unit}</td>
+                  <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.ink }}>{fmtIDR(agg.value)}</td>
+                </tr>
+              );
+            })}
+            {Object.keys(salesAgg).length === 0 && <tr><td colSpan={3} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Penjualan di periode ini.</td></tr>}
+          </tbody>
+        </table>
+      </Card>
+
+      <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Daftar Faktur Penjualan</div>
+      <Card className="!p-0 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: COLOR.primarySoft }}>
+              <th className="w-8 px-2 py-2" />
+              {["No. Faktur", "Tipe", "Pelanggan", "Tanggal", "Total Tagihan"].map((h) => (
+                <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {allSalesDocs.map((doc) => {
+              const isOpen = expanded.has(doc.id);
+              return (
+                <React.Fragment key={doc.id}>
+                  <tr
+                    style={{ borderTop: `1px solid ${COLOR.border}`, cursor: "pointer" }}
+                    onClick={() => toggle(doc.id)}
+                  >
+                    <td className="px-2 py-2.5 text-center select-none report-toggle-btn" style={{ color: COLOR.primary }}>
+                      <span style={{ display: "inline-block", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", fontSize: 11, fontWeight: 700 }}>▶</span>
+                    </td>
+                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
+                    <td className="px-4 py-2.5"><Badge tone={doc.type === "Langsung" ? "warn" : "neutral"}>{doc.type}</Badge></td>
+                    <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{doc.partyName}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
+                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
+                  </tr>
+                  {/* Detail item – tersembunyi di layar jika belum di-expand, selalu muncul saat print */}
+                  <tr
+                    className="report-invoice-detail"
+                    style={{ borderTop: `1px solid ${COLOR.border}`, background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}
+                  >
+                    <td />
+                    <td colSpan={5} style={{ paddingBottom: 8, paddingLeft: 12 }}>
+                      <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr>
+                            <th style={{ textAlign: "left", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Produk</th>
+                            <th style={{ textAlign: "center", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Qty</th>
+                            <th style={{ textAlign: "right", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Harga Satuan</th>
+                            <th style={{ textAlign: "right", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Subtotal</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(doc.items || []).map((it, idx) => {
+                            const p = (products || []).find((x) => x.id === it.productId);
+                            const lineTotal = (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
+                            return (
+                              <tr key={idx}>
+                                <td style={{ padding: "2px 0", color: COLOR.ink }}>{p?.name || "-"}</td>
+                                <td style={{ textAlign: "center", padding: "2px 4px", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>{it.qty} {p?.unit || ""}</td>
+                                <td style={{ textAlign: "right", padding: "2px 0", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(it.unitPrice)}</td>
+                                <td style={{ textAlign: "right", padding: "2px 0", fontWeight: 600, color: COLOR.ink, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(lineTotal)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                </React.Fragment>
+              );
+            })}
+            {allSalesDocs.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Penjualan di periode ini.</td></tr>}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+function PurchaseReportTab({ start, end, purchaseTotal, purchaseAgg, allPurchaseDocs, products, COLOR, fmtDate, fmtIDR }) {
+  const [expanded, setExpanded] = React.useState(new Set());
+  const toggle = (id) => setExpanded((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+
+  return (
+    <div>
+      <style>{REPORT_PRINT_STYLE}</style>
+      <Card className="mb-4">
+        <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total Pembelian Berdasarkan Faktur Vendor ({fmtDate(start)} – {fmtDate(end)})</div>
+        <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(purchaseTotal)}</div>
+      </Card>
+
+      <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Rekap Produk Difakturkan</div>
+      <Card className="!p-0 overflow-hidden mb-5">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: COLOR.primarySoft }}>
+              {["Produk", "Qty Dibeli", "Nilai Beli (Subtotal)"].map((h) => (
+                <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(purchaseAgg).sort((a, b) => b[1].value - a[1].value).map(([pid, agg]) => {
+              const p = (products || []).find((x) => x.id === pid);
+              return (
+                <tr key={pid} style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                  <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{p?.name || "-"}</td>
+                  <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.inkSoft }}>{agg.qty} {p?.unit}</td>
+                  <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.ink }}>{fmtIDR(agg.value)}</td>
+                </tr>
+              );
+            })}
+            {Object.keys(purchaseAgg).length === 0 && <tr><td colSpan={3} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian di periode ini.</td></tr>}
+          </tbody>
+        </table>
+      </Card>
+
+      <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Daftar Faktur Pembelian</div>
+      <Card className="!p-0 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: COLOR.primarySoft }}>
+              <th className="w-8 px-2 py-2" />
+              {["No. Faktur Vendor", "Tipe", "Supplier", "Tanggal", "Total Tagihan"].map((h) => (
+                <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {allPurchaseDocs.map((doc) => {
+              const isOpen = expanded.has(doc.id);
+              return (
+                <React.Fragment key={doc.id}>
+                  <tr
+                    style={{ borderTop: `1px solid ${COLOR.border}`, cursor: "pointer" }}
+                    onClick={() => toggle(doc.id)}
+                  >
+                    <td className="px-2 py-2.5 text-center select-none report-toggle-btn" style={{ color: COLOR.primary }}>
+                      <span style={{ display: "inline-block", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", fontSize: 11, fontWeight: 700 }}>▶</span>
+                    </td>
+                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
+                    <td className="px-4 py-2.5"><Badge tone={doc.type === "Langsung" ? "warn" : "neutral"}>{doc.type}</Badge></td>
+                    <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{doc.partyName}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
+                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
+                  </tr>
+                  {/* Detail item – tersembunyi di layar jika belum di-expand, selalu muncul saat print */}
+                  <tr
+                    className="report-invoice-detail"
+                    style={{ borderTop: `1px solid ${COLOR.border}`, background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}
+                  >
+                    <td />
+                    <td colSpan={5} style={{ paddingBottom: 8, paddingLeft: 12 }}>
+                      <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr>
+                            <th style={{ textAlign: "left", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Produk</th>
+                            <th style={{ textAlign: "center", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Qty</th>
+                            <th style={{ textAlign: "right", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Harga Beli</th>
+                            <th style={{ textAlign: "right", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Subtotal</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(doc.items || []).map((it, idx) => {
+                            const p = (products || []).find((x) => x.id === it.productId);
+                            const lineTotal = (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
+                            return (
+                              <tr key={idx}>
+                                <td style={{ padding: "2px 0", color: COLOR.ink }}>{p?.name || "-"}</td>
+                                <td style={{ textAlign: "center", padding: "2px 4px", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>{it.qty} {p?.unit || ""}</td>
+                                <td style={{ textAlign: "right", padding: "2px 0", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(it.unitPrice)}</td>
+                                <td style={{ textAlign: "right", padding: "2px 0", fontWeight: 600, color: COLOR.ink, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(lineTotal)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                </React.Fragment>
+              );
+            })}
+            {allPurchaseDocs.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian di periode ini.</td></tr>}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
 function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvoices, returns, pReturns, paymentsIn, expenses, batches, deliveryNotes, findName, pInvoiceTotal, invoiceTotal, invoiceNetSalesDPP, currentUserEmail, canSeePnL }) {
   const isSuperAdminOrFinance = !!canSeePnL || ADMIN_FINANCE_EMAILS.includes((currentUserEmail || "").toLowerCase());
 
@@ -2294,6 +2575,12 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
           </Card>
 
           <Card className="!p-0 overflow-hidden printable-area">
+            <style>{`
+              @media print {
+                .aging-invoice-detail { display: table-row !important; }
+                .aging-toggle-btn { display: none !important; }
+              }
+            `}</style>
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: COLOR.primarySoft }}>
@@ -2340,7 +2627,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
                       onMouseEnter={(e) => { if (!isOpen) e.currentTarget.style.background = "#f8fafc"; }}
                       onMouseLeave={(e) => { if (!isOpen) e.currentTarget.style.background = ""; }}
                     >
-                      <td className="px-2 py-3 text-center select-none" style={{ color: COLOR.primary }}>
+                      <td className="px-2 py-3 text-center select-none aging-toggle-btn" style={{ color: COLOR.primary }}>
                         <span
                           style={{
                             display: "inline-block",
@@ -2368,10 +2655,11 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
                     </tr>,
 
                     /* ── BARIS DETAIL INVOICE (accordion expand) ── */
-                    isOpen && grp.invoices.map((item) => (
+                    ...grp.invoices.map((item) => (
                       <tr
                         key={`inv-${item.id}`}
-                        style={{ borderTop: `1px solid ${COLOR.border}`, background: "#f4f7fb" }}
+                        className="aging-invoice-detail"
+                        style={{ borderTop: `1px solid ${COLOR.border}`, background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}
                       >
                         {/* indent spacer */}
                         <td />
@@ -2486,124 +2774,20 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
 
       {/* TAB 3: LAPORAN PENJUALAN */}
       {subTab === "sales" && (
-        <div>
-          <Card className="mb-4">
-            <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total Penjualan Berdasarkan Faktur ({fmtDate(start)} – {fmtDate(end)})</div>
-            <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(salesTotal)}</div>
-          </Card>
-
-          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Rekap Produk Difakturkan</div>
-          <Card className="!p-0 overflow-hidden mb-5">
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ background: COLOR.primarySoft }}>
-                  {["Produk", "Qty Terjual", "Nilai Penjualan (Subtotal)"].map((h) => (
-                    <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(salesAgg).sort((a, b) => b[1].value - a[1].value).map(([pid, agg]) => {
-                  const p = (products || []).find((x) => x.id === pid);
-                  return (
-                    <tr key={pid} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                      <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{p?.name || "-"}</td>
-                      <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.inkSoft }}>{agg.qty} {p?.unit}</td>
-                      <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.ink }}>{fmtIDR(agg.value)}</td>
-                    </tr>
-                  );
-                })}
-                {Object.keys(salesAgg).length === 0 && <tr><td colSpan={3} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Penjualan di periode ini.</td></tr>}
-              </tbody>
-            </table>
-          </Card>
-
-          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Daftar Faktur Penjualan</div>
-          <Card className="!p-0 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ background: COLOR.primarySoft }}>
-                  {["No. Faktur", "Tipe", "Pelanggan", "Tanggal", "Total Tagihan"].map((h) => (
-                    <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {allSalesDocs.map((doc) => (
-                  <tr key={doc.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
-                    <td className="px-4 py-2.5"><Badge tone={doc.type === "Langsung" ? "warn" : "neutral"}>{doc.type}</Badge></td>
-                    <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{doc.partyName}</td>
-                    <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
-                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
-                  </tr>
-                ))}
-                {allSalesDocs.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Penjualan di periode ini.</td></tr>}
-              </tbody>
-            </table>
-          </Card>
-        </div>
+        <SalesReportTab
+          start={start} end={end}
+          salesTotal={salesTotal} salesAgg={salesAgg} allSalesDocs={allSalesDocs}
+          products={products} COLOR={COLOR} fmtDate={fmtDate} fmtIDR={fmtIDR}
+        />
       )}
 
       {/* TAB 4: LAPORAN PEMBELIAN */}
       {subTab === "purchases" && (
-        <div>
-          <Card className="mb-4">
-            <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total Pembelian Berdasarkan Faktur Vendor ({fmtDate(start)} – {fmtDate(end)})</div>
-            <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(purchaseTotal)}</div>
-          </Card>
-
-          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Rekap Produk Difakturkan</div>
-          <Card className="!p-0 overflow-hidden mb-5">
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ background: COLOR.primarySoft }}>
-                  {["Produk", "Qty Dibeli", "Nilai Beli (Subtotal)"].map((h) => (
-                    <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(purchaseAgg).sort((a, b) => b[1].value - a[1].value).map(([pid, agg]) => {
-                  const p = (products || []).find((x) => x.id === pid);
-                  return (
-                    <tr key={pid} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                      <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{p?.name || "-"}</td>
-                      <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.inkSoft }}>{agg.qty} {p?.unit}</td>
-                      <td className="px-4 py-2.5 tabular-nums" style={{ color: COLOR.ink }}>{fmtIDR(agg.value)}</td>
-                    </tr>
-                  );
-                })}
-                {Object.keys(purchaseAgg).length === 0 && <tr><td colSpan={3} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian di periode ini.</td></tr>}
-              </tbody>
-            </table>
-          </Card>
-
-          <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Daftar Faktur Pembelian</div>
-          <Card className="!p-0 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ background: COLOR.primarySoft }}>
-                  {["No. Faktur Vendor", "Tipe", "Supplier", "Tanggal", "Total Tagihan"].map((h) => (
-                    <th key={h} className="text-left px-4 py-2 text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {allPurchaseDocs.map((doc) => (
-                  <tr key={doc.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
-                    <td className="px-4 py-2.5"><Badge tone={doc.type === "Langsung" ? "warn" : "neutral"}>{doc.type}</Badge></td>
-                    <td className="px-4 py-2.5" style={{ color: COLOR.ink }}>{doc.partyName}</td>
-                    <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
-                    <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
-                  </tr>
-                ))}
-                {allPurchaseDocs.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian di periode ini.</td></tr>}
-              </tbody>
-            </table>
-          </Card>
-        </div>
+        <PurchaseReportTab
+          start={start} end={end}
+          purchaseTotal={purchaseTotal} purchaseAgg={purchaseAgg} allPurchaseDocs={allPurchaseDocs}
+          products={products} COLOR={COLOR} fmtDate={fmtDate} fmtIDR={fmtIDR}
+        />
       )}
     </div>
   );
