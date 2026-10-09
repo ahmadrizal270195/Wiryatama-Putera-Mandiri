@@ -2718,15 +2718,15 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
       {subTab === "pnl" && isSuperAdminOrFinance && (
         <div className="space-y-4 max-w-3xl">
           <Card className="!p-6 bg-white printable-area">
-            <div className="border-b pb-3 mb-4 flex justify-between items-center">
-              <div>
-                <div className="text-sm font-bold uppercase tracking-wide" style={{ color: COLOR.ink }}>{(company || COMPANY_PROFILE)?.name || "PT WIRYATAMA PUTERA MANDIRI"}</div>
-                <h3 className="font-bold text-base uppercase" style={{ color: COLOR.primary }}>Laporan Laba Rugi Operasional</h3>
-                <p className="text-xs text-gray-500">Periode: {fmtDate(start)} s/d {fmtDate(end)}</p>
+            <div className="relative border-b pb-3 mb-4 text-center">
+              <div className="text-base font-bold uppercase tracking-wide" style={{ color: COLOR.ink }}>{(company || COMPANY_PROFILE)?.name || "PT WIRYATAMA PUTERA MANDIRI"}</div>
+              <h3 className="font-bold text-sm uppercase" style={{ color: COLOR.primary }}>Laporan Laba Rugi Operasional</h3>
+              <p className="text-xs text-gray-500">Periode: {fmtDate(start)} s/d {fmtDate(end)}</p>
+              <div className="absolute right-0 top-0 no-print">
+                <Button onClick={() => window.print()} variant="ghost" className="text-xs">
+                  <Printer size={14} /> Cetak Laporan
+                </Button>
               </div>
-              <Button onClick={() => window.print()} variant="ghost" className="no-print text-xs">
-                <Printer size={14} /> Cetak Laporan
-              </Button>
             </div>
 
             <div className="space-y-3 text-sm tabular-nums">
