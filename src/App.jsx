@@ -284,12 +284,34 @@ function makeCostResolver(batches, pInvoices, pReceipts, pos) {
   const byNo = {};
   // Harga net per unit di PO (setelah diskon item) -> dipakai buat batch hasil BPB.
   // Dulu batch BPB nyimpen harga PO SEBELUM diskon item, beda sama faktur pembelian langsung.
+  // Faktor diskon nota: (subtotal - diskon nota) / subtotal. Diskon nota pembelian
+  // langsung ngurangin harga modal, dibagi proporsional ke tiap item.
+  const notaRatio = (doc, opts) => {
+    const bill = computeBill(doc, opts);
+    return bill.raw > 0 ? (bill.raw - bill.diskon) / bill.raw : 1;
+  };
+  // Harga net per unit dari PO: utamakan Faktur Pembelian untuk PO itu (harga & diskon aktual),
+  // kalau belum ada pakai PO-nya.
   const poNetUnit = (poId, productId) => {
+    const pi = (pInvoices || []).find((x) => x.poId === poId);
+    const piIt = (pi?.items || []).find((x) => x.productId === productId);
+    if (piIt && Number(piIt.qty) > 0) {
+      return { cost: (itemLineTotal(piIt) / Number(piIt.qty)) * notaRatio(pi), label: `net Faktur Beli ${pi.noFaktur || ""}`.trim() };
+    }
     const po = (pos || []).find((x) => x.id === poId);
     const it = (po?.items || []).find((x) => x.productId === productId);
     const q = Number(it?.qty) || 0;
-    return it && q > 0 ? { cost: itemLineTotal(it) / q, poNumber: po.poNumber || "" } : null;
+    return it && q > 0 ? { cost: (itemLineTotal(it) / q) * notaRatio(po, { includeOngkir: false }), label: `net PO ${po.poNumber || ""}`.trim() } : null;
   };
+  // Harga net per batch dari faktur pembelian langsung (setelah diskon item & nota)
+  const piCostByBatch = {};
+  (pInvoices || []).forEach((pi) => {
+    const r = notaRatio(pi);
+    (pi.items || []).forEach((it) => {
+      const q = Number(it.qty) || 0;
+      if (it.batchId && q > 0) piCostByBatch[it.batchId] = { cost: (itemLineTotal(it) / q) * r, label: `net Faktur Beli ${pi.noFaktur || ""}`.trim() };
+    });
+  });
   const put = (id, pid, no, cost, src) => {
     if (!(cost > 0)) return;
     if (id && byId[id] == null) byId[id] = { cost, src };
@@ -297,14 +319,17 @@ function makeCostResolver(batches, pInvoices, pReceipts, pos) {
     if (pid && no && byNo[k] == null) byNo[k] = { cost, src };
   };
   (batches || []).forEach((b) => {
-    const net = b.poId ? poNetUnit(b.poId, b.productId) : null;
-    if (net && net.cost > 0) put(b.id, b.productId, b.batchNo, net.cost, `Stok · net PO ${net.poNumber}`.trim());
+    const net = b.poId ? poNetUnit(b.poId, b.productId) : piCostByBatch[b.id];
+    if (net && net.cost > 0) put(b.id, b.productId, b.batchNo, net.cost, `Stok · ${net.label}`);
     else put(b.id, b.productId, b.batchNo, Number(b.costPrice), "Stok");
   });
-  (pInvoices || []).forEach((pi) => (pi.items || []).forEach((it) => {
-    const q = Number(it.qty) || 0;
-    put(it.batchId, it.productId, it.batchNo, q > 0 ? itemLineTotal(it) / q : 0, `Faktur Beli ${pi.noFaktur || ""}`.trim());
-  }));
+  (pInvoices || []).forEach((pi) => {
+    const r = notaRatio(pi);
+    (pi.items || []).forEach((it) => {
+      const q = Number(it.qty) || 0;
+      put(it.batchId, it.productId, it.batchNo, q > 0 ? (itemLineTotal(it) / q) * r : 0, `Faktur Beli ${pi.noFaktur || ""}`.trim());
+    });
+  });
   (pReceipts || []).forEach((pr) => (pr.items || []).forEach((it) => {
     const net = poNetUnit(pr.poId, it.productId);
     put(it.batchId, it.productId, it.batchNo, net && net.cost > 0 ? net.cost : Number(it.unitPrice), `BPB ${pr.noBPB || ""}`.trim());
@@ -2449,23 +2474,24 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
   const toggle = (id) => setExpanded((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
   const toggleProd = (id) => setExpandedProd((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
   const productOf = (pid) => (products || []).find((x) => x.id === pid);
-  const netUnit = (it) => { const q = Number(it.qty) || 0; return q > 0 ? itemLineTotal(it) / q : 0; };
+  const netUnit = (it, doc) => { const q = Number(it.qty) || 0; return q > 0 ? (itemLineTotal(it) / q) * (doc?.notaRatio ?? 1) : 0; };
 
   // Rekap per produk + daftar faktur pembelian asalnya (buat tracking harga beli)
   const prodMap = {};
   allPurchaseDocs.forEach((doc) => {
     (doc.items || []).forEach((it) => {
       const pid = it.productId;
-      if (!prodMap[pid]) prodMap[pid] = { qty: 0, value: 0, lines: [] };
+      if (!prodMap[pid]) prodMap[pid] = { qty: 0, value: 0, modal: 0, lines: [] };
       const q = Number(it.qty) || 0;
       const lt = itemLineTotal(it);
       prodMap[pid].qty += q;
       prodMap[pid].value += lt;
+      prodMap[pid].modal += q * netUnit(it, doc);
       prodMap[pid].lines.push({
         key: `${doc.id}-${prodMap[pid].lines.length}`,
         docNumber: doc.docNumber, partyName: doc.partyName, date: doc.date, type: doc.type,
         batchNo: it.batchNo || "-", qty: q, unitPrice: Number(it.unitPrice) || 0,
-        discAmt: Math.max(0, q * (Number(it.unitPrice) || 0) - lt), netUnit: netUnit(it), lineTotal: lt,
+        discAmt: Math.max(0, q * (Number(it.unitPrice) || 0) - lt), notaPct: (1 - (doc.notaRatio ?? 1)) * 100, netUnit: netUnit(it, doc), lineTotal: lt,
       });
     });
   });
@@ -2514,7 +2540,7 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
                 <th className={th} style={{ color: COLOR.primary }}>Produk</th>
                 <th className={thR} style={{ color: COLOR.primary }}>Jml. Faktur</th>
                 <th className={thR} style={{ color: COLOR.primary }}>Qty Dibeli</th>
-                <th className={thR} style={{ color: COLOR.primary }}>Rata-rata Harga Beli</th>
+                <th className={thR} style={{ color: COLOR.primary }}>Rata-rata Harga Modal</th>
                 <th className={thR} style={{ color: COLOR.primary }}>Nilai Beli</th>
               </tr>
             </thead>
@@ -2536,7 +2562,7 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
                       </td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{a.lines.length}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: COLOR.inkSoft }}>{a.qty} {p?.unit}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: COLOR.ink }}>{fmtIDR(a.qty > 0 ? a.value / a.qty : 0)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: COLOR.ink }}>{fmtIDR(a.qty > 0 ? a.modal / a.qty : 0)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(a.value)}</td>
                     </tr>
                     <tr className="report-invoice-detail" style={{ background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}>
@@ -2551,8 +2577,9 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
                               <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>No. Batch</th>
                               <th style={{ ...sub, fontWeight: 600 }}>Qty</th>
                               <th style={{ ...sub, fontWeight: 600 }}>Harga Beli</th>
-                              <th style={{ ...sub, fontWeight: 600 }}>Diskon</th>
-                              <th style={{ ...sub, fontWeight: 600 }}>Harga Net / {p?.unit || "unit"}</th>
+                              <th style={{ ...sub, fontWeight: 600 }}>Diskon Item</th>
+                              <th style={{ ...sub, fontWeight: 600 }}>Diskon Nota</th>
+                              <th style={{ ...sub, fontWeight: 600 }}>Harga Modal / {p?.unit || "unit"}</th>
                               <th style={{ ...sub, fontWeight: 600 }}>Subtotal</th>
                             </tr>
                           </thead>
@@ -2566,6 +2593,7 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
                                 <td style={{ ...sub, color: COLOR.inkSoft }}>{l.qty} {p?.unit || ""}</td>
                                 <td style={{ ...sub, color: COLOR.inkSoft }}>{fmtIDR(l.unitPrice)}</td>
                                 <td style={{ ...sub, color: l.discAmt > 0 ? "#DC2626" : COLOR.inkSoft }}>{l.discAmt > 0 ? `- ${fmtIDR(l.discAmt)}` : "-"}</td>
+                                <td style={{ ...sub, color: l.notaPct > 0.005 ? "#DC2626" : COLOR.inkSoft }}>{l.notaPct > 0.005 ? `- ${l.notaPct.toFixed(2).replace(/\.?0+$/, "")}%` : "-"}</td>
                                 <td style={{ ...sub, fontWeight: 700, color: COLOR.ink }}>{fmtIDR(l.netUnit)}</td>
                                 <td style={{ ...sub, fontWeight: 600, color: COLOR.ink }}>{fmtIDR(l.lineTotal)}</td>
                               </tr>
@@ -2582,7 +2610,7 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
           </table>
         </div>
         <div className="px-3 py-2 text-[11px] border-t" style={{ color: COLOR.inkSoft, borderColor: COLOR.border }}>
-          Harga Net = harga beli setelah diskon item, sebelum diskon nota & PPN. Ini angka yang sama dipakai jadi harga modal (HPP) batch.
+          Harga Modal = harga beli setelah diskon item & diskon nota (dibagi proporsional), tanpa PPN. Ini angka yang sama dipakai jadi HPP batch.
           Kalau faktur yang dicari nggak muncul, lebarin rentang tanggal di atas.
         </div>
       </Card>
@@ -2628,7 +2656,7 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
                               <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>No. Batch</th>
                               <th style={{ ...sub, fontWeight: 600 }}>Qty</th>
                               <th style={{ ...sub, fontWeight: 600 }}>Harga Beli</th>
-                              <th style={{ ...sub, fontWeight: 600 }}>Harga Net</th>
+                              <th style={{ ...sub, fontWeight: 600 }}>Harga Modal</th>
                               <th style={{ ...sub, fontWeight: 600 }}>Subtotal</th>
                             </tr>
                           </thead>
@@ -2641,7 +2669,7 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
                                   <td style={{ padding: "3px 6px", color: COLOR.inkSoft }}>{it.batchNo || "-"}</td>
                                   <td style={{ ...sub, color: COLOR.inkSoft }}>{it.qty} {p?.unit || ""}</td>
                                   <td style={{ ...sub, color: COLOR.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
-                                  <td style={{ ...sub, fontWeight: 600, color: COLOR.ink }}>{fmtIDR(netUnit(it))}</td>
+                                  <td style={{ ...sub, fontWeight: 600, color: COLOR.ink }}>{fmtIDR(netUnit(it, doc))}</td>
                                   <td style={{ ...sub, fontWeight: 600, color: COLOR.ink }}>{fmtIDR(itemLineTotal(it))}</td>
                                 </tr>
                               );
@@ -2691,7 +2719,9 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         date: inv.date,
         type: inv.isDirect ? "Langsung" : `PO (${po?.poNumber || "-"})`,
         items: inv.items || [],
-        total: pInvoiceTotal(inv)
+        total: pInvoiceTotal(inv),
+        // faktor diskon nota (ikut ngurangin harga modal)
+        notaRatio: (() => { const b = computeBill(inv); return b.raw > 0 ? (b.raw - b.diskon) / b.raw : 1; })()
       };
     }).sort((a, b) => new Date(b.date) - new Date(a.date));
   }, [filteredPInvoices, pos, suppliers, pInvoiceTotal]);

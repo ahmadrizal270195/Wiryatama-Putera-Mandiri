@@ -688,6 +688,9 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
     const newBatches = [];
     const receivedItems = [];
     const receiptId = uid(); // dipakai untuk menautkan batch karantina ke BPB ini
+    // Diskon nota PO ikut ngurangin harga modal, dibagi proporsional ke tiap item
+    const poBill = computeBill(selectedPO, { includeOngkir: false });
+    const poNotaRatio = poBill.raw > 0 ? (poBill.raw - poBill.diskon) / poBill.raw : 1;
 
     (selectedPO.items || []).forEach((it, i) => {
       const rf = receiveForm[i];
@@ -700,10 +703,10 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
           batchNo: rf.batchNo,
           expiryDate: rf.expiryDate,
           qty: qtyToRec,
-          // Harga modal = harga PO setelah diskon item (sama dengan faktur pembelian langsung)
+          // Harga modal = harga PO setelah diskon item & diskon nota (sama dengan faktur pembelian langsung)
           costPrice: (Number(it.qty) || 0) > 0
-            ? Math.max(0, it.qty * it.unitPrice - getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent)) / it.qty
-            : it.unitPrice,
+            ? (Math.max(0, it.qty * it.unitPrice - getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent)) / it.qty) * poNotaRatio
+            : it.unitPrice * poNotaRatio,
           receivedDate: date,
           poId: selectedPO.id,
           sourceType: "pembelian",
@@ -1113,6 +1116,10 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   const invItems = [];
 
   // Validasi dulu sebelum ada yang disimpan
+  // Diskon nota pembelian langsung ngurangin harga modal, dibagi proporsional ke tiap item
+  const billForCost = computeBill({ items, deductions: cleanDeductions(deductions) });
+  const notaRatio = billForCost.raw > 0 ? (billForCost.raw - billForCost.diskon) / billForCost.raw : 1;
+
   const plan = items.map((it) => ({ it, pr: oldPairs.length ? pairForNewItem(it) : null }));
   for (const { it, pr } of plan) {
     if (pr && pr.batch) {
@@ -1137,7 +1144,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     const discAmt = getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent);
     const gross = it.qty * it.unitPrice;
     const netTotal = Math.max(0, gross - discAmt);
-    const netUnitPrice = it.qty > 0 ? netTotal / it.qty : 0;
+    const netUnitPrice = it.qty > 0 ? (netTotal / it.qty) * notaRatio : 0;
 
     // Batch lama ketemu -> update di tempat, qty = qty baru - yang sudah terpakai
     if (pr && pr.batch) {
