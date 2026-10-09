@@ -2469,14 +2469,20 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
     const grossProfit = netSales - totalCOGS;
 
     let periodExpenses = 0;
+    // Rincian beban operasional per kategori akun (buat ditampilkan & dicetak)
+    const expenseByCategory = {};
     (expenses || []).forEach((e) => {
-      if (e.category === "Sewa Dibayar di Muka (Prepaid 1 Tahun)") {
-        const monthlyAmort = (Number(e.amount) || 0) / 12;
-        if (inRange(e.date)) periodExpenses += monthlyAmort;
-      } else {
-        if (inRange(e.date)) periodExpenses += (Number(e.amount) || 0);
-      }
+      if (!inRange(e.date)) return;
+      const val = e.category === "Sewa Dibayar di Muka (Prepaid 1 Tahun)"
+        ? (Number(e.amount) || 0) / 12
+        : (Number(e.amount) || 0);
+      periodExpenses += val;
+      const cat = e.category || "Lain-lain";
+      expenseByCategory[cat] = (expenseByCategory[cat] || 0) + val;
     });
+    const expenseCategoryList = Object.entries(expenseByCategory)
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1]);
 
     // Ongkir dari Faktur Pembelian sengaja TIDAK masuk HPP (biar cost produk tetap murni
     // harga barang), tapi tetap dihitung sebagai beban operasional periode berjalan.
@@ -2492,7 +2498,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
 
     const netProfit = grossProfit - periodExpenses + feePembelian;
 
-    return { grossSalesDPP, salesReturnsVal, netSales, totalCOGS, grossProfit, periodExpenses, ongkirPembelian, feePenjualan, feePembelian, netProfit };
+    return { grossSalesDPP, salesReturnsVal, netSales, totalCOGS, grossProfit, periodExpenses, expenseCategoryList, ongkirPembelian, feePenjualan, feePembelian, netProfit };
   }, [filteredInvoices, returns, deliveryNotes, batches, expenses, pInvoices, start, end]);
 
   function aggregateByProduct(docs) {
@@ -2765,6 +2771,13 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
                 <span>(-) Beban Operasional Lainnya</span>
                 <span className="text-red-600">- {fmtIDR(pnlData.periodExpenses - pnlData.ongkirPembelian - pnlData.feePenjualan)}</span>
               </div>
+              {/* Rincian per kategori akun beban */}
+              {pnlData.expenseCategoryList.map(([cat, val]) => (
+                <div key={cat} className="flex justify-between py-1 border-b border-dashed text-xs text-gray-600 pl-10">
+                  <span>{cat}</span>
+                  <span className="tabular-nums">{fmtIDR(val)}</span>
+                </div>
+              ))}
               {pnlData.ongkirPembelian > 0 && (
                 <div className="flex justify-between py-1.5 border-b text-gray-700 pl-4">
                   <span>(-) Ongkir Pembelian (dari Faktur Pembelian)</span>
