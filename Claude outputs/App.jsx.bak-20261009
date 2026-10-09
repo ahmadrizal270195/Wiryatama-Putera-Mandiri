@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, Fragment } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import {
   loadKey, saveKey, deleteKey, subscribeKey,
@@ -1428,26 +1428,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
     #printable-po, #printable-po * {
       visibility: visible !important;
     }
-    /* Laporan (bisa banyak halaman): jangan fixed, biar ngalir ke halaman berikutnya */
-    html, body, #root { height: auto !important; overflow: visible !important; }
-    .main-container, .main-container * { max-height: none !important; }
-    .main-container { overflow: visible !important; }
-    .printable-area {
-      position: absolute !important;
-      left: 0 !important;
-      top: 0 !important;
-      width: 100% !important;
-      margin: 0 !important;
-      padding: 20px !important;
-      border: none !important;
-      display: block !important;
-      overflow: visible !important;
-      background: #ffffff !important;
-      box-shadow: none !important;
-      color: #000000 !important;
-    }
-    .printable-area tr { page-break-inside: avoid; break-inside: avoid; }
-    .printable-area thead { display: table-header-group; }
+    .printable-area,
     #printable-invoice, #printable-sj, #printable-tt, #printable-so, #printable-po { 
       position: fixed !important;
       left: 0 !important;
@@ -2056,7 +2037,7 @@ const REPORT_PRINT_STYLE = `
 `;
 
 function SalesReportTab({ start, end, salesTotal, salesAgg, allSalesDocs, products, COLOR, fmtDate, fmtIDR }) {
-  const [expanded, setExpanded] = useState(new Set());
+  const [expanded, setExpanded] = React.useState(new Set());
   const toggle = (id) => setExpanded((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
 
   return (
@@ -2108,7 +2089,7 @@ function SalesReportTab({ start, end, salesTotal, salesAgg, allSalesDocs, produc
             {allSalesDocs.map((doc) => {
               const isOpen = expanded.has(doc.id);
               return (
-                <Fragment key={doc.id}>
+                <React.Fragment key={doc.id}>
                   <tr
                     style={{ borderTop: `1px solid ${COLOR.border}`, cursor: "pointer" }}
                     onClick={() => toggle(doc.id)}
@@ -2155,7 +2136,7 @@ function SalesReportTab({ start, end, salesTotal, salesAgg, allSalesDocs, produc
                       </table>
                     </td>
                   </tr>
-                </Fragment>
+                </React.Fragment>
               );
             })}
             {allSalesDocs.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Penjualan di periode ini.</td></tr>}
@@ -2167,7 +2148,7 @@ function SalesReportTab({ start, end, salesTotal, salesAgg, allSalesDocs, produc
 }
 
 function PurchaseReportTab({ start, end, purchaseTotal, purchaseAgg, allPurchaseDocs, products, COLOR, fmtDate, fmtIDR }) {
-  const [expanded, setExpanded] = useState(new Set());
+  const [expanded, setExpanded] = React.useState(new Set());
   const toggle = (id) => setExpanded((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
 
   return (
@@ -2219,7 +2200,7 @@ function PurchaseReportTab({ start, end, purchaseTotal, purchaseAgg, allPurchase
             {allPurchaseDocs.map((doc) => {
               const isOpen = expanded.has(doc.id);
               return (
-                <Fragment key={doc.id}>
+                <React.Fragment key={doc.id}>
                   <tr
                     style={{ borderTop: `1px solid ${COLOR.border}`, cursor: "pointer" }}
                     onClick={() => toggle(doc.id)}
@@ -2266,7 +2247,7 @@ function PurchaseReportTab({ start, end, purchaseTotal, purchaseAgg, allPurchase
                       </table>
                     </td>
                   </tr>
-                </Fragment>
+                </React.Fragment>
               );
             })}
             {allPurchaseDocs.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian di periode ini.</td></tr>}
