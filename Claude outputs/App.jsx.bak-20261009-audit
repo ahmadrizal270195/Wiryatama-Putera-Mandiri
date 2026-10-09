@@ -279,36 +279,21 @@ function originalSaleCostPerUnit(inv, productId, batches, deliveryNotes, costOf)
 //  Dipakai supaya penjualan lama yang batch-nya sudah kehapus / dibikin ulang
 //  (bug lama edit & batal faktur pembelian) tetap punya HPP yang benar.
 // ---------------------------------------------------------------------
-function makeCostResolver(batches, pInvoices, pReceipts, pos) {
+function makeCostResolver(batches, pInvoices, pReceipts) {
   const byId = {};
   const byNo = {};
-  // Harga net per unit di PO (setelah diskon item) -> dipakai buat batch hasil BPB.
-  // Dulu batch BPB nyimpen harga PO SEBELUM diskon item, beda sama faktur pembelian langsung.
-  const poNetUnit = (poId, productId) => {
-    const po = (pos || []).find((x) => x.id === poId);
-    const it = (po?.items || []).find((x) => x.productId === productId);
-    const q = Number(it?.qty) || 0;
-    return it && q > 0 ? { cost: itemLineTotal(it) / q, poNumber: po.poNumber || "" } : null;
-  };
   const put = (id, pid, no, cost, src) => {
     if (!(cost > 0)) return;
     if (id && byId[id] == null) byId[id] = { cost, src };
     const k = `${pid}|${String(no || "").trim().toLowerCase()}`;
     if (pid && no && byNo[k] == null) byNo[k] = { cost, src };
   };
-  (batches || []).forEach((b) => {
-    const net = b.poId ? poNetUnit(b.poId, b.productId) : null;
-    if (net && net.cost > 0) put(b.id, b.productId, b.batchNo, net.cost, `Stok · net PO ${net.poNumber}`.trim());
-    else put(b.id, b.productId, b.batchNo, Number(b.costPrice), "Stok");
-  });
+  (batches || []).forEach((b) => put(b.id, b.productId, b.batchNo, Number(b.costPrice), "Stok"));
   (pInvoices || []).forEach((pi) => (pi.items || []).forEach((it) => {
     const q = Number(it.qty) || 0;
     put(it.batchId, it.productId, it.batchNo, q > 0 ? itemLineTotal(it) / q : 0, `Faktur Beli ${pi.noFaktur || ""}`.trim());
   }));
-  (pReceipts || []).forEach((pr) => (pr.items || []).forEach((it) => {
-    const net = poNetUnit(pr.poId, it.productId);
-    put(it.batchId, it.productId, it.batchNo, net && net.cost > 0 ? net.cost : Number(it.unitPrice), `BPB ${pr.noBPB || ""}`.trim());
-  }));
+  (pReceipts || []).forEach((pr) => (pr.items || []).forEach((it) => put(it.batchId, it.productId, it.batchNo, Number(it.unitPrice), `BPB ${pr.noBPB || ""}`.trim())));
   const explain = (batchId, productId, batchNo) => {
     if (batchId && byId[batchId] != null) return { ...byId[batchId], match: "id" };
     const k = `${productId}|${String(batchNo || "").trim().toLowerCase()}`;
@@ -318,109 +303,6 @@ function makeCostResolver(batches, pInvoices, pReceipts, pos) {
   const costOf = (batchId, productId, batchNo) => explain(batchId, productId, batchNo).cost;
   costOf.explain = explain;
   return costOf;
-}
-
-// ---------------------------------------------------------------------
-//  LABA KOTOR PER FAKTUR PENJUALAN (satu-satunya rumus)
-//  Dipakai Laporan Penjualan, Laba Rugi, dan Dashboard supaya angkanya sama.
-//   - Penjualan  = DPP faktur (setelah diskon item & nota, tanpa PPN)
-//   - HPP        = alokasi batch (faktur langsung) / Surat Jalan diterima (faktur SO),
-//                  dikurangi barang yang balik karena SJ diterima sebagian
-//   - Retur      = retur dari faktur, dinilai dengan harga DPP yang sama dengan faktur
-// ---------------------------------------------------------------------
-function computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf }) {
-  const bill = computeBill(inv);
-  const dpp = bill.dpp;
-  const dppRatio = bill.raw > 0 ? dpp / bill.raw : 1; // efek diskon nota & PPN include
-
-  let invCogs = 0;
-  const costByProduct = {};
-  const slot = (pid) => (costByProduct[pid] ||= { qty: 0, cost: 0, missingBatch: 0, zeroCost: 0, recovered: 0, trace: [] });
-  const addAllocs = (pid, allocs) => {
-    const cp = slot(pid);
-    (allocs || []).forEach((a) => {
-      const q = Number(a.qty) || 0;
-      const b = (batches || []).find((x) => x.id === a.batchId);
-      const ex = costOf.explain(a.batchId, pid, a.batchNo);
-      const unit = ex.cost;
-      const c = q * unit;
-      cp.trace.push({ batchNo: a.batchNo || b?.batchNo || "-", qty: q, unit, src: ex.src, byNo: ex.match === "no" });
-      invCogs += c;
-      cp.qty += q;
-      cp.cost += c;
-      if (!(unit > 0)) {
-        if (!b) cp.missingBatch += q;
-        else cp.zeroCost += q;
-      } else if (!b || !(Number(b.costPrice) > 0)) {
-        cp.recovered += q;
-      }
-    });
-  };
-  const receivedDNs = inv.isDirect ? [] : (deliveryNotes || []).filter((dn) => dn.soId === inv.soId && dn.status === "diterima");
-  if (inv.isDirect) {
-    (inv.items || []).forEach((it) => addAllocs(it.productId, it.allocations));
-  } else {
-    receivedDNs.forEach((dn) => (dn.items || []).forEach((it) => addAllocs(it.productId, it.allocations)));
-  }
-
-  const isSJReturn = (r) => r.source === "sj" || (!r.invoiceId && r.soId);
-  const returList = (returns || []).filter((r) => r.invoiceId === inv.id || (inv.soId && r.soId === inv.soId));
-
-  // Barang yang balik karena SJ diterima sebagian: BUKAN retur penjualan (nggak pernah difakturkan),
-  // jadi cuma ngurangin HPP barang terkirim, nggak ngurangin penjualan.
-  returList.filter(isSJReturn).forEach((r) => (r.items || []).forEach((it) => {
-    const cp = slot(it.productId);
-    const avg = cp.qty > 0 ? cp.cost / cp.qty : 0;
-    const rbs = it.restockedBatches || [];
-    const rbQty = rbs.reduce((s2, rb) => s2 + (Number(rb.qty) || 0), 0);
-    let backCost = rbs.reduce((s2, rb) => s2 + (Number(rb.qty) || 0) * costOf(rb.batchId, it.productId, rb.batchNo), 0);
-    const backQty = Number(it.qty) || 0;
-    if (backQty > rbQty) backCost += (backQty - rbQty) * avg;
-    invCogs -= backCost;
-    cp.qty -= backQty;
-    cp.cost -= backCost;
-    cp.trace.push({ batchNo: rbs.map((x) => x.batchNo).filter(Boolean).join(", ") || "-", qty: -backQty, unit: backQty > 0 ? backCost / backQty : 0, src: `balik, SJ diterima sebagian (${r.noRetur || "-"})`, byNo: false });
-  }));
-
-  const hasReceivedDN = inv.isDirect || receivedDNs.length > 0;
-  const items = (inv.items || []).map((it) => {
-    const qty = Number(it.qty) || 0;
-    const cp = costByProduct[it.productId];
-    const hppUnit = cp && cp.qty > 0 ? cp.cost / cp.qty : 0;
-    let hppIssue = null;
-    if (!hasReceivedDN) hppIssue = "sj_belum_diterima";
-    else if (!cp || cp.qty <= 0) hppIssue = "tanpa_alokasi";
-    else if (cp.missingBatch > 0) hppIssue = "batch_terhapus";
-    else if (cp.zeroCost > 0) hppIssue = "modal_nol";
-    else if (cp.recovered > 0) hppIssue = "dipulihkan";
-    return { productId: it.productId, qty, unitPrice: Number(it.unitPrice) || 0, lineTotal: itemLineTotal(it), hppUnit, hppTotal: qty * hppUnit, hppIssue, trace: cp?.trace || [] };
-  });
-  const itemsHpp = items.reduce((s2, x) => s2 + x.hppTotal, 0);
-
-  // Retur penjualan dari faktur: nilai pakai harga DPP faktur (setelah diskon, tanpa PPN),
-  // sama dasar hitungnya dengan angka penjualan.
-  let retVal = 0;
-  let retCogs = 0;
-  returList.filter((r) => !isSJReturn(r)).forEach((r) => (r.items || []).forEach((it) => {
-    const q = Number(it.qty) || 0;
-    const invIt = (inv.items || []).find((x) => x.productId === it.productId);
-    const netUnit = invIt && Number(invIt.qty) > 0 ? itemLineTotal(invIt) / Number(invIt.qty) : Number(it.unitPrice) || 0;
-    retVal += q * netUnit * dppRatio;
-    if (it.restockedBatches && it.restockedBatches.length > 0) {
-      it.restockedBatches.forEach((rb) => { retCogs += (Number(rb.qty) || 0) * costOf(rb.batchId, it.productId, rb.batchNo); });
-    } else {
-      retCogs += q * originalSaleCostPerUnit(inv, it.productId, batches, deliveryNotes, costOf);
-    }
-  }));
-
-  invCogs = Math.max(0, invCogs);
-  const cogsNet = Math.max(0, invCogs - retCogs);
-  return {
-    raw: bill.raw, diskon: bill.diskon, dpp,
-    items, invCogs, hppAdjust: invCogs - itemsHpp,
-    retVal, retCogs, cogsNet,
-    grossProfit: dpp - retVal - cogsNet,
-  };
 }
 
 // ---------- MAIN APP ROUTER ----------
@@ -1262,10 +1144,35 @@ function PharmaERP({ userEmail, onLogout }) {
   function soDPAmount(soId) { return (paymentsIn || []).filter((p) => p.soId === soId && p.type === "DP").reduce((s, p) => s + p.amount, 0); }
   function invoicePaidAmount(invId) { return (paymentsIn || []).filter((p) => p.invoiceId === invId).reduce((s, p) => s + p.amount, 0); }
   function invoiceReturnedAmount(invId) { return (returns || []).filter((r) => r.invoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
-  const costOf = useMemo(() => makeCostResolver(batches, pInvoices, pReceipts, pos), [batches, pInvoices, pReceipts, pos]);
-  // HPP neto per faktur: rumus yang sama dengan Laporan Penjualan & Laba Rugi
+  const costOf = useMemo(() => makeCostResolver(batches, pInvoices, pReceipts), [batches, pInvoices, pReceipts]);
+  function batchCost(batchId, productId, batchNo) { return costOf(batchId, productId, batchNo); }
+  
   function invoiceCOGS(inv) {
-    return computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf }).cogsNet;
+    let cogs = 0;
+    if (inv.isDirect) {
+      cogs = (inv.items || []).reduce((s, it) => s + (it.allocations || []).reduce((s2, a) => s2 + a.qty * batchCost(a.batchId, it.productId, a.batchNo), 0), 0);
+    } else {
+      cogs = (deliveryNotes || []).filter((dn) => dn.soId === inv.soId && dn.status === "diterima")
+        .reduce((s, dn) => s + (dn.items || []).reduce((s2, it) => s2 + (it.allocations || []).reduce((s3, a) => s3 + a.qty * batchCost(a.batchId, it.productId, a.batchNo), 0), 0), 0);
+    }
+
+    const returList = (returns || []).filter((r) => r.invoiceId === inv.id || (inv.soId && r.soId === inv.soId));
+    let returnedCOGS = 0;
+    
+    returList.forEach((r) => {
+      (r.items || []).forEach((it) => {
+        if (it.restockedBatches && it.restockedBatches.length > 0) {
+          it.restockedBatches.forEach((rb) => {
+            returnedCOGS += rb.qty * batchCost(rb.batchId, it.productId, rb.batchNo);
+          });
+        } else {
+          const costPerUnit = originalSaleCostPerUnit(inv, it.productId, batches, deliveryNotes, costOf);
+          returnedCOGS += it.qty * costPerUnit;
+        }
+      });
+    });
+
+    return Math.max(0, cogs - returnedCOGS);
   }
 
   function invoiceSisa(inv) {
@@ -1281,11 +1188,17 @@ function PharmaERP({ userEmail, onLogout }) {
     return out + exp;
   }, [paymentsOut, expenses]);
   
-  // Laba kotor bulan ini: rumus sama persis dengan Laba Rugi (computeInvoiceProfit)
   const grossProfitMonth = useMemo(() => {
-    return (invoices || []).filter((inv) => isThisMonth(inv.date))
-      .reduce((s, inv) => s + computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf }).grossProfit, 0);
-  }, [invoices, batches, deliveryNotes, returns, costOf]);
+    return (invoices || []).filter((inv) => isThisMonth(inv.date)).reduce((s, inv) => {
+      const dppSales = invoiceNetSalesDPP(inv);           
+      const returAmount = invoiceReturnedAmount(inv.id); 
+      const netSales = dppSales - returAmount;            
+      
+      const netCOGS = invoiceCOGS(inv);                   
+      
+      return s + (netSales - netCOGS);                    
+    }, 0);
+  }, [invoices, batches, deliveryNotes, returns, products]);
 
   const expensesMonth = useMemo(() => {
   const now = new Date();
@@ -2715,7 +2628,8 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
     }).sort((a, b) => new Date(b.date) - new Date(a.date));
   }, [filteredInvoices, sos, customers, invoiceTotal]);
 
-  const costOf = useMemo(() => makeCostResolver(batches, pInvoices, pReceipts, pos), [batches, pInvoices, pReceipts, pos]);
+  const costOf = useMemo(() => makeCostResolver(batches, pInvoices, pReceipts), [batches, pInvoices, pReceipts]);
+  function batchCost(batchId, productId, batchNo) { return costOf(batchId, productId, batchNo); }
 
   // 3. KALKULASI AR AGING (UMUR PIUTANG)
   const agingData = useMemo(() => {
@@ -2813,11 +2727,84 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
   };
 
   // 4a. RINCIAN LABA KOTOR PER FAKTUR (harga jual vs HPP)
-  // Rumusnya di computeInvoiceProfit (satu sumber buat Laporan Penjualan, Laba Rugi & Dashboard).
-  const invoiceProfitRows = useMemo(
-    () => filteredInvoices.map((inv) => ({ id: inv.id, ...computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf }) })),
-    [filteredInvoices, returns, deliveryNotes, batches, costOf]
-  );
+  // Satu sumber hitungan: dipakai Laporan Penjualan (detail) DAN Laba Rugi,
+  // jadi angka di dua laporan itu dijamin sama.
+  const invoiceProfitRows = useMemo(() => {
+    return filteredInvoices.map((inv) => {
+      const bill = computeBill(inv);
+      const dpp = invoiceNetSalesDPP(inv);
+
+      // HPP faktur: dari alokasi batch (faktur langsung) atau dari Surat Jalan yang diterima (faktur SO)
+      let invCogs = 0;
+      const costByProduct = {};
+      const addAllocs = (pid, allocs) => {
+        if (!costByProduct[pid]) costByProduct[pid] = { qty: 0, cost: 0, missingBatch: 0, zeroCost: 0, recovered: 0, trace: [] };
+        (allocs || []).forEach((a) => {
+          const q = Number(a.qty) || 0;
+          const b = (batches || []).find((x) => x.id === a.batchId);
+          const ex = costOf.explain(a.batchId, pid, a.batchNo);
+          const unit = ex.cost;
+          const c = a.qty * unit;
+          costByProduct[pid].trace.push({ batchNo: a.batchNo || b?.batchNo || "-", qty: q, unit, src: ex.src, byNo: ex.match === "no" });
+          invCogs += c;
+          costByProduct[pid].qty += q;
+          costByProduct[pid].cost += c;
+          if (!(unit > 0)) {
+            if (!b) costByProduct[pid].missingBatch += q;
+            else costByProduct[pid].zeroCost += q;
+          } else if (!b || !(Number(b.costPrice) > 0)) {
+            costByProduct[pid].recovered += q;
+          }
+        });
+      };
+      if (inv.isDirect) {
+        (inv.items || []).forEach((it) => addAllocs(it.productId, it.allocations));
+      } else {
+        (deliveryNotes || []).filter((dn) => dn.soId === inv.soId && dn.status === "diterima")
+          .forEach((dn) => (dn.items || []).forEach((it) => addAllocs(it.productId, it.allocations)));
+      }
+
+      const hasReceivedDN = inv.isDirect || (deliveryNotes || []).some((dn) => dn.soId === inv.soId && dn.status === "diterima");
+      const items = (inv.items || []).map((it) => {
+        const qty = Number(it.qty) || 0;
+        const cp = costByProduct[it.productId];
+        const hppUnit = cp && cp.qty > 0 ? cp.cost / cp.qty : 0;
+        // Alasan HPP kosong / kurang (buat audit)
+        let hppIssue = null;
+        if (!hasReceivedDN) hppIssue = "sj_belum_diterima";
+        else if (!cp || cp.qty === 0) hppIssue = "tanpa_alokasi";
+        else if (cp.missingBatch > 0) hppIssue = "batch_terhapus";
+        else if (cp.zeroCost > 0) hppIssue = "modal_nol";
+        else if (cp.recovered > 0) hppIssue = "dipulihkan";
+        return { productId: it.productId, qty, unitPrice: Number(it.unitPrice) || 0, lineTotal: itemLineTotal(it), hppUnit, hppTotal: qty * hppUnit, hppIssue, trace: cp?.trace || [] };
+      });
+      const itemsHpp = items.reduce((s, x) => s + x.hppTotal, 0);
+
+      const returList = (returns || []).filter((r) => r.invoiceId === inv.id || (inv.soId && r.soId === inv.soId));
+      let retVal = 0;
+      let retCogs = 0;
+      returList.forEach((r) => {
+        (r.items || []).forEach((it) => {
+          retVal += (it.qty * it.unitPrice);
+          if (it.restockedBatches && it.restockedBatches.length > 0) {
+            it.restockedBatches.forEach((rb) => { retCogs += rb.qty * batchCost(rb.batchId, it.productId, rb.batchNo); });
+          } else {
+            const costPerUnit = originalSaleCostPerUnit(inv, it.productId, batches, deliveryNotes, costOf);
+            retCogs += it.qty * costPerUnit;
+          }
+        });
+      });
+
+      const cogsNet = Math.max(0, invCogs - retCogs);
+      return {
+        id: inv.id,
+        raw: bill.raw, diskon: bill.diskon, dpp,
+        items, invCogs, hppAdjust: invCogs - itemsHpp,
+        retVal, retCogs, cogsNet,
+        grossProfit: dpp - retVal - cogsNet,
+      };
+    });
+  }, [filteredInvoices, returns, deliveryNotes, batches, costOf]);
 
   const profitById = useMemo(() => {
     const m = {};

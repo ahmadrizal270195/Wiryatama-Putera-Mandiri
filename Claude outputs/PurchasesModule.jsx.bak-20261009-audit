@@ -700,10 +700,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
           batchNo: rf.batchNo,
           expiryDate: rf.expiryDate,
           qty: qtyToRec,
-          // Harga modal = harga PO setelah diskon item (sama dengan faktur pembelian langsung)
-          costPrice: (Number(it.qty) || 0) > 0
-            ? Math.max(0, it.qty * it.unitPrice - getItemDiscountAmount(it.qty, it.unitPrice, it.discountType, it.discountPercent)) / it.qty
-            : it.unitPrice,
+          costPrice: it.unitPrice,
           receivedDate: date,
           poId: selectedPO.id,
           sourceType: "pembelian",
