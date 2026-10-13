@@ -20,6 +20,9 @@ export default function StockView(props) {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  // Batch yang qty-nya sudah 0 disembunyikan dari tampilan (datanya tetap disimpan
+  // karena nyimpen harga modal / HPP penjualan lama)
+  const [showEmptyBatches, setShowEmptyBatches] = useState(false);
 
   // --- STATE PENYESUAIAN STOK BATCH (DENGAN AUDIT TRAIL) ---
   const [editBatchModal, setEditBatchModal] = useState(null);
@@ -292,6 +295,10 @@ export default function StockView(props) {
           </Select>
         </div>
       </div>
+      <label className="flex items-center gap-2 text-xs mb-3 cursor-pointer select-none w-fit" style={{ color: colorConfig?.inkSoft }}>
+        <input type="checkbox" checked={showEmptyBatches} onChange={(e) => setShowEmptyBatches(e.target.checked)} />
+        Tampilkan juga batch yang sudah habis (qty 0)
+      </label>
 
       <ResponsiveTable minWidth={750} colorConfig={colorConfig}>
         <thead>
@@ -306,7 +313,9 @@ export default function StockView(props) {
         <tbody>
           {filteredProducts.map((p) => {
             const s = stockByProduct[p.id] || { qty: 0, batches: [] };
-            const sortedBatches = [...(s.batches || [])].sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+            const allBatches = [...(s.batches || [])].sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+            const sortedBatches = showEmptyBatches ? allBatches : allBatches.filter((b) => Number(b.qty) > 0);
+            const hiddenEmpty = allBatches.length - sortedBatches.length;
 
             return (
               <tr key={p.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
@@ -331,9 +340,13 @@ export default function StockView(props) {
                             style={{ 
                               borderColor: colorConfig?.border, 
                               background: colorConfig?.cardSoft, 
-                              color: colorConfig?.ink 
+                              color: colorConfig?.ink,
+                              opacity: Number(b.qty) > 0 ? 1 : 0.55
                             }}
                           >
+                            {Number(b.qty) <= 0 && (
+                              <span className="font-sans font-bold px-1.5 rounded" title="Stok batch ini sudah habis" style={{ background: colorConfig?.dangerSoft || "#FEF2F2", color: colorConfig?.danger || "#DC2626" }}>HABIS</span>
+                            )}
                             <span className="batch-no font-bold" style={{ color: colorConfig?.primary }}>{b.batchNo}</span>
                             <span className="batch-qty" style={{ color: colorConfig?.ink }}>({b.qty} {p.unit})</span>
                             <span className="batch-exp" style={{ color: colorConfig?.inkSoft }}>exp {fmtDate(b.expiryDate)}</span>
@@ -366,6 +379,9 @@ export default function StockView(props) {
                     </div>
                   ) : (
                     <span className="text-xs italic" style={{ color: colorConfig?.inkSoft }}>Tidak ada batch aktif</span>
+                  )}
+                  {hiddenEmpty > 0 && (
+                    <div className="text-[10px] mt-1" style={{ color: colorConfig?.inkSoft }}>+{hiddenEmpty} batch habis disembunyikan</div>
                   )}
                 </td>
               </tr>
