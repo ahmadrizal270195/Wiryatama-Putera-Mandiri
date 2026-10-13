@@ -279,7 +279,7 @@ export default function StockView(props) {
         <div>
           <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} colorConfig={colorConfig}>
             <option value="ALL">Semua Kategori Produk</option>
-            {(CATEGORIES || []).map((c) => (
+            {[...(CATEGORIES || []), ...[...new Set((products || []).map((p) => p.category).filter((c) => c && !(CATEGORIES || []).includes(c)))]].map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
           </Select>

@@ -3,7 +3,7 @@ import { Plus, Search } from "lucide-react";
 import { Eyebrow, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import { qaClassOf, QA_CLASSES } from "../qa";
 
-const CATEGORIES = ["Dental Material", "Alat Kesehatan", "Obat Generik", "Obat Paten", "Consumables"];
+const CATEGORIES = ["Dental Material", "Alat Kesehatan", "Obat Bebas", "Obat Keras", "Consumables"];
 
 // Badge penanggung jawab CDOB (APJ untuk obat, PJT untuk alkes)
 function PJBadge({ product, colorConfig }) {
@@ -218,6 +218,8 @@ export default function ProductsView({ products, save, stockByProduct, notify, c
           <Field label="Kategori" colorConfig={colorConfig}>
             <Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} colorConfig={colorConfig}>
               {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              {/* Kategori lama (mis. Obat Generik / Obat Paten) tetap tampil biar nggak ketimpa diam-diam */}
+              {form.category && !CATEGORIES.includes(form.category) && <option value={form.category}>{form.category} (kategori lama)</option>}
             </Select>
           </Field>
           <Field label="Penanggung jawab (Kelas CDOB)" colorConfig={colorConfig}>

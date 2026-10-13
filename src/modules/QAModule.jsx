@@ -55,7 +55,7 @@ function FlowDiagram({ c }) {
       {line("M320 118 L320 132 L170 132 L170 148")}
       {line("M320 132 L470 132 L470 148")}
       {branch(170, "PJT ALKES REVIEW", "Alkes · Dental · Consumables")}
-      {branch(470, "APJ OBAT REVIEW", "Obat Generik · Obat Paten")}
+      {branch(470, "APJ OBAT REVIEW", "Obat Bebas · Obat Keras")}
     </svg>
   );
 }

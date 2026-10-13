@@ -24,7 +24,7 @@ export const QA_CLASSES = {
   alkes: { label: "Alkes", role: "PJT", roleLong: "Penanggung Jawab Teknis Alkes (PJT)" },
 };
 
-const OBAT_CATEGORIES = ["obat generik", "obat paten"];
+const OBAT_CATEGORIES = ["obat bebas", "obat keras", "obat generik", "obat paten"]; // 2 terakhir = kategori lama
 
 // Kategori produk -> kelas CDOB. Bisa ditimpa per produk lewat product.qaClass.
 export function qaClassOf(product) {

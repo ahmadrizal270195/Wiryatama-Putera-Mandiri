@@ -88,7 +88,7 @@ const getCOLOR = (isDark = false) => {
 const COLOR = getCOLOR(false);
 
 // ---------- CONSTANTS & COMPANY PROFILE CONFIG ----------
-const CATEGORIES = ["Dental Material", "Alat Kesehatan", "Obat Generik", "Obat Paten", "Consumables"];
+const CATEGORIES = ["Dental Material", "Alat Kesehatan", "Obat Bebas", "Obat Keras", "Consumables"];
 const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Individu/Dokter Pribadi", "Distributor Lain"];
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; 
 const ACTIVE_TAB_KEY = "erp-last-active-tab"; 
