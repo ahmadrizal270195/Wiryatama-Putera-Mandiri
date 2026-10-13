@@ -2,6 +2,35 @@ import React, { useState, useMemo } from "react";
 import { Plus, Search } from "lucide-react";
 import { Eyebrow, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import { qaClassOf, QA_CLASSES } from "../qa";
+import { KATEGORI_OBAT_WPM } from "../data/kategoriObatWPM";
+
+// Normalisasi nama buat dicocokkan: huruf kecil, tanpa spasi & tanda baca
+const normName = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// Cocokkan produk di aplikasi dengan Daftar Obat WPM (Excel 13 Okt 2026).
+// 1) nama sama persis (abaikan spasi/tanda baca)  2) nama mirip: salah satu mengandung yang lain & cuma 1 kandidat
+function buildKategoriPlan(products) {
+  const list = KATEGORI_OBAT_WPM.map((r) => ({ ...r, key: normName(r.name) }));
+  const usedExcel = new Set();
+  const rows = [];
+  (products || []).forEach((p) => {
+    const k = normName(p.name);
+    if (!k) return;
+    let hit = list.find((r) => r.key === k);
+    let match = "persis";
+    if (!hit) {
+      const cand = list.filter((r) => r.key.length >= 4 && k.length >= 4 && (k.includes(r.key) || r.key.includes(k)));
+      if (cand.length === 1) { hit = cand[0]; match = "mirip"; }
+    }
+    if (!hit) return;
+    usedExcel.add(hit.key);
+    rows.push({ product: p, excel: hit, match, changed: p.category !== hit.category });
+  });
+  const notFound = list.filter((r) => !usedExcel.has(r.key));
+  const matchedIds = new Set(rows.map((r) => r.product.id));
+  const oldObatLeft = (products || []).filter((p) => !matchedIds.has(p.id) && /^obat (generik|paten)$/i.test(String(p.category || "").trim()));
+  return { rows, notFound, oldObatLeft };
+}
 
 const CATEGORIES = ["Dental Material", "Alat Kesehatan", "Obat Bebas", "Obat Keras", "Consumables"];
 
@@ -27,6 +56,31 @@ export default function ProductsView({ products, save, stockByProduct, notify, c
   const [pjFilter, setPjFilter] = useState("ALL"); // ALL | obat | alkes | manual
   const [selected, setSelected] = useState(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  // Terapkan kategori dari Daftar Obat WPM
+  const [katPlan, setKatPlan] = useState(null);
+  const [katPick, setKatPick] = useState(() => new Set());
+  const [katBusy, setKatBusy] = useState(false);
+
+  function openKategoriPlan() {
+    const plan = buildKategoriPlan(products);
+    setKatPlan(plan);
+    setKatPick(new Set(plan.rows.filter((r) => r.changed).map((r) => r.product.id)));
+  }
+
+  async function applyKategoriPlan() {
+    if (!katPlan || katPick.size === 0) return;
+    if (!confirm(`Ubah kategori ${katPick.size} produk sesuai Daftar Obat WPM?`)) return;
+    setKatBusy(true);
+    try {
+      const byId = {};
+      katPlan.rows.forEach((r) => { if (katPick.has(r.product.id)) byId[r.product.id] = r.excel.category; });
+      await save((products || []).map((p) => (byId[p.id] ? { ...p, category: byId[p.id] } : p)));
+      notify(`Kategori ${Object.keys(byId).length} produk diperbarui sesuai Daftar Obat WPM`);
+      setKatPlan(null);
+    } finally {
+      setKatBusy(false);
+    }
+  }
 
   const [sortField, setSortField] = useState("name");
   const [sortOrder, setSortOrder] = useState("asc");
@@ -135,7 +189,10 @@ export default function ProductsView({ products, save, stockByProduct, notify, c
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div><Eyebrow>Master data</Eyebrow><h2 className="text-xl font-semibold" style={{ color: colorConfig?.ink }}>Produk</h2></div>
-        <Button onClick={openNew} colorConfig={colorConfig}><Plus size={15} /> Tambah Produk</Button>
+        <div className="flex gap-2 flex-wrap">
+          <Button onClick={openKategoriPlan} variant="ghost" colorConfig={colorConfig}>Terapkan Daftar Obat</Button>
+          <Button onClick={openNew} colorConfig={colorConfig}><Plus size={15} /> Tambah Produk</Button>
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <div className="relative w-full sm:w-72">
@@ -238,6 +295,71 @@ export default function ProductsView({ products, save, stockByProduct, notify, c
           <Button onClick={submit} className="w-full justify-center mt-2" colorConfig={colorConfig}>Simpan</Button>
         </Modal>
       )}
+
+      {katPlan && (() => {
+        const changes = katPlan.rows.filter((r) => r.changed);
+        const same = katPlan.rows.length - changes.length;
+        const cell = { padding: "5px 8px", fontSize: 12, borderTop: `1px solid ${colorConfig?.border || "#e2e8f0"}` };
+        return (
+          <Modal title="Terapkan Kategori dari Daftar Obat WPM" onClose={() => setKatPlan(null)} wide colorConfig={colorConfig}>
+            <p className="text-xs mb-3" style={{ color: colorConfig?.inkSoft }}>
+              Sumber: Daftar Obat PT WPM (Excel 13 Okt 2026, {KATEGORI_OBAT_WPM.length} obat). Golongan ikut kode NIE BPOM, Obat Bebas Terbatas digabung ke Obat Bebas.
+              Cuma kategori yang diubah. Data lain & transaksi nggak kesentuh.
+            </p>
+            <div className="text-xs mb-2 flex flex-wrap gap-x-4 gap-y-1" style={{ color: colorConfig?.ink }}>
+              <span><b>{changes.length}</b> produk akan diubah</span>
+              <span><b>{same}</b> sudah sesuai</span>
+              <span><b>{katPlan.notFound.length}</b> nama di Excel nggak ketemu di Produk</span>
+              <span><b>{katPlan.oldObatLeft.length}</b> produk Obat Generik/Paten nggak ada di Excel</span>
+            </div>
+
+            {changes.length > 0 && (
+              <div className="max-h-72 overflow-y-auto border rounded-lg mb-3" style={{ borderColor: colorConfig?.border }}>
+                <table className="w-full">
+                  <thead><tr style={{ background: colorConfig?.primarySoft }}>
+                    <th style={{ ...cell, borderTop: "none", width: 28 }}>
+                      <input type="checkbox" checked={katPick.size === changes.length} onChange={(e) => setKatPick(e.target.checked ? new Set(changes.map((r) => r.product.id)) : new Set())} />
+                    </th>
+                    {["Produk di aplikasi", "Nama di Excel", "Kategori lama", "Kategori baru"].map((h) => <th key={h} style={{ ...cell, borderTop: "none", textAlign: "left", color: colorConfig?.primary }}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {changes.map((r) => (
+                      <tr key={r.product.id}>
+                        <td style={cell}><input type="checkbox" checked={katPick.has(r.product.id)} onChange={() => setKatPick((prev) => { const n = new Set(prev); n.has(r.product.id) ? n.delete(r.product.id) : n.add(r.product.id); return n; })} /></td>
+                        <td style={{ ...cell, color: colorConfig?.ink }}>{r.product.name}</td>
+                        <td style={{ ...cell, color: colorConfig?.inkSoft }}>
+                          {r.excel.name}
+                          {r.match === "mirip" && <span className="ml-1 text-[10px] font-bold" style={{ color: "#B45309" }}>nama mirip, cek</span>}
+                          {r.excel.note && <div className="text-[10px]" style={{ color: "#B45309" }}>{r.excel.note}</div>}
+                        </td>
+                        <td style={{ ...cell, color: colorConfig?.inkSoft }}>{r.product.category || "-"}</td>
+                        <td style={{ ...cell, fontWeight: 700, color: r.excel.category === "Obat Keras" ? "#DC2626" : "#047857" }}>{r.excel.category}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {katPlan.oldObatLeft.length > 0 && (
+              <details className="mb-2 text-xs" style={{ color: colorConfig?.ink }}>
+                <summary className="cursor-pointer font-semibold">Produk Obat Generik/Paten yang nggak ada di Excel ({katPlan.oldObatLeft.length}), edit manual</summary>
+                <ul className="mt-1 ml-4 list-disc" style={{ color: colorConfig?.inkSoft }}>{katPlan.oldObatLeft.map((p) => <li key={p.id}>{p.name} · {p.category}</li>)}</ul>
+              </details>
+            )}
+            {katPlan.notFound.length > 0 && (
+              <details className="mb-3 text-xs" style={{ color: colorConfig?.ink }}>
+                <summary className="cursor-pointer font-semibold">Nama di Excel yang nggak ketemu di Produk ({katPlan.notFound.length})</summary>
+                <ul className="mt-1 ml-4 list-disc" style={{ color: colorConfig?.inkSoft }}>{katPlan.notFound.map((r) => <li key={r.key}>{r.name} → {r.category}</li>)}</ul>
+              </details>
+            )}
+
+            <Button onClick={applyKategoriPlan} disabled={katBusy || katPick.size === 0} className="w-full justify-center" colorConfig={colorConfig}>
+              {katBusy ? "Menyimpan..." : `Terapkan ke ${katPick.size} produk`}
+            </Button>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
