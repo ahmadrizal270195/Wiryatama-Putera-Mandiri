@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Plus, Trash2, Printer, Flame, Search } from "lucide-react";
 import { Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
+import { isNumberTaken } from "../docNumber";
 import { PrintArea, DocHeader, DocTable, SignatureRow } from "../print";
 
 // =====================================================================
@@ -71,6 +72,7 @@ export default function DisposalPanel({
 
   async function submit() {
     if (!form.noBA.trim()) return notify("Nomor Berita Acara wajib diisi", "danger");
+    if (isNumberTaken(disposals, "noBA", form.noBA)) return notify(`Nomor Berita Acara ${form.noBA.trim()} sudah dipakai. Ganti nomornya dulu.`, "danger");
     if (lines.length === 0) return notify("Pilih minimal 1 batch yang dimusnahkan", "danger");
     if (!form.witnesses.pj.trim()) return notify("Nama penanggung jawab (APJ / PJT) wajib diisi", "danger");
     if (!form.witnesses.saksi1.trim()) return notify("Minimal 1 saksi wajib diisi", "danger");

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Plus, Search, Printer, FileText, Trash2 } from "lucide-react";
 import { newReview, isCleared, blockedReason, QABadge, reviewState, qaSignatureText, requiredClasses } from "../qa";
+import { nextDocNumber, isNumberTaken } from "../docNumber";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import { choosePaperAndPrint, printDocumentContent, QASignatureBlock, PrintArea, DocHeader, DocParties, DocTable, SignatureRow, PaymentInfo } from "../print";
 import { computeBill, normalizeDeductions, legacyDiscountFields, cleanDeductions } from "../billing";
@@ -239,13 +240,9 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
   }, [sos, customers, searchSO, statusFilter, sortField, sortOrder, getSOStatus, soTotal, findName]);
 
   function openNew() {
-    const currentYear = new Date().getFullYear();
-    const maxSeq = (sos || []).reduce((max, s) => {
-      const match = (s.soNumber || "").match(/SO-\d{4}-(\d+)/);
-      return match ? Math.max(max, parseInt(match[1], 10)) : max;
-    }, 0);
+    const nextNo = nextDocNumber((sos || []).map((x) => x.soNumber), "SO");
 
-    setSoNumber(`SO-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`);
+    setSoNumber(nextNo);
     setCustomerId((customers || [])[0]?.id || "");
     setDate(todayISO());
     setTaxType("none");
@@ -320,6 +317,7 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
 
   async function submit() {
     if (!soNumber.trim()) return notify("Nomor SO wajib diisi", "danger");
+    if (isNumberTaken(sos, "soNumber", soNumber, editingId)) return notify(`Nomor SO ${soNumber.trim()} sudah dipakai SO lain. Ganti nomornya dulu.`, "danger");
     if (!customerId) return notify("Pilih pelanggan", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
 
@@ -467,7 +465,7 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
       {modal && (
         <Modal title={editingId ? `Edit Sales Order — ${soNumber}` : "Buat Sales Order (SO)"} onClose={() => { setModal(null); setEditingId(null); }} wide xwide colorConfig={colorConfig}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-            <Field label="Nomor SO" colorConfig={colorConfig}><TextInput value={soNumber} onChange={(e) => setSoNumber(e.target.value)} placeholder="Contoh: SO/WPM/2026/001" className="tabular-nums" colorConfig={colorConfig} /></Field>
+            <Field label="Nomor SO" colorConfig={colorConfig}><TextInput value={soNumber} onChange={(e) => setSoNumber(e.target.value)} placeholder="Contoh: 500/SO/WPM/X/26" className="tabular-nums" colorConfig={colorConfig} /></Field>
             <Field label="Pelanggan" colorConfig={colorConfig}>
               <SearchableSelect value={customerId} onChange={handleSelectCustomer} colorConfig={colorConfig} placeholder="-- Pilih Pelanggan --"
                 options={(customers || []).map((c) => ({ value: c.id, label: c.name, sublabel: [c.type, c.address].filter(Boolean).join(" · ") }))}
@@ -731,13 +729,9 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
   const selectedSO = (sos || []).find((x) => x.id === soId);
 
   function openNew() {
-    const currentYear = new Date().getFullYear();
-    const maxSeq = (deliveryNotes || []).reduce((max, dn) => {
-      const match = (dn.noSJ || "").match(/SJ-\d{4}-(\d+)/);
-      return match ? Math.max(max, parseInt(match[1], 10)) : max;
-    }, 0);
+    const nextNo = nextDocNumber((deliveryNotes || []).map((x) => x.noSJ), "SJ");
 
-    setNoSJ(`SJ-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`);
+    setNoSJ(nextNo);
     if (eligibleSOs.length > 0) {
       const firstSO = eligibleSOs[0];
       setSoId(firstSO.id); setDate(todayISO());
@@ -769,6 +763,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
 
   async function submitSJ() {
     if (!noSJ.trim()) return notify("Nomor Surat Jalan wajib diisi", "danger");
+    if (isNumberTaken(deliveryNotes, "noSJ", noSJ, editingId)) return notify(`Nomor Surat Jalan ${noSJ.trim()} sudah dipakai. Ganti nomornya dulu.`, "danger");
     if (!selectedSO) return notify("Pilih SO terlebih dahulu", "danger");
     if (!isCleared(selectedSO)) return notify(blockedReason(selectedSO, `SO ${selectedSO.soNumber}`), "danger");
 
@@ -856,7 +851,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
     await saveBatches(working);
     await saveDeliveryNotes((deliveryNotes || []).map((x) => (x.id === dn.id ? { ...x, items: updatedItems, status: "diterima", receivedDate: todayISO() } : x)));
     if (newReturnItems.length > 0) {
-      const noRetur = `RET-${new Date().getFullYear()}-${String((returns || []).length + 1).padStart(4, "0")}`;
+      const noRetur = nextDocNumber((returns || []).map((r) => r.noRetur), "RET", { start: 3 });
       await saveReturns([...(returns || []), { id: uid(), noRetur, source: "sj", sjId: dn.id, soId: dn.soId, date: todayISO(), items: newReturnItems }]);
       notify(`${dn.noSJ} diterima sebagian — retur ${noRetur} tercatat`, "warn");
     } else notify(`${dn.noSJ} dikonfirmasi diterima lengkap`);
@@ -933,7 +928,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
           ) : (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Field label="Nomor Surat Jalan" colorConfig={colorConfig}><TextInput value={noSJ} onChange={(e) => setNoSJ(e.target.value)} placeholder="Contoh: SJ/WPM/2026/001" className="tabular-nums" colorConfig={colorConfig} /></Field>
+                <Field label="Nomor Surat Jalan" colorConfig={colorConfig}><TextInput value={noSJ} onChange={(e) => setNoSJ(e.target.value)} placeholder="Contoh: 500/SJ/WPM/X/26" className="tabular-nums" colorConfig={colorConfig} /></Field>
                 <Field label="Sales Order" colorConfig={colorConfig}>
                   <SearchableSelect value={soId} onChange={changeSO} disabled={!!editingId} colorConfig={colorConfig} placeholder="-- Pilih Sales Order --"
                     options={eligibleSOs.map((so) => ({ value: so.id, label: `${so.soNumber} · ${findName(customers, so.customerId)}`, sublabel: so.date ? fmtDate(so.date) : "" }))} />
@@ -1242,13 +1237,9 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   }, [invoices, invSearch, invStatusFilter, invSortBy, customers, sos, invoiceTotal, invoicePaidAmount, invoiceReturnedAmount, soDPAmount, findName]);
 
   function openDirectModal() {
-    const currentYear = new Date().getFullYear();
-    const maxSeq = (invoices || []).reduce((max, inv) => {
-      const match = (inv.noFaktur || "").match(/INV-\d{4}-(\d+)/);
-      return match ? Math.max(max, parseInt(match[1], 10)) : max;
-    }, 0);
+    const nextNo = nextDocNumber((invoices || []).map((x) => x.noFaktur), "INV");
 
-    setNoFakturDirect(`INV-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`);
+    setNoFakturDirect(nextNo);
     setCustomerId((customers || [])[0]?.id || ""); setDate(todayISO()); setTaxType("none"); setDiscountTypeHeader("percent"); setDiscountPercentHeader(0); setDeductions([]); setOngkir(0); setItems([]); setSearchProd(""); setEditingId(null); setIsEditingFromSO(false); setModalDirect(true);
   }
 
@@ -1284,6 +1275,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
 
   async function submitDirectInvoice() {
     if (!noFakturDirect.trim()) return notify("Nomor Faktur Penjualan wajib diisi", "danger");
+    if (isNumberTaken(invoices, "noFaktur", noFakturDirect, editingId)) return notify(`Nomor Faktur ${noFakturDirect.trim()} sudah dipakai faktur lain. Ganti nomornya dulu.`, "danger");
     if (!customerId) return notify("Pilih pelanggan terlebih dahulu", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
 
@@ -1348,14 +1340,11 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     const invItems = (so.items || []).map((it) => ({ productId: it.productId, qty: receivedByProduct[it.productId] || 0, unitPrice: it.unitPrice, discountType: it.discountType || "percent", discountPercent: Number(it.discountPercent || 0) })).filter((it) => it.qty > 0);
     if (invItems.length === 0) return notify("Tidak ada barang yang diterima untuk difakturkan", "danger");
 
-    const currentYear = new Date().getFullYear();
-    const maxSeq = (invoices || []).reduce((max, inv) => {
-      const match = (inv.noFaktur || "").match(/INV-\d{4}-(\d+)/);
-      return match ? Math.max(max, parseInt(match[1], 10)) : max;
-    }, 0);
+    const nextNo = nextDocNumber((invoices || []).map((x) => x.noFaktur), "INV");
 
-    const inputFaktur = prompt("Masukkan Nomor Faktur Penjualan / Pajak:", `INV-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`);
+    const inputFaktur = prompt("Masukkan Nomor Faktur Penjualan / Pajak:", nextNo);
     if (!inputFaktur) return;
+    if (isNumberTaken(invoices, "noFaktur", inputFaktur)) return notify(`Nomor Faktur ${inputFaktur.trim()} sudah dipakai faktur lain. Faktur nggak dibuat, coba lagi dengan nomor lain.`, "danger");
 
     const inputOngkir = prompt("Biaya ongkir tambahan ke customer (Rp, kosongkan/0 jika tidak ada):", "0");
     const ongkirVal = Number(inputOngkir) || 0;
@@ -1486,7 +1475,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       {modalDirect && (
         <Modal title={editingId ? `Edit Faktur Penjualan — ${noFakturDirect}` : "Buat Faktur Penjualan Langsung (Tanpa SO)"} onClose={() => { setModalDirect(false); setEditingId(null); setIsEditingFromSO(false); }} wide xwide colorConfig={colorConfig}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-            <Field label="Nomor Faktur" colorConfig={colorConfig}><TextInput value={noFakturDirect} onChange={(e) => setNoFakturDirect(e.target.value)} placeholder="Contoh: INV/WPM/2026/001" className="tabular-nums" colorConfig={colorConfig} /></Field>
+            <Field label="Nomor Faktur" colorConfig={colorConfig}><TextInput value={noFakturDirect} onChange={(e) => setNoFakturDirect(e.target.value)} placeholder="Contoh: 500/INV/WPM/X/26" className="tabular-nums" colorConfig={colorConfig} /></Field>
             <Field label="Pelanggan" colorConfig={colorConfig}>
               <SearchableSelect value={customerId} onChange={handleSelectCustomer} disabled={isEditingFromSO} colorConfig={colorConfig} placeholder="-- Pilih Pelanggan --"
                 options={(customers || []).map((c) => ({ value: c.id, label: c.name, sublabel: [c.type, c.address].filter(Boolean).join(" · ") }))}
@@ -1773,7 +1762,7 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
     });
 
     await saveBatches(working);
-    const noRetur = `RET-${new Date().getFullYear()}-${String((returns || []).length + 1).padStart(4, "0")}`;
+    const noRetur = nextDocNumber((returns || []).map((r) => r.noRetur), "RET", { start: 3 });
     await saveReturns([...(returns || []), { id: uid(), noRetur, source: "faktur", invoiceId: selectedInvoice.id, soId: selectedInvoice.soId, date: todayISO(), items }]);
     notify(`${noRetur} berhasil dicatat & stok dikembalikan ke gudang`); setModal(null);
   }

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Plus, Printer, FileText, Trash2, Search } from "lucide-react";
 import { newReview, isCleared, blockedReason, QABadge, reviewState, requiredClasses } from "../qa";
+import { nextDocNumber, isNumberTaken } from "../docNumber";
 import { choosePaperAndPrint, QASignatureBlock, PrintArea, DocHeader, DocParties, DocTable, SignatureRow } from "../print";
 
 // Review APJ/PJT diulang kalau isi barang berubah (produk, qty, batch, ED).
@@ -191,17 +192,9 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
   const [quickSuppForm, setQuickSuppForm] = useState({ name: "", npwp: "", contact: "", address: "" });
 
   function openNew() {
-    const currentYear = new Date().getFullYear();
-    const maxSeq = (pos || []).reduce((max, p) => {
-      const match = (p.poNumber || "").match(/PO-\d{4}-(\d+)/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        return num > max ? num : max;
-      }
-      return max;
-    }, 0);
+    const nextNo = nextDocNumber((pos || []).map((x) => x.poNumber), "PO");
 
-    const autoPO = `PO-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`;
+    const autoPO = nextNo;
 
     setPoNumber(autoPO);
     setSupplierId((suppliers || [])[0]?.id || "");
@@ -283,6 +276,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
 
   async function submit() {
     if (!poNumber.trim()) return notify("Nomor PO wajib diisi", "danger");
+    if (isNumberTaken(pos, "poNumber", poNumber, editingId)) return notify(`Nomor PO ${poNumber.trim()} sudah dipakai PO lain. Ganti nomornya dulu.`, "danger");
     if (!supplierId) return notify("Pilih supplier", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
 
@@ -408,7 +402,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
         <Modal title={editingId ? `Edit Purchase Order — ${poNumber}` : "Buat Purchase Order"} onClose={() => { setModal(null); setEditingId(null); }} wide xwide colorConfig={colorConfig}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
             <Field label="Nomor PO" colorConfig={colorConfig}>
-              <TextInput value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="Contoh: PO/WPM/2026/001" className="tabular-nums" colorConfig={colorConfig} />
+              <TextInput value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="Contoh: 500/PO/WPM/X/26" className="tabular-nums" colorConfig={colorConfig} />
             </Field>
             <Field label="Supplier / PBF" colorConfig={colorConfig}>
               <SearchableSelect value={supplierId} onChange={handleSelectSupplier} colorConfig={colorConfig} placeholder="-- Pilih Supplier --"
@@ -639,7 +633,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
   const selectedPO = (pos || []).find((x) => x.id === poId);
 
   function openNew() {
-    const autoBPB = `BPB-${new Date().getFullYear()}-${String((pReceipts || []).length + 1).padStart(4, "0")}`;
+    const autoBPB = nextDocNumber((pReceipts || []).map((r) => r.noBPB), "BPB");
     setNoBPB(autoBPB);
     const firstPO = eligiblePOs[0];
     setPoId(firstPO?.id || "");
@@ -668,6 +662,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
 
   async function submitBPB() {
     if (!noBPB.trim()) return notify("Nomor BPB wajib diisi", "danger");
+    if (isNumberTaken(pReceipts, "noBPB", noBPB)) return notify(`Nomor BPB ${noBPB.trim()} sudah dipakai. Ganti nomornya dulu.`, "danger");
     if (!selectedPO) return notify("Pilih PO terlebih dahulu", "danger");
     if (!isCleared(selectedPO)) return notify(blockedReason(selectedPO, `PO ${selectedPO.poNumber}`), "danger");
     for (let i = 0; i < (selectedPO.items || []).length; i++) {
@@ -808,7 +803,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                 <Field label="Nomor BPB" colorConfig={colorConfig}>
-                  <TextInput value={noBPB} onChange={(e) => setNoBPB(e.target.value)} placeholder="Contoh: BPB/WPM/2026/001" className="tabular-nums" colorConfig={colorConfig} />
+                  <TextInput value={noBPB} onChange={(e) => setNoBPB(e.target.value)} placeholder="Contoh: 500/BPB/WPM/X/26" className="tabular-nums" colorConfig={colorConfig} />
                 </Field>
                 <Field label="Purchase Order (PO)" colorConfig={colorConfig}>
                   <SearchableSelect value={poId} onChange={changePO} colorConfig={colorConfig} placeholder="-- Pilih PO --"
@@ -986,17 +981,9 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   }, [pInvoices, pInvSearch, pInvStatusFilter, pInvSortBy, suppliers, pInvoiceSisa, pInvoiceTotal, findName]);
 
   function openDirectModal() {
-    const currentYear = new Date().getFullYear();
-    const maxSeq = (pInvoices || []).reduce((max, inv) => {
-      const match = (inv.noFaktur || "").match(/VINV-\d{4}-(\d+)/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        return num > max ? num : max;
-      }
-      return max;
-    }, 0);
+    const nextNo = nextDocNumber((pInvoices || []).map((x) => x.noFaktur), "VINV");
 
-    const autoFaktur = `VINV-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`;
+    const autoFaktur = nextNo;
 
     setNoFakturDirect(autoFaktur);
     setSupplierId((suppliers || [])[0]?.id || "");
@@ -1067,6 +1054,8 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   async function submitDirectPInvoice() {
   if (!noFakturDirect.trim()) return notify("Nomor Faktur Vendor wajib diisi", "danger");
   if (!supplierId) return notify("Pilih supplier terlebih dahulu", "danger");
+  // Nomor faktur vendor dari supplier, jadi cuma dicek dobel di supplier yang sama
+  if (isNumberTaken(pInvoices, "noFaktur", noFakturDirect, editingId, (d) => d.supplierId === supplierId)) return notify(`Faktur ${noFakturDirect.trim()} dari supplier ini sudah pernah diinput. Cek lagi, jangan sampai dobel.`, "danger");
   if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
   
   for (const it of items) {
@@ -1250,19 +1239,12 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
     if (invItems.length === 0) return notify("Tidak ada barang yang diterima untuk difakturkan", "danger");
     
-    const currentYear = new Date().getFullYear();
-    const maxSeq = (pInvoices || []).reduce((max, inv) => {
-      const match = (inv.noFaktur || "").match(/VINV-\d{4}-(\d+)/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        return num > max ? num : max;
-      }
-      return max;
-    }, 0);
+    const nextNo = nextDocNumber((pInvoices || []).map((x) => x.noFaktur), "VINV");
 
-    const defaultNo = `VINV-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`;
+    const defaultNo = nextNo;
     const inputFaktur = prompt("Masukkan Nomor Faktur Vendor / Supplier:", defaultNo);
     if (!inputFaktur) return;
+    if (isNumberTaken(pInvoices, "noFaktur", inputFaktur, null, (d) => d.supplierId === po.supplierId)) return notify(`Faktur ${inputFaktur.trim()} dari supplier ini sudah pernah diinput. Faktur nggak dibuat, cek lagi nomornya.`, "danger");
 
     const inputOngkir = prompt("Biaya ongkir tambahan di faktur ini (Rp, kosongkan/0 jika tidak ada):", "0");
     const ongkirVal = Number(inputOngkir) || 0;
@@ -1422,7 +1404,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         <Modal title={editingId ? `Edit Faktur Pembelian — ${noFakturDirect}` : "Buat Faktur Pembelian Langsung (Tanpa PO)"} onClose={() => { setModalDirect(false); setEditingId(null); }} wide xwide colorConfig={colorConfig}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             <Field label="Nomor Faktur Vendor" colorConfig={colorConfig}>
-              <TextInput value={noFakturDirect} onChange={(e) => setNoFakturDirect(e.target.value)} placeholder="Contoh: VINV/2026/001" className="tabular-nums" colorConfig={colorConfig} />
+              <TextInput value={noFakturDirect} onChange={(e) => setNoFakturDirect(e.target.value)} placeholder="Contoh: 500/VINV/WPM/X/26" className="tabular-nums" colorConfig={colorConfig} />
             </Field>
             <Field label="Supplier / PBF" colorConfig={colorConfig}>
               <SearchableSelect value={supplierId} onChange={handleSelectSupplier} colorConfig={colorConfig} placeholder="-- Pilih Supplier --"
@@ -1623,7 +1605,7 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
     }
 
     await saveBatches(working);
-    const noRetur = `PRET-${new Date().getFullYear()}-${String((pReturns || []).length + 1).padStart(4, "0")}`;
+    const noRetur = nextDocNumber((pReturns || []).map((r) => r.noRetur), "PRET", { start: 3 });
     await savePReturns([...(pReturns || []), { id: uid(), noRetur, pInvoiceId: selectedInvoice.id, poId: selectedInvoice.poId, date: todayISO(), items: returnItems }]);
     notify(`${noRetur} berhasil disimpan, stok dikurangi & hutang berkurang`);
     setModal(null);
