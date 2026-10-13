@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Plus, Search, Printer, FileText, Trash2 } from "lucide-react";
 import { newReview, isCleared, blockedReason, QABadge, reviewState, qaSignatureText, requiredClasses } from "../qa";
-import { nextDocNumber, isNumberTaken } from "../docNumber";
+import { nextDocNumber, isNumberTaken, golonganOfItems, docCode, isAutoFormat, numberGolMismatch, mixedMessage, GOLONGAN_LABEL } from "../docNumber";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import { choosePaperAndPrint, printDocumentContent, QASignatureBlock, PrintArea, DocHeader, DocParties, DocTable, SignatureRow, PaymentInfo } from "../print";
 import { computeBill, normalizeDeductions, legacyDiscountFields, cleanDeductions } from "../billing";
@@ -239,6 +239,15 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
     });
   }, [sos, customers, searchSO, statusFilter, sortField, sortOrder, getSOStatus, soTotal, findName]);
 
+  // Nomor otomatis ikut golongan item (OB / OK / AL)
+  React.useEffect(() => {
+    if (!modal || editingId) return;
+    const g = golonganOfItems(items, products);
+    const want = docCode("SO", g.mixed ? null : g.code);
+    setSoNumber((cur) => (isAutoFormat(cur, "SO") && !String(cur).toUpperCase().includes(`/${want}/`))
+      ? nextDocNumber((sos || []).map((x) => x.soNumber), want) : cur);
+  }, [items, modal, editingId]);
+
   function openNew() {
     const nextNo = nextDocNumber((sos || []).map((x) => x.soNumber), "SO");
 
@@ -320,6 +329,11 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
     if (isNumberTaken(sos, "soNumber", soNumber, editingId)) return notify(`Nomor SO ${soNumber.trim()} sudah dipakai SO lain. Ganti nomornya dulu.`, "danger");
     if (!customerId) return notify("Pilih pelanggan", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
+    {
+      const gol = golonganOfItems(items, products);
+      if (gol.mixed && !editingId) return notify(mixedMessage(gol), "danger");
+      if (!gol.mixed && numberGolMismatch(soNumber, "SO", gol.code)) return notify(`Nomor ${soNumber.trim()} nggak sesuai golongan item (${GOLONGAN_LABEL[gol.code]}). Ganti kodenya jadi SO-${gol.code}.`, "danger");
+    }
 
     if (editingId) {
       for (const it of items) {
@@ -728,6 +742,15 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
 
   const selectedSO = (sos || []).find((x) => x.id === soId);
 
+  // Nomor SJ ikut golongan SO yang dipilih (SO lama yang campur: pakai golongan tertinggi)
+  React.useEffect(() => {
+    if (!modal || editingId) return;
+    const g = golonganOfItems(selectedSO?.items, products);
+    const want = docCode("SJ", g.mixed ? g.highest : g.code);
+    setNoSJ((cur) => (isAutoFormat(cur, "SJ") && !String(cur).toUpperCase().includes(`/${want}/`))
+      ? nextDocNumber((deliveryNotes || []).map((x) => x.noSJ), want) : cur);
+  }, [soId, modal, editingId]);
+
   function openNew() {
     const nextNo = nextDocNumber((deliveryNotes || []).map((x) => x.noSJ), "SJ");
 
@@ -851,7 +874,8 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
     await saveBatches(working);
     await saveDeliveryNotes((deliveryNotes || []).map((x) => (x.id === dn.id ? { ...x, items: updatedItems, status: "diterima", receivedDate: todayISO() } : x)));
     if (newReturnItems.length > 0) {
-      const noRetur = nextDocNumber((returns || []).map((r) => r.noRetur), "RET", { start: 3 });
+      const gRet = golonganOfItems(newReturnItems, products);
+      const noRetur = nextDocNumber((returns || []).map((r) => r.noRetur), docCode("RET", gRet.mixed ? gRet.highest : gRet.code), { start: 3 });
       await saveReturns([...(returns || []), { id: uid(), noRetur, source: "sj", sjId: dn.id, soId: dn.soId, date: todayISO(), items: newReturnItems }]);
       notify(`${dn.noSJ} diterima sebagian — retur ${noRetur} tercatat`, "warn");
     } else notify(`${dn.noSJ} dikonfirmasi diterima lengkap`);
@@ -1236,6 +1260,15 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       });
   }, [invoices, invSearch, invStatusFilter, invSortBy, customers, sos, invoiceTotal, invoicePaidAmount, invoiceReturnedAmount, soDPAmount, findName]);
 
+  // Nomor faktur langsung ikut golongan item (OB / OK / AL)
+  React.useEffect(() => {
+    if (!modalDirect || editingId) return;
+    const g = golonganOfItems(items, products);
+    const want = docCode("INV", g.mixed ? null : g.code);
+    setNoFakturDirect((cur) => (isAutoFormat(cur, "INV") && !String(cur).toUpperCase().includes(`/${want}/`))
+      ? nextDocNumber((invoices || []).map((x) => x.noFaktur), want) : cur);
+  }, [items, modalDirect, editingId]);
+
   function openDirectModal() {
     const nextNo = nextDocNumber((invoices || []).map((x) => x.noFaktur), "INV");
 
@@ -1278,6 +1311,11 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     if (isNumberTaken(invoices, "noFaktur", noFakturDirect, editingId)) return notify(`Nomor Faktur ${noFakturDirect.trim()} sudah dipakai faktur lain. Ganti nomornya dulu.`, "danger");
     if (!customerId) return notify("Pilih pelanggan terlebih dahulu", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
+    {
+      const gol = golonganOfItems(items, products);
+      if (gol.mixed && !editingId) return notify(mixedMessage(gol), "danger");
+      if (!gol.mixed && numberGolMismatch(noFakturDirect, "INV", gol.code)) return notify(`Nomor ${noFakturDirect.trim()} nggak sesuai golongan item (${GOLONGAN_LABEL[gol.code]}). Ganti kodenya jadi INV-${gol.code}.`, "danger");
+    }
 
     const oldInvObj = (invoices || []).find(x => x.id === editingId);
     const isDirectDoc = oldInvObj ? oldInvObj.isDirect : !isEditingFromSO;
@@ -1340,7 +1378,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     const invItems = (so.items || []).map((it) => ({ productId: it.productId, qty: receivedByProduct[it.productId] || 0, unitPrice: it.unitPrice, discountType: it.discountType || "percent", discountPercent: Number(it.discountPercent || 0) })).filter((it) => it.qty > 0);
     if (invItems.length === 0) return notify("Tidak ada barang yang diterima untuk difakturkan", "danger");
 
-    const nextNo = nextDocNumber((invoices || []).map((x) => x.noFaktur), "INV");
+    const gSO = golonganOfItems(so.items, products);
+    const nextNo = nextDocNumber((invoices || []).map((x) => x.noFaktur), docCode("INV", gSO.mixed ? gSO.highest : gSO.code));
 
     const inputFaktur = prompt("Masukkan Nomor Faktur Penjualan / Pajak:", nextNo);
     if (!inputFaktur) return;
@@ -1762,7 +1801,8 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
     });
 
     await saveBatches(working);
-    const noRetur = nextDocNumber((returns || []).map((r) => r.noRetur), "RET", { start: 3 });
+    const gRet = golonganOfItems(items, products);
+    const noRetur = nextDocNumber((returns || []).map((r) => r.noRetur), docCode("RET", gRet.mixed ? gRet.highest : gRet.code), { start: 3 });
     await saveReturns([...(returns || []), { id: uid(), noRetur, source: "faktur", invoiceId: selectedInvoice.id, soId: selectedInvoice.soId, date: todayISO(), items }]);
     notify(`${noRetur} berhasil dicatat & stok dikembalikan ke gudang`); setModal(null);
   }

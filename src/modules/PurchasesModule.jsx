@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Plus, Printer, FileText, Trash2, Search } from "lucide-react";
 import { newReview, isCleared, blockedReason, QABadge, reviewState, requiredClasses } from "../qa";
-import { nextDocNumber, isNumberTaken } from "../docNumber";
+import { nextDocNumber, isNumberTaken, golonganOfItems, docCode, isAutoFormat, numberGolMismatch, mixedMessage, GOLONGAN_LABEL } from "../docNumber";
 import { choosePaperAndPrint, QASignatureBlock, PrintArea, DocHeader, DocParties, DocTable, SignatureRow } from "../print";
 
 // Review APJ/PJT diulang kalau isi barang berubah (produk, qty, batch, ED).
@@ -191,6 +191,15 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
   const [modalQuickSupp, setModalQuickSupp] = useState(false);
   const [quickSuppForm, setQuickSuppForm] = useState({ name: "", npwp: "", contact: "", address: "" });
 
+  // Nomor otomatis ikut golongan item (OB / OK / AL)
+  React.useEffect(() => {
+    if (!modal || editingId) return;
+    const g = golonganOfItems(items, products);
+    const want = docCode("PO", g.mixed ? null : g.code);
+    setPoNumber((cur) => (isAutoFormat(cur, "PO") && !String(cur).toUpperCase().includes(`/${want}/`))
+      ? nextDocNumber((pos || []).map((x) => x.poNumber), want) : cur);
+  }, [items, modal, editingId]);
+
   function openNew() {
     const nextNo = nextDocNumber((pos || []).map((x) => x.poNumber), "PO");
 
@@ -279,6 +288,11 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
     if (isNumberTaken(pos, "poNumber", poNumber, editingId)) return notify(`Nomor PO ${poNumber.trim()} sudah dipakai PO lain. Ganti nomornya dulu.`, "danger");
     if (!supplierId) return notify("Pilih supplier", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
+    {
+      const gol = golonganOfItems(items, products);
+      if (gol.mixed && !editingId) return notify(mixedMessage(gol), "danger");
+      if (!gol.mixed && numberGolMismatch(poNumber, "PO", gol.code)) return notify(`Nomor ${poNumber.trim()} nggak sesuai golongan item (${GOLONGAN_LABEL[gol.code]}). Ganti kodenya jadi PO-${gol.code}.`, "danger");
+    }
 
     if (editingId) {
       for (const it of items) {
@@ -632,6 +646,15 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
   const heldPOs = (pos || []).filter((po) => ["ordered", "partially_received"].includes(getPOStatus(po)) && !isCleared(po)).length;
   const selectedPO = (pos || []).find((x) => x.id === poId);
 
+  // Nomor BPB ikut golongan PO yang dipilih (PO lama yang campur: pakai golongan tertinggi)
+  React.useEffect(() => {
+    if (!modal) return;
+    const g = golonganOfItems(selectedPO?.items, products);
+    const want = docCode("BPB", g.mixed ? g.highest : g.code);
+    setNoBPB((cur) => (isAutoFormat(cur, "BPB") && !String(cur).toUpperCase().includes(`/${want}/`))
+      ? nextDocNumber((pReceipts || []).map((r) => r.noBPB), want) : cur);
+  }, [poId, modal]);
+
   function openNew() {
     const autoBPB = nextDocNumber((pReceipts || []).map((r) => r.noBPB), "BPB");
     setNoBPB(autoBPB);
@@ -980,6 +1003,15 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
       });
   }, [pInvoices, pInvSearch, pInvStatusFilter, pInvSortBy, suppliers, pInvoiceSisa, pInvoiceTotal, findName]);
 
+  // Nomor faktur pembelian langsung ikut golongan item (OB / OK / AL)
+  React.useEffect(() => {
+    if (!modalDirect || editingId) return;
+    const g = golonganOfItems(items, products);
+    const want = docCode("VINV", g.mixed ? null : g.code);
+    setNoFakturDirect((cur) => (isAutoFormat(cur, "VINV") && !String(cur).toUpperCase().includes(`/${want}/`))
+      ? nextDocNumber((pInvoices || []).map((x) => x.noFaktur), want) : cur);
+  }, [items, modalDirect, editingId]);
+
   function openDirectModal() {
     const nextNo = nextDocNumber((pInvoices || []).map((x) => x.noFaktur), "VINV");
 
@@ -1057,6 +1089,11 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   // Nomor faktur vendor dari supplier, jadi cuma dicek dobel di supplier yang sama
   if (isNumberTaken(pInvoices, "noFaktur", noFakturDirect, editingId, (d) => d.supplierId === supplierId)) return notify(`Faktur ${noFakturDirect.trim()} dari supplier ini sudah pernah diinput. Cek lagi, jangan sampai dobel.`, "danger");
   if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
+    {
+      const gol = golonganOfItems(items, products);
+      if (gol.mixed && !editingId) return notify(mixedMessage(gol), "danger");
+      if (!gol.mixed && numberGolMismatch(noFakturDirect, "VINV", gol.code)) return notify(`Nomor ${noFakturDirect.trim()} nggak sesuai golongan item (${GOLONGAN_LABEL[gol.code]}). Ganti kodenya jadi VINV-${gol.code}.`, "danger");
+    }
   
   for (const it of items) {
     if (!it.batchNo || !it.expiryDate) {
@@ -1239,7 +1276,8 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
     if (invItems.length === 0) return notify("Tidak ada barang yang diterima untuk difakturkan", "danger");
     
-    const nextNo = nextDocNumber((pInvoices || []).map((x) => x.noFaktur), "VINV");
+    const gPO = golonganOfItems(po.items, products);
+    const nextNo = nextDocNumber((pInvoices || []).map((x) => x.noFaktur), docCode("VINV", gPO.mixed ? gPO.highest : gPO.code));
 
     const defaultNo = nextNo;
     const inputFaktur = prompt("Masukkan Nomor Faktur Vendor / Supplier:", defaultNo);
@@ -1605,7 +1643,8 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
     }
 
     await saveBatches(working);
-    const noRetur = nextDocNumber((pReturns || []).map((r) => r.noRetur), "PRET", { start: 3 });
+    const gRet = golonganOfItems(returnItems, products);
+    const noRetur = nextDocNumber((pReturns || []).map((r) => r.noRetur), docCode("PRET", gRet.mixed ? gRet.highest : gRet.code), { start: 3 });
     await savePReturns([...(pReturns || []), { id: uid(), noRetur, pInvoiceId: selectedInvoice.id, poId: selectedInvoice.poId, date: todayISO(), items: returnItems }]);
     notify(`${noRetur} berhasil disimpan, stok dikurangi & hutang berkurang`);
     setModal(null);
