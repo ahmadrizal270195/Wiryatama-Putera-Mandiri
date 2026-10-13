@@ -1217,9 +1217,29 @@ function PharmaERP({ userEmail, onLogout }) {
   // Tiap simpan mengirim perubahan relatif terhadap daftar yang sedang dilihat layar
   // (state di render ini), bukan menimpa seluruh daftar.
   // Setiap simpan data otomatis tercatat di Log Aktivitas (tambah/ubah/hapus + apa yang berubah)
+  // Label yang kebaca buat Log Aktivitas. Pembayaran cuma nyimpen ID faktur/SO/PO,
+  // jadi diterjemahkan ke nomor dokumen + nama pelanggan/supplier + nominal.
+  const describeForLog = (key) => {
+    if (key === KEYS.paymentsIn) return (d) => {
+      const inv = (invoices || []).find((x) => x.id === d.invoiceId);
+      const so = (sos || []).find((x) => x.id === (d.soId || inv?.soId));
+      const ref = inv?.noFaktur || so?.soNumber || "-";
+      const party = findName(customers, inv?.customerId || so?.customerId);
+      return `${d.type || "Pembayaran"} ${ref}${party && party !== "-" ? ` · ${party}` : ""} · ${fmtIDR(d.amount)}`;
+    };
+    if (key === KEYS.paymentsOut) return (d) => {
+      const pi = (pInvoices || []).find((x) => x.id === d.pInvoiceId);
+      const po = (pos || []).find((x) => x.id === (d.poId || pi?.poId));
+      const ref = pi?.noFaktur || po?.poNumber || "-";
+      const party = findName(suppliers, pi?.supplierId || po?.supplierId);
+      return `${d.type || "Pembayaran"} ${ref}${party && party !== "-" ? ` · ${party}` : ""} · ${fmtIDR(d.amount)}`;
+    };
+    return undefined;
+  };
+
   const auditedSave = async (key, prev, next) => {
     const ok = await saveList(key, prev, next);
-    if (ok !== false) logListChange(key, prev, next);
+    if (ok !== false) logListChange(key, prev, next, describeForLog(key));
     return ok;
   };
 

@@ -9,6 +9,7 @@
 //  isNumberTaken : cek nomor sudah dipakai dokumen lain (nggak peka huruf besar/kecil & spasi)
 // =====================================================================
 import { qaClassOf } from "./qa";
+import { itemsSubtotal } from "./billing";
 
 export const COMPANY_DOC_CODE = "WPM";
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
@@ -25,11 +26,14 @@ function toDate(d) {
 export function nextDocNumber(existingNumbers, code, { start = 500, date = new Date() } = {}) {
   const d = toDate(date);
   const yy = String(d.getFullYear()).slice(-2);
-  const re = new RegExp(`^(\\d+)/${code}/${COMPANY_DOC_CODE}/[IVXLC]+/(\\d{2})$`, "i");
+  // Urutan nomor dihitung per jenis dokumen (SO, PO, ...) tanpa lihat kode golongan,
+  // jadi SO-OB / SO-OK / SO-AL berbagi satu urutan sesuai urutan input.
+  const base = String(code).split("-")[0];
+  const re = new RegExp(`^(\\d+)/${base}(-(OB|OK|AL))?/${COMPANY_DOC_CODE}/[IVXLC]+/(\\d{2})$`, "i");
   let max = 0;
   (existingNumbers || []).forEach((n) => {
     const mm = String(n || "").trim().match(re);
-    if (mm && mm[2] === yy) max = Math.max(max, parseInt(mm[1], 10));
+    if (mm && mm[4] === yy) max = Math.max(max, parseInt(mm[1], 10));
   });
   const seq = max >= start ? max + 1 : start;
   return `${seq}/${code}/${COMPANY_DOC_CODE}/${ROMAN[d.getMonth()]}/${yy}`;
@@ -88,4 +92,52 @@ export function numberGolMismatch(number, base, gol) {
 
 export function mixedMessage(g) {
   return `Item campur golongan (${g.codes.map((c) => GOLONGAN_LABEL[c]).join(", ")}). Satu dokumen cuma boleh satu golongan, pisahkan jadi dokumen terpisah.`;
+}
+
+// =====================================================================
+//  PECAH ORDER CAMPUR JADI BEBERAPA DOKUMEN (1 dokumen per golongan)
+//  - Item dikelompokkan per golongan (urutan: OK, OB, AL)
+//  - Potongan persen (%) dipakai sama di tiap dokumen
+//  - Potongan nominal (Rp) & ongkir dibagi proporsional ke subtotal tiap dokumen
+//    (pembulatan rupiah, sisa pembulatan masuk ke dokumen terakhir supaya totalnya pas)
+// =====================================================================
+export function splitOrderByGolongan(items, products, deductions = [], ongkir = 0) {
+  const order = ["OK", "OB", "AL"];
+  const groups = {};
+  (items || []).forEach((it) => {
+    const g = golonganOf((products || []).find((p) => p.id === it.productId)) || "AL";
+    (groups[g] ||= []).push(it);
+  });
+  const keys = order.filter((k) => groups[k]);
+  const totalRaw = itemsSubtotal(items) || 0;
+  const shares = keys.map((k) => (totalRaw > 0 ? itemsSubtotal(groups[k]) / totalRaw : 1 / keys.length));
+
+  const splitAmount = (amount) => {
+    const a = Number(amount) || 0;
+    let used = 0;
+    return keys.map((_, i) => {
+      if (i === keys.length - 1) return Math.round((a - used) * 100) / 100;
+      const v = Math.round(a * shares[i]);
+      used += v;
+      return v;
+    });
+  };
+
+  const dedSplits = (deductions || []).map((d) => (d.mode === "amount" ? splitAmount(d.value) : null));
+  const ongkirSplit = splitAmount(ongkir);
+
+  return keys.map((gol, i) => ({
+    gol,
+    items: groups[gol],
+    deductions: (deductions || []).map((d, j) => (dedSplits[j] ? { ...d, value: dedSplits[j][i] } : { ...d })),
+    ongkir: ongkirSplit[i],
+  }));
+}
+
+// Nomor untuk order yang dipecah: SEMUA pecahan pakai angka yang sama (beda kode golongan),
+// mis. 512/SO-OK, 512/SO-OB, 512/SO-AL -> gampang dilacak sebagai 1 pemesanan
+export function nextDocNumbersForGroups(existingNumbers, base, gols, opts) {
+  const first = nextDocNumber(existingNumbers, base, opts);
+  const seq = first.split("/")[0];
+  return gols.map((g) => first.replace(`${seq}/${base}/`, `${seq}/${docCode(base, g)}/`));
 }

@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from "react";
 import { Plus, Search, Printer, FileText, Trash2 } from "lucide-react";
 import { newReview, isCleared, blockedReason, QABadge, reviewState, qaSignatureText, requiredClasses } from "../qa";
-import { nextDocNumber, isNumberTaken, golonganOfItems, docCode, isAutoFormat, numberGolMismatch, mixedMessage, GOLONGAN_LABEL } from "../docNumber";
+import { nextDocNumber, isNumberTaken, golonganOfItems, docCode, isAutoFormat, numberGolMismatch, mixedMessage, GOLONGAN_LABEL, splitOrderByGolongan, nextDocNumbersForGroups } from "../docNumber";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import { choosePaperAndPrint, printDocumentContent, QASignatureBlock, PrintArea, DocHeader, DocParties, DocTable, SignatureRow, PaymentInfo } from "../print";
-import { computeBill, normalizeDeductions, legacyDiscountFields, cleanDeductions } from "../billing";
+import { computeBill, normalizeDeductions, legacyDiscountFields, cleanDeductions, itemsSubtotal } from "../billing";
 import { ItemsTable, DeductionsEditor, BillSummary, AddedBadge } from "../components/OrderEditor";
 import SearchableSelect from "../components/SearchableSelect";
 const withRowIds = (list) => (list || []).map((d, i) => ({ ...d, id: d.id && d.id !== "legacy" ? d.id : `ded-${Date.now().toString(36)}-${i}` }));
@@ -331,7 +331,7 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
     {
       const gol = golonganOfItems(items, products);
-      if (gol.mixed && !editingId) return notify(mixedMessage(gol), "danger");
+      if (gol.mixed && editingId) return notify(mixedMessage(gol), "danger");
       if (!gol.mixed && numberGolMismatch(soNumber, "SO", gol.code)) return notify(`Nomor ${soNumber.trim()} nggak sesuai golongan item (${GOLONGAN_LABEL[gol.code]}). Ganti kodenya jadi SO-${gol.code}.`, "danger");
     }
 
@@ -371,8 +371,25 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
       await saveSOs((sos || []).map(s => s.id === editingId ? { ...s, ...payload, ...(qaReview ? { qaReview } : {}) } : s));
       notify(`${soNumber.trim()} berhasil diperbarui${qaReview && oldSO && qaReview !== oldSO.qaReview ? " · menunggu review APJ/PJT ulang" : ""}`);
     } else {
-      await saveSOs([...(sos || []), { id: uid(), ...payload, qaReview: newReview(items, products) }]);
-      notify(`${soNumber.trim()} dibuat · menunggu review APJ/PJT`);
+      const parts = splitOrderByGolongan(items, products, cleanDeductions(deductions), 0);
+      if (parts.length > 1) {
+        // Order campur golongan -> otomatis dipecah jadi 1 SO per golongan
+        const nos = nextDocNumbersForGroups((sos || []).map((x) => x.soNumber), "SO", parts.map((x) => x.gol));
+        const msg = `Order ini isinya ${parts.length} golongan, jadi bakal dipecah otomatis jadi ${parts.length} dokumen:\n\n` +
+          parts.map((x, i) => `• ${nos[i]} · ${GOLONGAN_LABEL[x.gol]} (${x.items.length} item)`).join("\n") +
+          `\n\nPotongan persen berlaku di tiap dokumen, potongan Rupiah & ongkir dibagi proporsional. Lanjut simpan?`;
+        if (!confirm(msg)) return;
+        const newSOs = parts.map((x, i) => ({
+          id: uid(), ...payload, soNumber: nos[i], items: x.items,
+          ...legacyDiscountFields(x.deductions, itemsSubtotal(x.items)), deductions: x.deductions,
+          splitGroup: nos.join(" + "), qaReview: newReview(x.items, products),
+        }));
+        await saveSOs([...(sos || []), ...newSOs]);
+        notify(`Order dipecah jadi ${nos.length} SO: ${nos.join(", ")} · menunggu review APJ/PJT`);
+      } else {
+        await saveSOs([...(sos || []), { id: uid(), ...payload, qaReview: newReview(items, products) }]);
+        notify(`${soNumber.trim()} dibuat · menunggu review APJ/PJT`);
+      }
     }
     setModal(null); setEditingId(null);
   }
@@ -1313,8 +1330,17 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
     {
       const gol = golonganOfItems(items, products);
-      if (gol.mixed && !editingId) return notify(mixedMessage(gol), "danger");
+      if (gol.mixed && editingId) return notify(mixedMessage(gol), "danger");
       if (!gol.mixed && numberGolMismatch(noFakturDirect, "INV", gol.code)) return notify(`Nomor ${noFakturDirect.trim()} nggak sesuai golongan item (${GOLONGAN_LABEL[gol.code]}). Ganti kodenya jadi INV-${gol.code}.`, "danger");
+      // Konfirmasi pecah faktur SEBELUM stok dipotong
+      if (gol.mixed && !editingId) {
+        const parts = splitOrderByGolongan(items, products, cleanDeductions(deductions), Number(ongkir || 0));
+        const nos = nextDocNumbersForGroups((invoices || []).map((x) => x.noFaktur), "INV", parts.map((x) => x.gol));
+        const msg = `Faktur ini isinya ${parts.length} golongan, jadi bakal dipecah otomatis jadi ${parts.length} faktur:\n\n` +
+          parts.map((x, i) => `• ${nos[i]} · ${GOLONGAN_LABEL[x.gol]} (${x.items.length} item)`).join("\n") +
+          `\n\nPotongan persen berlaku di tiap faktur, potongan Rupiah & ongkir dibagi proporsional. Lanjut simpan?`;
+        if (!confirm(msg)) return;
+      }
     }
 
     const oldInvObj = (invoices || []).find(x => x.id === editingId);
@@ -1361,6 +1387,17 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       if (isDirectDoc && (!oldInvObj || itemsChanged(oldInvObj.items, items))) qaPatch = { qaReview: newReview(items, products) };
       await saveInvoices((invoices || []).map(inv => inv.id === editingId ? { ...inv, ...payload, ...qaPatch } : inv));
       notify(`${noFakturDirect.trim()} berhasil diperbarui${qaPatch.qaReview ? " · menunggu review APJ/PJT ulang" : ""}`);
+    } else if (golonganOfItems(items, products).mixed) {
+      // Faktur campur golongan -> otomatis dipecah jadi 1 faktur per golongan (alokasi batch ikut item masing-masing)
+      const parts = splitOrderByGolongan(itemsWithAlloc, products, cleanDeductions(deductions), Number(ongkir || 0));
+      const nos = nextDocNumbersForGroups((invoices || []).map((x) => x.noFaktur), "INV", parts.map((x) => x.gol));
+      const newInvs = parts.map((x, i) => ({
+        id: uid(), ...payload, noFaktur: nos[i], items: x.items, ongkir: x.ongkir,
+        ...legacyDiscountFields(x.deductions, itemsSubtotal(x.items)), deductions: x.deductions,
+        splitGroup: nos.join(" + "), soId: null, isDirect: true, qaReview: newReview(x.items, products),
+      }));
+      await saveInvoices([...(invoices || []), ...newInvs]);
+      notify(`Faktur dipecah jadi ${nos.length}: ${nos.join(", ")} · stok FEFO terpotong · menunggu review APJ/PJT`);
     } else {
       await saveInvoices([...(invoices || []), { id: uid(), ...payload, soId: null, isDirect: true, qaReview: newReview(items, products) }]);
       notify(`${noFakturDirect.trim()} dibuat & stok FEFO terpotong · menunggu review APJ/PJT sebelum bisa dicetak`);

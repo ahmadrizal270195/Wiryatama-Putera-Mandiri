@@ -131,15 +131,20 @@ function diffFields(a, b) {
   return out;
 }
 
-function listLabels(docs, max = 5) {
-  const names = docs.map(labelOf).filter(Boolean);
+function listLabels(docs, max = 5, labelFn = labelOf) {
+  const names = docs.map(labelFn).filter(Boolean);
   if (names.length <= max) return names.join(", ");
   return `${names.slice(0, max).join(", ")} +${names.length - max} lainnya`;
 }
 
-export function logListChange(key, prev, next) {
+// describe (opsional): fungsi buat bikin label yang kebaca manusia, mis. pembayaran
+// yang cuma nyimpen ID faktur -> diterjemahkan jadi nomor faktur + nama pelanggan + nominal
+export function logListChange(key, prev, next, describe) {
   const module = MODULE_LABELS[key];
   if (!module) return;
+  const labelFn = (d) => {
+    try { return (describe && describe(d)) || labelOf(d); } catch { return labelOf(d); }
+  };
   const idOf = (d) => d?.id ?? d?.email;
   const before = new Map((prev || []).map((d) => [idOf(d), d]));
   const after = new Map((next || []).map((d) => [idOf(d), d]));
@@ -153,21 +158,21 @@ export function logListChange(key, prev, next) {
   if (created.length) {
     logActivity({
       action: "create", module,
-      targetLabel: listLabels(created),
-      details: created.length === 1 ? `Menambah ${module.toLowerCase()} ${labelOf(created[0])}` : `Menambah ${created.length} data ${module.toLowerCase()}`,
+      targetLabel: listLabels(created, 5, labelFn),
+      details: created.length === 1 ? `Menambah ${module.toLowerCase()} ${labelFn(created[0])}` : `Menambah ${created.length} data ${module.toLowerCase()}`,
     });
   }
   if (updated.length) {
     const details = updated.length === 1
       ? diffFields(updated[0][0], updated[0][1]).join("; ")
-      : updated.slice(0, 5).map(([a, b]) => `${labelOf(b)} (${diffFields(a, b).slice(0, 3).join("; ")})`).join(" | ") + (updated.length > 5 ? ` | +${updated.length - 5} lainnya` : "");
-    logActivity({ action: "update", module, targetLabel: listLabels(updated.map((u) => u[1])), details });
+      : updated.slice(0, 5).map(([a, b]) => `${labelFn(b)} (${diffFields(a, b).slice(0, 3).join("; ")})`).join(" | ") + (updated.length > 5 ? ` | +${updated.length - 5} lainnya` : "");
+    logActivity({ action: "update", module, targetLabel: listLabels(updated.map((u) => u[1]), 5, labelFn), details });
   }
   if (deleted.length) {
     logActivity({
       action: "delete", module,
-      targetLabel: listLabels(deleted),
-      details: deleted.length === 1 ? `Menghapus ${module.toLowerCase()} ${labelOf(deleted[0])}` : `Menghapus ${deleted.length} data ${module.toLowerCase()}`,
+      targetLabel: listLabels(deleted, 5, labelFn),
+      details: deleted.length === 1 ? `Menghapus ${module.toLowerCase()} ${labelFn(deleted[0])}` : `Menghapus ${deleted.length} data ${module.toLowerCase()}`,
     });
   }
 }
