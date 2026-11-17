@@ -31,6 +31,7 @@ import FinanceView from "./modules/FinanceModule";
 import QAView from "./modules/QAModule";
 import { myClasses, setOfficersCache } from "./qa";
 import { computeBill, itemLineTotal } from "./billing";
+import { invoiceSoIds } from "./invoiceLinks";
 import { setPaymentSettings, PAYMENT_GROUPS } from "./print";
 import SearchableSelect from "./components/SearchableSelect";
 import ActivityLogView from "./modules/ActivityLogModule";
@@ -252,7 +253,7 @@ function originalSaleCostPerUnit(inv, productId, batches, deliveryNotes, costOf)
     const item = (inv.items || []).find((it) => it.productId === productId);
     allocs = item?.allocations || [];
   } else {
-    (deliveryNotes || []).filter((dn) => dn.soId === inv.soId && dn.status === "diterima")
+    (deliveryNotes || []).filter((dn) => invoiceSoIds(inv).includes(dn.soId) && dn.status === "diterima")
       .forEach((dn) => {
         (dn.items || []).filter((it) => it.productId === productId)
           .forEach((it) => { allocs = allocs.concat(it.allocations || []); });
@@ -381,7 +382,7 @@ function computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf }) 
       }
     });
   };
-  const receivedDNs = inv.isDirect ? [] : (deliveryNotes || []).filter((dn) => dn.soId === inv.soId && dn.status === "diterima");
+  const receivedDNs = inv.isDirect ? [] : (deliveryNotes || []).filter((dn) => invoiceSoIds(inv).includes(dn.soId) && dn.status === "diterima");
   if (inv.isDirect) {
     (inv.items || []).forEach((it) => addAllocs(it.productId, it.allocations));
   } else {
@@ -389,7 +390,7 @@ function computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf }) 
   }
 
   const isSJReturn = (r) => r.source === "sj" || (!r.invoiceId && r.soId);
-  const returList = (returns || []).filter((r) => r.invoiceId === inv.id || (inv.soId && r.soId === inv.soId));
+  const returList = (returns || []).filter((r) => r.invoiceId === inv.id || (r.soId && invoiceSoIds(inv).includes(r.soId)));
 
   // Barang yang balik karena SJ diterima sebagian: BUKAN retur penjualan (nggak pernah difakturkan),
   // jadi cuma ngurangin HPP barang terkirim, nggak ngurangin penjualan.
@@ -1304,7 +1305,11 @@ function PharmaERP({ userEmail, onLogout }) {
   function pInvoiceReturnedAmount(invId) { return (pReturns || []).filter((r) => r.pInvoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
   function pInvoiceSisa(inv) { return Math.max(0, pInvoiceTotal(inv) - pInvoiceReturnedAmount(inv.id) - pInvoicePaidAmount(inv.id)); }
 
-  function soDPAmount(soId) { return (paymentsIn || []).filter((p) => p.soId === soId && p.type === "DP").reduce((s, p) => s + p.amount, 0); }
+  // Bisa 1 SO atau daftar SO (faktur gabungan): DP semua SO-nya ikut dihitung
+  function soDPAmount(soId) {
+    const ids = (Array.isArray(soId) ? soId : [soId]).filter(Boolean);
+    return (paymentsIn || []).filter((p) => ids.includes(p.soId) && p.type === "DP").reduce((s, p) => s + p.amount, 0);
+  }
   function invoicePaidAmount(invId) { return (paymentsIn || []).filter((p) => p.invoiceId === invId).reduce((s, p) => s + p.amount, 0); }
   function invoiceReturnedAmount(invId) { return (returns || []).filter((r) => r.invoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
   const costOf = useMemo(() => makeCostResolver(batches, pInvoices, pReceipts, pos), [batches, pInvoices, pReceipts, pos]);
@@ -1314,7 +1319,7 @@ function PharmaERP({ userEmail, onLogout }) {
   }
 
   function invoiceSisa(inv) {
-    return Math.max(0, invoiceTotal(inv) - invoiceReturnedAmount(inv.id) - soDPAmount(inv.soId) - invoicePaidAmount(inv.id));
+    return Math.max(0, invoiceTotal(inv) - invoiceReturnedAmount(inv.id) - soDPAmount(invoiceSoIds(inv)) - invoicePaidAmount(inv.id));
   }
 
   const arOutstanding = useMemo(() => (invoices || []).reduce((s, inv) => s + invoiceSisa(inv), 0), [invoices, returns, paymentsIn]);
@@ -2758,7 +2763,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         docNumber: inv.noFaktur,
         partyName: custName,
         date: inv.date,
-        type: inv.isDirect ? "Langsung" : `SO (${so?.soNumber || "-"})`,
+        type: inv.isDirect ? "Langsung" : `SO (${invoiceSoIds(inv).map((id) => (sos || []).find((x) => x.id === id)?.soNumber || "-").join(", ")})`,
         items: inv.items || [],
         total: invoiceTotal(inv)
       };
