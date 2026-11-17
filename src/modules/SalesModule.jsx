@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from "react";
 import { Plus, Search, Printer, FileText, Trash2 } from "lucide-react";
 import { newReview, isCleared, blockedReason, QABadge, reviewState, qaSignatureText, requiredClasses } from "../qa";
+import { invoiceSoIds, invoiceHasSO, mergeDeductions, newestFirst, createdRank } from "../invoiceLinks";
+import { golonganCodeString } from "../docNumber";
 import { nextDocNumber, isNumberTaken, golonganOfItems, docCode, isAutoFormat, numberGolMismatch, mixedMessage, GOLONGAN_LABEL, splitOrderByGolongan, nextDocNumbersForGroups } from "../docNumber";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import { choosePaperAndPrint, printDocumentContent, QASignatureBlock, PrintArea, DocHeader, DocParties, DocTable, SignatureRow, PaymentInfo } from "../print";
@@ -77,7 +79,7 @@ export default function SalesView({
   }
 
   function getSOStatus(so) {
-    if ((invoices || []).some((inv) => inv.soId === so.id)) return "invoiced";
+    if ((invoices || []).some((inv) => invoiceHasSO(inv, so.id))) return "invoiced";
     if (so.isClosedPartial) return "ready_to_invoice";
     
     const dns = (deliveryNotes || []).filter((dn) => dn.soId === so.id);
@@ -205,7 +207,7 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
 
   const [searchSO, setSearchSO] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [sortField, setSortField] = useState("date");
+  const [sortField, setSortField] = useState("created"); // default: terakhir dibuat di atas
   const [sortOrder, setSortOrder] = useState("desc");
 
   function handleSort(field) {
@@ -226,9 +228,11 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
       return (numSO.includes(q) || custName.includes(q)) && (statusFilter === "ALL" || getSOStatus(so) === statusFilter);
     });
 
+    const rankSO = createdRank(sos);
     return list.sort((a, b) => {
       let valA, valB;
-      if (sortField === "soNumber") { valA = a.soNumber.toLowerCase(); valB = b.soNumber.toLowerCase(); }
+      if (sortField === "created") { valA = rankSO(a); valB = rankSO(b); }
+      else if (sortField === "soNumber") { valA = a.soNumber.toLowerCase(); valB = b.soNumber.toLowerCase(); }
       else if (sortField === "customer") { valA = findName(customers, a.customerId).toLowerCase(); valB = findName(customers, b.customerId).toLowerCase(); }
       else if (sortField === "date") { valA = new Date(a.date || 0); valB = new Date(b.date || 0); }
       else if (sortField === "total") { valA = soTotal(a); valB = soTotal(b); }
@@ -264,7 +268,7 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
   }
 
   function openEdit(so) {
-    if ((invoices || []).some((inv) => inv.soId === so.id)) {
+    if ((invoices || []).some((inv) => invoiceHasSO(inv, so.id))) {
       return notify("Gagal Edit: SO ini sudah diterbitkan Faktur Penjualan.", "danger");
     }
     
@@ -439,7 +443,7 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
           {filteredAndSortedSOs.map((so) => {
             const st = getSOStatus(so);
             const s = STATUS_LABEL[st];
-            const hasInvoice = (invoices || []).some((inv) => inv.soId === so.id);
+            const hasInvoice = (invoices || []).some((inv) => invoiceHasSO(inv, so.id));
             const hasDeliveryNote = (deliveryNotes || []).some((dn) => dn.soId === so.id);
             return (
               <tr key={so.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
@@ -743,7 +747,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
     if (!sos || !Array.isArray(sos)) return [];
     return sos.filter((so) => {
       if (!isCleared(so)) return false; // CDOB: SO wajib disetujui APJ/PJT dulu
-      const hasInvoice = (invoices || []).some((inv) => inv.soId === so.id || inv.soNumber === so.soNumber);
+      const hasInvoice = (invoices || []).some((inv) => invoiceHasSO(inv, so.id) || inv.soNumber === so.soNumber);
       if (hasInvoice) return false;
       return (so.items || []).some((it) => {
         const totalShipped = (deliveryNotes || []).reduce((sum, dn) => {
@@ -786,7 +790,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
   }
 
   function openEdit(dn) {
-    if ((invoices || []).some((inv) => inv.soId === dn.soId)) {
+    if ((invoices || []).some((inv) => invoiceHasSO(inv, dn.soId))) {
       return notify("Gagal Edit: Surat Jalan ini sudah memiliki Faktur Penjualan. Batalkan Faktur terlebih dahulu.", "danger");
     }
     setEditingId(dn.id); setNoSJ(dn.noSJ); setSoId(dn.soId); setDate(dn.date || todayISO());
@@ -900,7 +904,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
   }
 
   async function cancelSJ(dn) {
-    if ((invoices || []).some((inv) => inv.soId === dn.soId)) {
+    if ((invoices || []).some((inv) => invoiceHasSO(inv, dn.soId))) {
       return notify("Gagal membatalkan: Faktur Penjualan untuk transaksi ini sudah terbit. Batalkan Faktur terlebih dahulu.", "danger");
     }
     let working = (batches || []).map((b) => ({ ...b }));
@@ -932,9 +936,9 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
           </tr>
         </thead>
         <tbody>
-          {[...(deliveryNotes || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((dn) => {
+          {newestFirst(deliveryNotes).map((dn) => {
             const so = (sos || []).find((x) => x.id === dn.soId);
-            const canEditOrCancel = !(invoices || []).some((inv) => inv.soId === dn.soId);
+            const canEditOrCancel = !(invoices || []).some((inv) => invoiceHasSO(inv, dn.soId));
             return (
               <tr key={dn.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
                 <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: colorConfig?.ink }}>{dn.noSJ}</td>
@@ -1161,7 +1165,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
             {(() => {
               const so = (sos || []).find((s) => s.id === printTT.soId);
               const cust = (customers || []).find((c) => c.id === so?.customerId);
-              const inv = (invoices || []).find((i) => i.soId === printTT.soId);
+              const inv = (invoices || []).find((i) => invoiceHasSO(i, printTT.soId));
               let totalAmount = inv ? invoiceTotal(inv) : so ? soTotal(so) : 0;
 
               return (
@@ -1241,18 +1245,21 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   const [quickCustForm, setQuickCustForm] = useState({ name: "", type: CUSTOMER_TYPES?.[0] || "Apotek", npwp: "", contact: "", address: "" });
 
   const [invStatusFilter, setInvStatusFilter] = useState("ALL");
-  const [invSortBy, setInvSortBy] = useState("date_desc");
+  const [invSortBy, setInvSortBy] = useState("created_desc");
+  // SO yang dicentang buat digabung jadi 1 faktur
+  const [pickSO, setPickSO] = useState(() => new Set());
   const [invSearch, setInvSearch] = useState("");
 
   const eligibleSOs = (sos || []).filter((so) => getSOStatus(so) === "ready_to_invoice");
 
   const processedInvoices = useMemo(() => {
+    const rankInv = createdRank(invoices);
     return (invoices || [])
       .map((inv) => {
         const total = invoiceTotal ? invoiceTotal(inv) : 0;
         const paid = invoicePaidAmount ? invoicePaidAmount(inv.id) : 0;
         const ret = invoiceReturnedAmount ? invoiceReturnedAmount(inv.id) : 0;
-        const dp = inv.soId && soDPAmount ? soDPAmount(inv.soId) : 0;
+        const dp = soDPAmount ? soDPAmount(invoiceSoIds(inv)) : 0;
         const sisa = Math.max(0, total - ret - dp - paid);
         const isLunas = sisa <= 0;
         return { ...inv, sisa, total, isLunas };
@@ -1269,6 +1276,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         return matchSearch && matchStatus;
       })
       .sort((a, b) => {
+        if (invSortBy === "created_desc") return rankInv(b) - rankInv(a);
         if (invSortBy === "date_desc") return new Date(b.date) - new Date(a.date);
         if (invSortBy === "date_asc") return new Date(a.date) - new Date(b.date);
         if (invSortBy === "total_desc") return b.total - a.total;
@@ -1330,7 +1338,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
     {
       const gol = golonganOfItems(items, products);
-      if (gol.mixed && editingId) return notify(mixedMessage(gol), "danger");
+      if (gol.mixed && editingId && !isEditingFromSO) return notify(mixedMessage(gol), "danger");
       if (!gol.mixed && numberGolMismatch(noFakturDirect, "INV", gol.code)) return notify(`Nomor ${noFakturDirect.trim()} nggak sesuai golongan item (${GOLONGAN_LABEL[gol.code]}). Ganti kodenya jadi INV-${gol.code}.`, "danger");
       // Konfirmasi pecah faktur SEBELUM stok dipotong
       if (gol.mixed && !editingId) {
@@ -1429,6 +1437,53 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     notify(`${inputFaktur.trim()} dibuat`);
   }
 
+  // Item faktur dari 1 SO: qty = barang yang sudah diterima di Surat Jalan
+  function soInvoiceItems(so) {
+    const received = {};
+    (deliveryNotes || []).filter((dn) => dn.soId === so.id && dn.status === "diterima")
+      .forEach((dn) => (dn.items || []).forEach((it) => {
+        received[it.productId] = (received[it.productId] || 0) + (it.receivedQty ?? it.qty);
+      }));
+    return (so.items || [])
+      .map((it) => ({ productId: it.productId, qty: received[it.productId] || 0, unitPrice: it.unitPrice, discountType: it.discountType || "percent", discountPercent: Number(it.discountPercent || 0), soId: so.id }))
+      .filter((it) => it.qty > 0);
+  }
+
+  // GABUNG BEBERAPA SO JADI 1 FAKTUR (pelanggan & PPN harus sama)
+  async function createCombinedInvoice() {
+    const list = eligibleSOs.filter((so) => pickSO.has(so.id));
+    if (list.length < 2) return notify("Pilih minimal 2 SO untuk digabung", "danger");
+    if (new Set(list.map((so) => so.customerId)).size > 1) return notify("SO yang digabung harus dari pelanggan yang sama", "danger");
+    if (new Set(list.map((so) => so.taxType || "none")).size > 1) return notify("SO yang digabung harus punya jenis PPN yang sama", "danger");
+    const merged = mergeDeductions(list);
+    if (!merged.ok) return notify("Potongan persen (diskon/fee %) di SO-SO ini beda, jadi nggak bisa digabung otomatis. Samakan dulu potongannya atau buat faktur terpisah.", "danger");
+
+    const invItems = list.flatMap((so) => soInvoiceItems(so));
+    if (invItems.length === 0) return notify("Tidak ada barang yang diterima untuk difakturkan", "danger");
+
+    const g = golonganOfItems(invItems, products);
+    const gol = g.mixed ? golonganCodeString(g) : g.code;
+    const nextNo = nextDocNumber((invoices || []).map((x) => x.noFaktur), docCode("INV", gol));
+    const soNos = list.map((so) => so.soNumber).join(", ");
+
+    const inputFaktur = prompt(`Gabung ${list.length} SO jadi 1 faktur:\n${soNos}\n\nNomor Faktur Penjualan / Pajak:`, nextNo);
+    if (!inputFaktur) return;
+    if (isNumberTaken(invoices, "noFaktur", inputFaktur)) return notify(`Nomor Faktur ${inputFaktur.trim()} sudah dipakai faktur lain. Faktur nggak dibuat, coba lagi dengan nomor lain.`, "danger");
+    const inputOngkir = prompt("Biaya ongkir tambahan ke customer (Rp, kosongkan/0 jika tidak ada):", "0");
+    const ongkirVal = Number(inputOngkir) || 0;
+
+    const first = list[0];
+    await saveInvoices([...(invoices || []), {
+      id: uid(), noFaktur: inputFaktur.trim(),
+      soId: first.id, soIds: list.map((so) => so.id),
+      customerId: first.customerId, date: todayISO(), taxType: first.taxType || "none",
+      ...legacyDiscountFields(merged.deductions, itemsSubtotal(invItems)), deductions: merged.deductions,
+      ongkir: ongkirVal, items: invItems,
+    }]);
+    setPickSO(new Set());
+    notify(`${inputFaktur.trim()} dibuat dari ${list.length} SO (${soNos})`);
+  }
+
   async function cancelInvoice(inv) {
     if (invoicePaidAmount(inv.id) > 0) return notify("Gagal membatalkan: Faktur ini sudah memiliki riwayat pembayaran pelunasan.", "danger");
     if ((returns || []).some((r) => r.invoiceId === inv.id)) return notify("Gagal membatalkan: Faktur ini memiliki transaksi retur. Batalkan retur terlebih dahulu.", "danger");
@@ -1481,6 +1536,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <span className="text-xs text-gray-500 whitespace-nowrap">Urutkan:</span>
           <Select value={invSortBy} onChange={(e) => setInvSortBy(e.target.value)} colorConfig={colorConfig}>
+            <option value="created_desc">Terakhir Dibuat</option>
             <option value="date_desc">Tanggal Terbaru</option>
             <option value="date_asc">Tanggal Terlama</option>
             <option value="total_desc">Nominal Terbesar</option>
@@ -1491,14 +1547,27 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
 
       {eligibleSOs.length > 0 && (
         <Card className="mb-4 no-print" colorConfig={colorConfig}>
-          <div className="text-xs font-medium mb-2" style={{ color: colorConfig?.inkSoft }}>SO siap difaktur (barang sudah diterima penuh)</div>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div className="text-xs font-medium" style={{ color: colorConfig?.inkSoft }}>SO siap difaktur (barang sudah diterima penuh) · centang beberapa SO pelanggan yang sama buat digabung jadi 1 faktur</div>
+            {pickSO.size >= 2 && (
+              <Button onClick={createCombinedInvoice} colorConfig={colorConfig}><FileText size={13} /> Gabung {pickSO.size} SO jadi 1 Faktur</Button>
+            )}
+          </div>
           <div className="flex flex-col gap-2">
-            {eligibleSOs.map((so) => (
-              <div key={so.id} className="flex items-center justify-between text-sm py-1" style={{ borderBottom: `1px solid ${colorConfig?.border}` }}>
-                <span style={{ color: colorConfig?.ink }}>{so.soNumber} · {findName(customers, so.customerId)}</span>
-                <Button onClick={() => createInvoice(so)} colorConfig={colorConfig}><FileText size={13} /> Buat Faktur</Button>
-              </div>
-            ))}
+            {newestFirst(eligibleSOs).map((so) => {
+              const pickedCust = eligibleSOs.find((x) => pickSO.has(x.id))?.customerId;
+              const lockOut = pickSO.size > 0 && !pickSO.has(so.id) && pickedCust && pickedCust !== so.customerId;
+              return (
+                <div key={so.id} className="flex items-center justify-between gap-2 text-sm py-1" style={{ borderBottom: `1px solid ${colorConfig?.border}`, opacity: lockOut ? 0.45 : 1 }}>
+                  <label className="flex items-center gap-2 cursor-pointer" title={lockOut ? "Beda pelanggan, nggak bisa digabung" : "Centang buat digabung"}>
+                    <input type="checkbox" disabled={lockOut} checked={pickSO.has(so.id)}
+                      onChange={() => setPickSO((prev) => { const n = new Set(prev); n.has(so.id) ? n.delete(so.id) : n.add(so.id); return n; })} />
+                    <span style={{ color: colorConfig?.ink }}>{so.soNumber} · {findName(customers, so.customerId)}</span>
+                  </label>
+                  <Button onClick={() => createInvoice(so)} variant="ghost" colorConfig={colorConfig}><FileText size={13} /> Buat Faktur</Button>
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}
@@ -1521,7 +1590,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                 <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: colorConfig?.ink }}>{inv.noFaktur}</td>
                 <td className="px-4 py-2.5">
                   <div className="flex flex-col items-start gap-1">
-                    <Badge tone={inv.isDirect ? "warn" : "neutral"} colorConfig={colorConfig}>{inv.isDirect ? "Langsung" : so?.soNumber || "SO"}</Badge>
+                    <Badge tone={inv.isDirect ? "warn" : "neutral"} colorConfig={colorConfig}>{inv.isDirect ? "Langsung" : invoiceSoIds(inv).length > 1 ? `Gabungan ${invoiceSoIds(inv).length} SO` : so?.soNumber || "SO"}</Badge>
                     <QABadge doc={inv} colorConfig={colorConfig} compact />
                   </div>
                 </td>
@@ -1676,7 +1745,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
               {(() => {
                 const so = (sos || []).find((s) => s.id === printInv.soId);
                 const cust = printInv.isDirect ? (customers || []).find((c) => c.id === printInv.customerId) : (customers || []).find((c) => c.id === so?.customerId);
-                const dp = printInv.soId ? soDPAmount(printInv.soId) : 0;
+                const dp = invoiceSoIds(printInv).length ? soDPAmount(invoiceSoIds(printInv)) : 0;
                 const paid = invoicePaidAmount(printInv.id);
                 const ret = invoiceReturnedAmount(printInv.id);
                 
@@ -1707,7 +1776,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                       <div className="text-right">
                         <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 font-bold">Detail Dokumen</div>
                         <div><span className="text-gray-500">Tanggal Faktur:</span> <span className="tabular-nums">{fmtDate(printInv.date)}</span></div>
-                        <div><span className="text-gray-500">No. Sales Order:</span> <span className="tabular-nums">{so?.soNumber || (printInv.isDirect ? "Penjualan Langsung" : "-")}</span></div>
+                        <div><span className="text-gray-500">No. Sales Order:</span> <span className="tabular-nums">{(invoiceSoIds(printInv).length > 1 ? invoiceSoIds(printInv).map((id) => (sos || []).find((x) => x.id === id)?.soNumber).filter(Boolean).join(", ") : so?.soNumber) || (printInv.isDirect ? "Penjualan Langsung" : "-")}</span></div>
                       </div>
                     </div>
 
@@ -1801,8 +1870,10 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
     setInvoiceId(returnableInvoices[0]?.id || ""); setReturnQty({}); setModal("new");
   }
 
+  // soId bisa 1 SO atau daftar SO (faktur gabungan)
   function restockFromSO(soId, productId, qty, working) {
-    const dns = (deliveryNotes || []).filter((dn) => dn.soId === soId && dn.status === "diterima").sort((a, b) => new Date(a.date) - new Date(b.date));
+    const ids = (Array.isArray(soId) ? soId : [soId]).filter(Boolean);
+    const dns = (deliveryNotes || []).filter((dn) => ids.includes(dn.soId) && dn.status === "diterima").sort((a, b) => new Date(a.date) - new Date(b.date));
     const allocs = [];
     dns.forEach((dn) => (dn.items || []).forEach((it) => { if (it.productId === productId) allocs.push(...(it.allocations || [])); }));
     let remaining = qty; const restocked = [];
@@ -1833,7 +1904,7 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
           const b = working.find((x) => x.id === a.batchId);
           if (b) { const take = Math.min(a.qty, remainingToRestock); b.qty += take; restocked.push({ batchId: a.batchId, batchNo: a.batchNo, qty: take }); remainingToRestock -= take; }
         });
-      } else restocked = restockFromSO(selectedInvoice.soId, l.productId, l.qtyReturn, working);
+      } else restocked = restockFromSO(invoiceSoIds(selectedInvoice), l.productId, l.qtyReturn, working);
       return { productId: l.productId, qty: l.qtyReturn, unitPrice: l.unitPrice, restockedBatches: restocked };
     });
 
@@ -1872,7 +1943,7 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
             </tr>
           </thead>
           <tbody>
-            {[...(returns || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((r) => {
+            {newestFirst(returns).map((r) => {
               const so = (sos || []).find((x) => x.id === r.soId);
               const inv = (invoices || []).find((x) => x.id === r.invoiceId);
               const value = (r.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0);
