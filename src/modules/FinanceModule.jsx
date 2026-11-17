@@ -3,6 +3,7 @@ import { Wallet, CreditCard, Receipt, PiggyBank, Plus, Calendar, Filter, Search,
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import { isCleared, blockedReason } from "../qa";
 import { computeBill } from "../billing";
+import { invoiceSoIds, invoiceHasSO } from "../invoiceLinks";
 import { startOfMonthISO, startOfLastMonthISO, endOfLastMonthISO } from "../dateUtils";
 
 
@@ -99,7 +100,7 @@ export default function FinanceView(props) {
     const total = typeof invoiceTotal === "function" ? invoiceTotal(inv) : 0;
     const paid = typeof invoicePaidAmount === "function" ? invoicePaidAmount(inv.id) : 0;
     const ret = typeof invoiceReturnedAmount === "function" ? invoiceReturnedAmount(inv.id) : 0;
-    const dp = (inv.soId && typeof soDPAmount === "function") ? soDPAmount(inv.soId) : 0;
+    const dp = typeof soDPAmount === "function" ? soDPAmount(invoiceSoIds(inv)) : 0;
     return Math.max(0, total - paid - ret - dp);
   };
 
@@ -250,7 +251,7 @@ export default function FinanceView(props) {
 
   // --- FILTERED DATA SELECTIONS ---
   const invoiceARList = (invoices || []).map((inv) => ({ inv, total: invoiceTotal ? invoiceTotal(inv) : 0, sisa: getInvoiceSisa(inv) })).filter((x) => x.sisa > 0);
-  const dpOnlySOList = (sos || []).filter((so) => !(invoices || []).some((inv) => inv.soId === so.id) && ((soDPAmount ? soDPAmount(so.id) : 0) > 0));
+  const dpOnlySOList = (sos || []).filter((so) => !(invoices || []).some((inv) => invoiceHasSO(inv, so.id)) && ((soDPAmount ? soDPAmount(so.id) : 0) > 0));
   
   // UPDATE MAPPING AP LIST: MENGGUNAKAN GETPINVOICETOTAL
   const pInvoiceAPList = (pInvoices || []).map((inv) => ({ 
