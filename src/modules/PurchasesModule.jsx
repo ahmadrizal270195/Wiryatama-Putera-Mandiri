@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Plus, Printer, FileText, Trash2, Search } from "lucide-react";
 import { newReview, isCleared, blockedReason, QABadge, reviewState, requiredClasses } from "../qa";
+import { newestFirst, createdRank } from "../invoiceLinks";
 import { nextDocNumber, isNumberTaken, golonganOfItems, docCode, isAutoFormat, numberGolMismatch, mixedMessage, GOLONGAN_LABEL, splitOrderByGolongan, nextDocNumbersForGroups } from "../docNumber";
 import { choosePaperAndPrint, QASignatureBlock, PrintArea, DocHeader, DocParties, DocTable, SignatureRow } from "../print";
 
@@ -379,7 +380,7 @@ function POTab({ products, suppliers, pos, pReceipts, pInvoices, savePOs, saveSu
           </tr>
         </thead>
         <tbody>
-          {[...(pos || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((po) => {
+          {newestFirst(pos).map((po) => {
             const st = getPOStatus(po);
             const s = STATUS_LABEL[st];
             const hasInvoice = (pInvoices || []).some((inv) => inv.poId === po.id);
@@ -809,7 +810,7 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
           </tr>
         </thead>
         <tbody>
-          {[...(pReceipts || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((pr) => {
+          {newestFirst(pReceipts).map((pr) => {
             const po = (pos || []).find((x) => x.id === pr.poId);
             const canCancel = !(pInvoices || []).some((inv) => inv.poId === pr.poId);
             return (
@@ -960,7 +961,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
   // STATE BARU: FILTER & SORTING FAKTUR PEMBELIAN
   const [pInvStatusFilter, setPInvStatusFilter] = useState("ALL");
-  const [pInvSortBy, setPInvSortBy] = useState("date_desc");
+  const [pInvSortBy, setPInvSortBy] = useState("created_desc");
   const [pInvSearch, setPInvSearch] = useState("");
 
   const eligiblePOs = (pos || []).filter((po) => {
@@ -992,6 +993,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
   // LOGIKA PEMROSESAN FILTER & SORTING
   const processedPInvoices = useMemo(() => {
+    const rankPInv = createdRank(pInvoices);
     return (pInvoices || [])
       .map((inv) => {
         const total = getPInvoiceTotal(inv); // <-- UBAH DI SINI (sebelumnya pInvoiceTotal(inv))
@@ -1012,6 +1014,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         return matchSearch && matchStatus;
       })
       .sort((a, b) => {
+        if (pInvSortBy === "created_desc") return rankPInv(b) - rankPInv(a);
         if (pInvSortBy === "date_desc") return new Date(b.date) - new Date(a.date);
         if (pInvSortBy === "date_asc") return new Date(a.date) - new Date(b.date);
         if (pInvSortBy === "total_desc") return b.total - a.total;
@@ -1395,6 +1398,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <span className="text-xs text-gray-500 whitespace-nowrap">Urutkan:</span>
           <Select value={pInvSortBy} onChange={(e) => setPInvSortBy(e.target.value)} colorConfig={colorConfig}>
+            <option value="created_desc">Terakhir Dibuat</option>
             <option value="date_desc">Tanggal Terbaru</option>
             <option value="date_asc">Tanggal Terlama</option>
             <option value="total_desc">Nominal Terbesar</option>
@@ -1715,7 +1719,7 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
             </tr>
           </thead>
           <tbody>
-            {[...(pReturns || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).map((r) => {
+            {newestFirst(pReturns).map((r) => {
               const inv = (pInvoices || []).find((x) => x.id === r.pInvoiceId);
               const value = (r.items || []).reduce((s, it) => s + it.qty * it.unitPrice, 0);
               return (
