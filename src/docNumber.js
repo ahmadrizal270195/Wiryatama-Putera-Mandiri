@@ -29,7 +29,7 @@ export function nextDocNumber(existingNumbers, code, { start = 500, date = new D
   // Urutan nomor dihitung per jenis dokumen (SO, PO, ...) tanpa lihat kode golongan,
   // jadi SO-OB / SO-OK / SO-AL berbagi satu urutan sesuai urutan input.
   const base = String(code).split("-")[0];
-  const re = new RegExp(`^(\\d+)/${base}(-(OB|OK|AL))?/${COMPANY_DOC_CODE}/[IVXLC]+/(\\d{2})$`, "i");
+  const re = new RegExp(`^(\\d+)/${base}(-(OB|OK|AL))*/${COMPANY_DOC_CODE}/[IVXLC]+/(\\d{2})$`, "i");
   let max = 0;
   (existingNumbers || []).forEach((n) => {
     const mm = String(n || "").trim().match(re);
@@ -81,7 +81,7 @@ export function docCode(base, gol) {
 
 // Nomor masih format otomatis WPM untuk jenis dokumen ini (boleh diganti otomatis)
 export function isAutoFormat(number, base) {
-  return new RegExp(`^\\d+/${base}(-(OB|OK|AL))?/${COMPANY_DOC_CODE}/[IVXLC]+/\\d{2}$`, "i").test(String(number || "").trim());
+  return new RegExp(`^\\d+/${base}(-(OB|OK|AL))*/${COMPANY_DOC_CODE}/[IVXLC]+/\\d{2}$`, "i").test(String(number || "").trim());
 }
 
 // Nomor format otomatis tapi kode golongannya beda sama item
@@ -140,4 +140,9 @@ export function nextDocNumbersForGroups(existingNumbers, base, gols, opts) {
   const first = nextDocNumber(existingNumbers, base, opts);
   const seq = first.split("/")[0];
   return gols.map((g) => first.replace(`${seq}/${base}/`, `${seq}/${docCode(base, g)}/`));
+}
+
+// Kode golongan gabungan buat dokumen campur, mis. "OK-OB" atau "OK-OB-AL"
+export function golonganCodeString(g) {
+  return ["OK", "OB", "AL"].filter((c) => (g?.codes || []).includes(c)).join("-") || null;
 }
