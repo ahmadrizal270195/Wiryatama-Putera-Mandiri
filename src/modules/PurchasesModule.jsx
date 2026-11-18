@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { withAtomic } from "../atomicScope";
+import PaymentHistory from "../components/PaymentHistory";
 import { Plus, Printer, FileText, Trash2, Search } from "lucide-react";
 import { newReview, isCleared, blockedReason, QABadge, reviewState, requiredClasses } from "../qa";
 import { newestFirst, createdRank } from "../invoiceLinks";
@@ -968,6 +969,25 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   const [pInvStatusFilter, setPInvStatusFilter] = useState("ALL");
   // Filter bulan: "paid" = bulan faktur itu LUNAS (tanggal bayar terakhir), "date" = bulan tanggal faktur
   const [pInvMonth, setPInvMonth] = useState("");
+  // Faktur yang riwayat pembayarannya lagi dibuka
+  const [openHist, setOpenHist] = useState(() => new Set());
+  const toggleHist = (id) => setOpenHist((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  function pInvoiceHistory(inv) {
+    const rows = [];
+    (paymentsOut || []).filter((p) => p.pInvoiceId === inv.id).forEach((p) => {
+      rows.push({ date: p.date, kind: "bayar", label: p.type || "Pembayaran", sub: [p.method, p.note].filter(Boolean).join(" · "), amount: Number(p.amount) || 0 });
+    });
+    (pReturns || []).filter((r) => r.pInvoiceId === inv.id).forEach((r) => {
+      rows.push({ date: r.date, kind: "retur", label: `Retur ${r.noRetur || ""}`.trim(), sub: "mengurangi tagihan", amount: (r.items || []).reduce((t, it) => t + (Number(it.qty) || 0) * (Number(it.unitPrice) || 0), 0) });
+    });
+    return {
+      rows,
+      deductions: [
+        { label: "Retur", amount: pInvoiceReturnedAmount ? pInvoiceReturnedAmount(inv.id) : 0 },
+        { label: "Dibayar", amount: pInvoicePaidAmount ? pInvoicePaidAmount(inv.id) : 0 },
+      ],
+    };
+  }
   const [pInvMonthBy, setPInvMonthBy] = useState("paid");
   const setMonthFilter = (v) => { setPInvMonth(v); if (v && pInvMonthBy === "paid") setPInvStatusFilter("LUNAS"); };
   const [pInvSortBy, setPInvSortBy] = useState("created_desc");
@@ -1471,8 +1491,10 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
             const total = inv.total;
             const sisa = inv.sisa;
             const canEditOrCancel = pInvoicePaidAmount(inv.id) === 0 && !(pReturns || []).some((r) => r.pInvoiceId === inv.id);
+            const histOpen = openHist.has(inv.id);
             return (
-              <tr key={inv.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
+              <React.Fragment key={inv.id}>
+              <tr style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
                 <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: colorConfig?.ink }}>{inv.noFaktur}<div className="mt-1 font-sans"><QABadge doc={inv} colorConfig={colorConfig} compact /></div></td>
                 <td className="px-4 py-2.5"><Badge tone={inv.isDirect ? "warn" : "neutral"} colorConfig={colorConfig}>{inv.isDirect ? "Langsung" : po?.poNumber || "PO"}</Badge></td>
                 <td className="px-4 py-2.5" style={{ color: colorConfig?.ink }}>{findName(suppliers, inv.supplierId)}</td>
@@ -1482,6 +1504,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
                   <div className="flex items-center justify-end gap-2">
                     <button onClick={() => setDetailInv(inv)} className="text-xs font-medium cursor-pointer" style={{ color: colorConfig?.accent }}>Detail</button>
+                    <button onClick={() => toggleHist(inv.id)} className="text-xs font-medium cursor-pointer" style={{ color: colorConfig?.accent }}>{histOpen ? "Tutup Riwayat" : "Riwayat"}</button>
                     {canEditOrCancel && (
                       <>
                         {inv.isDirect && <button onClick={() => openEditDirect(inv)} className="text-xs font-semibold cursor-pointer" style={{ color: colorConfig?.accent }}>Edit</button>}
@@ -1491,6 +1514,17 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
                   </div>
                 </td>
               </tr>
+              {histOpen && (() => {
+                const h = pInvoiceHistory(inv);
+                return (
+                  <tr>
+                    <td colSpan={7} className="px-4 pb-3">
+                      <PaymentHistory rows={h.rows} total={total} deductions={h.deductions} sisa={sisa} fmtIDR={fmtIDR} fmtDate={fmtDate} colorConfig={colorConfig} />
+                    </td>
+                  </tr>
+                );
+              })()}
+              </React.Fragment>
             );
           })}
           {processedPInvoices.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: colorConfig?.inkSoft }}>Belum ada Faktur Pembelian yang sesuai.</td></tr>}
