@@ -31,7 +31,7 @@ import FinanceView from "./modules/FinanceModule";
 import QAView from "./modules/QAModule";
 import { myClasses, setOfficersCache } from "./qa";
 import { computeBill, itemLineTotal } from "./billing";
-import { invoiceSoIds } from "./invoiceLinks";
+import { invoiceSoIds, invoiceHasSO } from "./invoiceLinks";
 import { setPaymentSettings, PAYMENT_GROUPS } from "./print";
 import SearchableSelect from "./components/SearchableSelect";
 import ActivityLogView from "./modules/ActivityLogModule";
@@ -354,26 +354,22 @@ function makeCostResolver(batches, pInvoices, pReceipts, pos) {
 //                  dikurangi barang yang balik karena SJ diterima sebagian
 //   - Retur      = retur dari faktur, dinilai dengan harga DPP yang sama dengan faktur
 // ---------------------------------------------------------------------
-function computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf }) {
+function computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf, invoices }) {
   const bill = computeBill(inv);
   const dpp = bill.dpp;
   const dppRatio = bill.raw > 0 ? dpp / bill.raw : 1; // efek diskon nota & PPN include
 
-  let invCogs = 0;
-  const costByProduct = {};
-  const slot = (pid) => (costByProduct[pid] ||= { qty: 0, cost: 0, missingBatch: 0, zeroCost: 0, recovered: 0, trace: [] });
-  const addAllocs = (pid, allocs) => {
-    const cp = slot(pid);
+  const newSlot = () => ({ qty: 0, cost: 0, missingBatch: 0, zeroCost: 0, recovered: 0, trace: [] });
+  const addAllocs = (map, pid, allocs) => {
+    const cp = (map[pid] ||= newSlot());
     (allocs || []).forEach((a) => {
       const q = Number(a.qty) || 0;
       const b = (batches || []).find((x) => x.id === a.batchId);
       const ex = costOf.explain(a.batchId, pid, a.batchNo);
       const unit = ex.cost;
-      const c = q * unit;
       cp.trace.push({ batchNo: a.batchNo || b?.batchNo || "-", qty: q, unit, src: ex.src, byNo: ex.match === "no" });
-      invCogs += c;
       cp.qty += q;
-      cp.cost += c;
+      cp.cost += q * unit;
       if (!(unit > 0)) {
         if (!b) cp.missingBatch += q;
         else cp.zeroCost += q;
@@ -382,36 +378,65 @@ function computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf }) 
       }
     });
   };
-  const receivedDNs = inv.isDirect ? [] : (deliveryNotes || []).filter((dn) => invoiceSoIds(inv).includes(dn.soId) && dn.status === "diterima");
+
+  // HPP faktur langsung: dari alokasi batch item faktur.
+  // HPP faktur SO: "kolam" HPP per SO dari Surat Jalan yang diterima.
+  const soIds = inv.isDirect ? [] : invoiceSoIds(inv);
+  const directMap = {};
+  const pools = {};
+  const receivedDNs = inv.isDirect ? [] : (deliveryNotes || []).filter((dn) => soIds.includes(dn.soId) && dn.status === "diterima");
   if (inv.isDirect) {
-    (inv.items || []).forEach((it) => addAllocs(it.productId, it.allocations));
+    (inv.items || []).forEach((it) => addAllocs(directMap, it.productId, it.allocations));
   } else {
-    receivedDNs.forEach((dn) => (dn.items || []).forEach((it) => addAllocs(it.productId, it.allocations)));
+    soIds.forEach((sid) => { pools[sid] = {}; });
+    receivedDNs.forEach((dn) => (dn.items || []).forEach((it) => addAllocs(pools[dn.soId], it.productId, it.allocations)));
   }
 
   const isSJReturn = (r) => r.source === "sj" || (!r.invoiceId && r.soId);
-  const returList = (returns || []).filter((r) => r.invoiceId === inv.id || (r.soId && invoiceSoIds(inv).includes(r.soId)));
+  // Retur SJ (diterima sebagian) nempel ke SO-nya; retur faktur nempel ke fakturnya sendiri
+  // (jadi retur faktur A nggak ikut kehitung di faktur B dari SO yang sama).
+  const returList = (returns || []).filter((r) => r.invoiceId === inv.id || (isSJReturn(r) && r.soId && soIds.includes(r.soId)));
 
   // Barang yang balik karena SJ diterima sebagian: BUKAN retur penjualan (nggak pernah difakturkan),
-  // jadi cuma ngurangin HPP barang terkirim, nggak ngurangin penjualan.
+  // jadi cuma ngurangin HPP barang terkirim di kolam SO-nya, nggak ngurangin penjualan.
   returList.filter(isSJReturn).forEach((r) => (r.items || []).forEach((it) => {
-    const cp = slot(it.productId);
+    const pool = pools[r.soId] || (pools[r.soId] = {});
+    const cp = (pool[it.productId] ||= newSlot());
     const avg = cp.qty > 0 ? cp.cost / cp.qty : 0;
     const rbs = it.restockedBatches || [];
     const rbQty = rbs.reduce((s2, rb) => s2 + (Number(rb.qty) || 0), 0);
     let backCost = rbs.reduce((s2, rb) => s2 + (Number(rb.qty) || 0) * costOf(rb.batchId, it.productId, rb.batchNo), 0);
     const backQty = Number(it.qty) || 0;
     if (backQty > rbQty) backCost += (backQty - rbQty) * avg;
-    invCogs -= backCost;
     cp.qty -= backQty;
     cp.cost -= backCost;
     cp.trace.push({ batchNo: rbs.map((x) => x.batchNo).filter(Boolean).join(", ") || "-", qty: -backQty, unit: backQty > 0 ? backCost / backQty : 0, src: `balik, SJ diterima sebagian (${r.noRetur || "-"})`, byNo: false });
   }));
 
+  // SO yang dipecah jadi beberapa faktur: HPP tiap faktur = qty faktur x rata-rata modal SO itu.
+  // SO yang cuma punya 1 faktur: HPP = seluruh barang yang diterima (sama seperti sebelumnya).
+  const isShared = (sid) => (invoices || []).filter((i) => invoiceSoIds(i).includes(sid)).length > 1;
+  const itemSo = (it) => it.soId || inv.soId;
+  const avgOf = (cp) => (cp && cp.qty > 0 ? cp.cost / cp.qty : 0);
+  let invCogs = 0;
+  if (inv.isDirect) {
+    Object.values(directMap).forEach((cp) => { invCogs += cp.cost; });
+  } else {
+    soIds.forEach((sid) => {
+      const pool = pools[sid] || {};
+      if (isShared(sid)) {
+        (inv.items || []).filter((it) => itemSo(it) === sid).forEach((it) => { invCogs += (Number(it.qty) || 0) * avgOf(pool[it.productId]); });
+      } else {
+        Object.values(pool).forEach((cp) => { invCogs += cp.cost; });
+      }
+    });
+  }
+  const slotFor = (it) => (inv.isDirect ? directMap[it.productId] : (pools[itemSo(it)] || {})[it.productId]);
+
   const hasReceivedDN = inv.isDirect || receivedDNs.length > 0;
   const items = (inv.items || []).map((it) => {
     const qty = Number(it.qty) || 0;
-    const cp = costByProduct[it.productId];
+    const cp = slotFor(it);
     const hppUnit = cp && cp.qty > 0 ? cp.cost / cp.qty : 0;
     let hppIssue = null;
     if (!hasReceivedDN) hppIssue = "sj_belum_diterima";
@@ -419,7 +444,9 @@ function computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf }) 
     else if (cp.missingBatch > 0) hppIssue = "batch_terhapus";
     else if (cp.zeroCost > 0) hppIssue = "modal_nol";
     else if (cp.recovered > 0) hppIssue = "dipulihkan";
-    return { productId: it.productId, qty, unitPrice: Number(it.unitPrice) || 0, lineTotal: itemLineTotal(it), hppUnit, hppTotal: qty * hppUnit, hppIssue, trace: cp?.trace || [] };
+    return { productId: it.productId, qty, unitPrice: Number(it.unitPrice) || 0, lineTotal: itemLineTotal(it), hppUnit, hppTotal: qty * hppUnit, hppIssue,
+      // jejak batch; kalau SO-nya dipecah ke beberapa faktur, qty jejak diskalakan ke porsi faktur ini
+      trace: (cp?.trace || []).map((t) => (!inv.isDirect && isShared(itemSo(it)) && cp.qty > 0 ? { ...t, qty: Math.round((t.qty * qty / cp.qty) * 100) / 100 } : t)) };
   });
   const itemsHpp = items.reduce((s2, x) => s2 + x.hppTotal, 0);
 
@@ -1305,6 +1332,26 @@ function PharmaERP({ userEmail, onLogout }) {
   function pInvoiceReturnedAmount(invId) { return (pReturns || []).filter((r) => r.pInvoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
   function pInvoiceSisa(inv) { return Math.max(0, pInvoiceTotal(inv) - pInvoiceReturnedAmount(inv.id) - pInvoicePaidAmount(inv.id)); }
 
+  // DP yang dipotongkan ke 1 faktur.
+  // SO yang dipecah jadi beberapa faktur: DP motong faktur pertama dulu (urutan pembuatan),
+  // kalau masih sisa baru ke faktur berikutnya. Faktur gabungan: DP semua SO-nya ikut.
+  function invoiceDPAmount(inv) {
+    if (!inv) return 0;
+    const capOf = (i) => Math.max(0, invoiceTotal(i) - invoiceReturnedAmount(i.id));
+    let total = 0;
+    invoiceSoIds(inv).forEach((soId) => {
+      let dp = soDPAmount(soId);
+      if (dp <= 0) return;
+      for (const i of (invoices || []).filter((x) => invoiceHasSO(x, soId))) {
+        const take = Math.min(dp, capOf(i));
+        if (i.id === inv.id) { total += take; break; }
+        dp -= take;
+        if (dp <= 0) break;
+      }
+    });
+    return Math.min(total, capOf(inv));
+  }
+
   // Bisa 1 SO atau daftar SO (faktur gabungan): DP semua SO-nya ikut dihitung
   function soDPAmount(soId) {
     const ids = (Array.isArray(soId) ? soId : [soId]).filter(Boolean);
@@ -1315,11 +1362,11 @@ function PharmaERP({ userEmail, onLogout }) {
   const costOf = useMemo(() => makeCostResolver(batches, pInvoices, pReceipts, pos), [batches, pInvoices, pReceipts, pos]);
   // HPP neto per faktur: rumus yang sama dengan Laporan Penjualan & Laba Rugi
   function invoiceCOGS(inv) {
-    return computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf }).cogsNet;
+    return computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf, invoices }).cogsNet;
   }
 
   function invoiceSisa(inv) {
-    return Math.max(0, invoiceTotal(inv) - invoiceReturnedAmount(inv.id) - soDPAmount(invoiceSoIds(inv)) - invoicePaidAmount(inv.id));
+    return Math.max(0, invoiceTotal(inv) - invoiceReturnedAmount(inv.id) - invoiceDPAmount(inv) - invoicePaidAmount(inv.id));
   }
 
   const arOutstanding = useMemo(() => (invoices || []).reduce((s, inv) => s + invoiceSisa(inv), 0), [invoices, returns, paymentsIn]);
@@ -1334,7 +1381,7 @@ function PharmaERP({ userEmail, onLogout }) {
   // Laba kotor bulan ini: rumus sama persis dengan Laba Rugi (computeInvoiceProfit)
   const grossProfitMonth = useMemo(() => {
     return (invoices || []).filter((inv) => isThisMonth(inv.date))
-      .reduce((s, inv) => s + computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf }).grossProfit, 0);
+      .reduce((s, inv) => s + computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf, invoices }).grossProfit, 0);
   }, [invoices, batches, deliveryNotes, returns, costOf]);
 
   const expensesMonth = useMemo(() => {
@@ -1964,7 +2011,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       saveSOs={persist.sos} saveBatches={persist.batches} saveDeliveryNotes={persist.deliveryNotes}
       saveInvoices={persist.invoices} saveReturns={persist.returns} saveCustomers={persist.customers}
       allocateFEFO={allocateFEFO} findName={findName} notify={notify} stockByProduct={stockByProduct}
-      soTotal={soTotal} invoiceTotal={invoiceTotal} soDPAmount={soDPAmount}
+      soTotal={soTotal} invoiceTotal={invoiceTotal} soDPAmount={soDPAmount} invoiceDPAmount={invoiceDPAmount}
       invoicePaidAmount={invoicePaidAmount} invoiceReturnedAmount={invoiceReturnedAmount}
       colorConfig={COLOR} uid={uid} todayISO={todayISO} fmtDate={fmtDate} fmtIDR={fmtIDR}
       calcTax={calcTax} COMPANY_PROFILE={companyProfile} CUSTOMER_TYPES={CUSTOMER_TYPES}
@@ -1981,7 +2028,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
         pos, sos, suppliers, customers, batches, invoices, pInvoices, pReturns, returns, 
         paymentsOut, paymentsIn, expenses, findName, notify,
         arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth,
-        invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount, invoiceSisa,
+        invoiceTotal, soDPAmount, invoiceDPAmount, invoicePaidAmount, invoiceReturnedAmount, invoiceSisa,
         pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa, calcTax 
       }}
       savePaymentsOut={persist.paymentsOut} 
@@ -2870,8 +2917,8 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
   // 4a. RINCIAN LABA KOTOR PER FAKTUR (harga jual vs HPP)
   // Rumusnya di computeInvoiceProfit (satu sumber buat Laporan Penjualan, Laba Rugi & Dashboard).
   const invoiceProfitRows = useMemo(
-    () => filteredInvoices.map((inv) => ({ id: inv.id, ...computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf }) })),
-    [filteredInvoices, returns, deliveryNotes, batches, costOf]
+    () => filteredInvoices.map((inv) => ({ id: inv.id, ...computeInvoiceProfit(inv, { batches, deliveryNotes, returns, costOf, invoices }) })),
+    [filteredInvoices, returns, deliveryNotes, batches, costOf, invoices]
   );
 
   const profitById = useMemo(() => {
