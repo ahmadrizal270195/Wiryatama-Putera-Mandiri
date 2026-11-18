@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { withAtomic } from "../atomicScope";
 import { Plus, Printer, FileText, Trash2, Search } from "lucide-react";
 import { newReview, isCleared, blockedReason, QABadge, reviewState, requiredClasses } from "../qa";
 import { newestFirst, createdRank } from "../invoiceLinks";
@@ -701,7 +702,9 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
     setReceiveForm(init);
   }
 
-  async function submitBPB() {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const submitBPB = (...args) => withAtomic(() => submitBPB__raw(...args));
+  async function submitBPB__raw() {
     if (!noBPB.trim()) return notify("Nomor BPB wajib diisi", "danger");
     if (isNumberTaken(pReceipts, "noBPB", noBPB)) return notify(`Nomor BPB ${noBPB.trim()} sudah dipakai. Ganti nomornya dulu.`, "danger");
     if (!selectedPO) return notify("Pilih PO terlebih dahulu", "danger");
@@ -769,7 +772,9 @@ function BPBTab({ products, suppliers, pos, batches, pReceipts, pInvoices, saveB
     setModal(null);
   }
 
-  async function cancelBPB(pr) {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const cancelBPB = (...args) => withAtomic(() => cancelBPB__raw(...args));
+  async function cancelBPB__raw(pr) {
     if ((pInvoices || []).some((inv) => inv.poId === pr.poId)) {
       return notify("Gagal membatalkan: Faktur Pembelian untuk transaksi ini sudah ada. Batalkan Faktur Pembelian terlebih dahulu.", "danger");
     }
@@ -1103,7 +1108,9 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     setItems(items.filter((_, idx) => idx !== i));
   }
 
-  async function submitDirectPInvoice() {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const submitDirectPInvoice = (...args) => withAtomic(() => submitDirectPInvoice__raw(...args));
+  async function submitDirectPInvoice__raw() {
   if (!noFakturDirect.trim()) return notify("Nomor Faktur Vendor wajib diisi", "danger");
   if (!supplierId) return notify("Pilih supplier terlebih dahulu", "danger");
   // Nomor faktur vendor dari supplier, jadi cuma dicek dobel di supplier yang sama
@@ -1323,7 +1330,9 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
     notify(`${inputFaktur.trim()} berhasil diterbitkan`);
   }
 
-  async function cancelInvoice(inv) {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const cancelInvoice = (...args) => withAtomic(() => cancelInvoice__raw(...args));
+  async function cancelInvoice__raw(inv) {
     const paid = pInvoicePaidAmount(inv.id);
     if (paid > 0) return notify("Gagal membatalkan: Faktur ini sudah memiliki riwayat pembayaran ke supplier.", "danger");
     if ((pReturns || []).some((r) => r.pInvoiceId === inv.id)) return notify("Gagal membatalkan: Faktur ini memiliki riwayat retur pembelian. Batalkan retur terlebih dahulu.", "danger");
@@ -1620,7 +1629,9 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
     setModal("new");
   }
 
-  async function submitRetur() {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const submitRetur = (...args) => withAtomic(() => submitRetur__raw(...args));
+  async function submitRetur__raw() {
     if (!selectedInvoice) return notify("Pilih Faktur Pembelian terlebih dahulu", "danger");
     const lines = (selectedInvoice.items || [])
       .map((it) => ({ ...it, qtyReturn: Number(returnQty[it.productId]) || 0, maxReturn: it.qty - alreadyReturnedQty(selectedInvoice.id, it.productId) }))
@@ -1671,7 +1682,9 @@ function ReturPembelianTab({ products, suppliers, pos, pInvoices, pReturns, pRec
     setModal(null);
   }
 
-  async function cancelReturn(ret) {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const cancelReturn = (...args) => withAtomic(() => cancelReturn__raw(...args));
+  async function cancelReturn__raw(ret) {
     let working = (batches || []).map((b) => ({ ...b }));
 
     const inv = (pInvoices || []).find((x) => x.id === ret.pInvoiceId);
