@@ -52,7 +52,7 @@ export default function FinanceView(props) {
     pos, sos, suppliers, customers, batches, invoices, pInvoices, pReturns, returns, paymentsOut, paymentsIn, expenses,
     findName, notify, savePaymentsOut, savePaymentsIn, saveExpenses,
     arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth,
-    invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount, invoiceSisa,
+    invoiceTotal, soDPAmount, invoiceDPAmount, invoicePaidAmount, invoiceReturnedAmount, invoiceSisa,
     pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa,
     colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax
   } = props;
@@ -100,7 +100,7 @@ export default function FinanceView(props) {
     const total = typeof invoiceTotal === "function" ? invoiceTotal(inv) : 0;
     const paid = typeof invoicePaidAmount === "function" ? invoicePaidAmount(inv.id) : 0;
     const ret = typeof invoiceReturnedAmount === "function" ? invoiceReturnedAmount(inv.id) : 0;
-    const dp = typeof soDPAmount === "function" ? soDPAmount(invoiceSoIds(inv)) : 0;
+    const dp = typeof invoiceDPAmount === "function" ? invoiceDPAmount(inv) : (typeof soDPAmount === "function" ? soDPAmount(invoiceSoIds(inv)) : 0);
     return Math.max(0, total - paid - ret - dp);
   };
 
