@@ -49,7 +49,7 @@ function PJBadge({ product, colorConfig }) {
   );
 }
 
-export default function ProductsView({ products, save, stockByProduct, notify, colorConfig, uid, fmtIDR }) {
+export default function ProductsView({ products, save, productUsage, stockByProduct, notify, colorConfig, uid, fmtIDR }) {
   const [modal, setModal] = useState(null);
   const [q, setQ] = useState("");
   const [form, setForm] = useState({ name: "", category: CATEGORIES[0], unit: "box", sellPrice: "", minStock: "", qaClass: "" });
@@ -117,7 +117,14 @@ export default function ProductsView({ products, save, stockByProduct, notify, c
   }
 
   async function remove(id) {
-    await save((products || []).filter((p) => p.id !== id));
+    const p = (products || []).find((x) => x.id === id);
+    // Produk yang sudah bertransaksi nggak boleh dihapus: laporan lama jadi bolong (nama & HPP hilang)
+    const used = typeof productUsage === "function" ? productUsage(id) : [];
+    if (used.length) {
+      return notify(`${p?.name || "Produk"} nggak bisa dihapus, sudah dipakai di ${used.join(", ")}. Data lama butuh produk ini supaya laporan tetap utuh.`, "danger");
+    }
+    if (!confirm(`Hapus produk ${p?.name || ""}? Produk ini belum pernah dipakai transaksi.`)) return;
+    await save((products || []).filter((x) => x.id !== id));
     notify("Produk dihapus");
   }
 
