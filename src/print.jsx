@@ -1,6 +1,6 @@
 import React from "react";
 import { Printer } from "lucide-react";
-import { QA_CLASSES, printSigner } from "./qa";
+import { QA_CLASSES, printSigner, approvalVerified } from "./qa";
 
 // ---------------------------------------------------------------------
 //  CETAK DOKUMEN (dioptimalkan untuk printer dot matrix / continuous form)
@@ -197,7 +197,7 @@ export function QASignatureBlock({ doc, leftLabel = "Dibuat Oleh,", leftName = "
       {classes.map((cls) => {
         const d = r?.[cls];
         const role = `${QA_CLASSES[cls]?.role} ${QA_CLASSES[cls]?.label}`;
-        const approved = d?.status === "approved";
+        const approved = d?.status === "approved" && approvalVerified(doc, cls);
         const signer = printSigner(d, cls);
         const rejected = d?.status === "rejected";
         return (
