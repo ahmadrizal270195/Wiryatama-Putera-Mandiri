@@ -1271,6 +1271,10 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   const [splitNoTouched, setSplitNoTouched] = useState(false);
   const [splitOngkir, setSplitOngkir] = useState("");
   const [invSearch, setInvSearch] = useState("");
+  // Filter bulan: "paid" = bulan faktur itu LUNAS (tanggal bayar terakhir), "date" = bulan tanggal faktur
+  const [invMonth, setInvMonth] = useState("");
+  const [invMonthBy, setInvMonthBy] = useState("paid");
+  const setMonthFilter = (v) => { setInvMonth(v); if (v && invMonthBy === "paid") setInvStatusFilter("LUNAS"); };
 
   const eligibleSOs = (sos || []).filter((so) => getSOStatus(so) === "ready_to_invoice");
 
@@ -1284,7 +1288,16 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         const dp = invoiceDPAmount ? invoiceDPAmount(inv) : (soDPAmount ? soDPAmount(invoiceSoIds(inv)) : 0);
         const sisa = Math.max(0, total - ret - dp - paid);
         const isLunas = sisa <= 0;
-        return { ...inv, sisa, total, isLunas };
+        // Tanggal lunas = tanggal pembayaran terakhir (pelunasan faktur atau DP SO-nya)
+        let paidDate = "";
+        if (isLunas) {
+          const soIds = invoiceSoIds(inv);
+          (paymentsIn || []).forEach((p) => {
+            if ((p.invoiceId === inv.id || (p.soId && soIds.includes(p.soId))) && (p.date || "") > paidDate) paidDate = p.date || "";
+          });
+          if (!paidDate) paidDate = inv.date || ""; // lunas lewat retur saja
+        }
+        return { ...inv, sisa, total, isLunas, paidDate };
       })
       .filter((inv) => {
         const so = (sos || []).find((x) => x.id === inv.soId);
@@ -1295,7 +1308,14 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         if (invStatusFilter === "LUNAS") matchStatus = inv.isLunas;
         if (invStatusFilter === "BELUM_LUNAS") matchStatus = !inv.isLunas;
 
-        return matchSearch && matchStatus;
+        let matchMonth = true;
+        if (invMonth) {
+          matchMonth = invMonthBy === "paid"
+            ? inv.isLunas && String(inv.paidDate || "").slice(0, 7) === invMonth
+            : String(inv.date || "").slice(0, 7) === invMonth;
+        }
+
+        return matchSearch && matchStatus && matchMonth;
       })
       .sort((a, b) => {
         if (invSortBy === "created_desc") return rankInv(b) - rankInv(a);
@@ -1305,7 +1325,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         if (invSortBy === "total_asc") return a.total - b.total;
         return 0;
       });
-  }, [invoices, invSearch, invStatusFilter, invSortBy, customers, sos, invoiceTotal, invoicePaidAmount, invoiceReturnedAmount, soDPAmount, invoiceDPAmount, findName]);
+  }, [invoices, invSearch, invStatusFilter, invSortBy, invMonth, invMonthBy, paymentsIn, customers, sos, invoiceTotal, invoicePaidAmount, invoiceReturnedAmount, soDPAmount, invoiceDPAmount, findName]);
 
   // Nomor faktur langsung ikut golongan item (OB / OK / AL)
   React.useEffect(() => {
@@ -1666,7 +1686,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       </div>
 
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 no-print">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto flex-1 max-w-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto flex-1 max-w-4xl">
           <TextInput
             placeholder="Cari No. Faktur / Pelanggan..."
             value={invSearch}
@@ -1677,6 +1697,11 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
             <option value="ALL">Semua Status</option>
             <option value="BELUM_LUNAS">Belum Lunas (Piutang)</option>
             <option value="LUNAS">Sudah Lunas</option>
+          </Select>
+          <TextInput type="month" value={invMonth} onChange={(e) => setMonthFilter(e.target.value)} colorConfig={colorConfig} title="Filter bulan (kosongkan = semua)" />
+          <Select value={invMonthBy} onChange={(e) => setInvMonthBy(e.target.value)} colorConfig={colorConfig}>
+            <option value="paid">Bulan dilunasi</option>
+            <option value="date">Bulan faktur</option>
           </Select>
         </div>
 
@@ -1782,6 +1807,14 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         </Modal>
       )}
 
+      {invMonth && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs mb-2 no-print" style={{ color: colorConfig?.inkSoft }}>
+          <span>
+            {invMonthBy === "paid" ? "Dilunasi" : "Faktur"} bulan <b style={{ color: colorConfig?.ink }}>{new Date(invMonth + "-01").toLocaleDateString("id-ID", { month: "long", year: "numeric" })}</b>: {processedInvoices.length} faktur · total <b style={{ color: colorConfig?.ink }}>{fmtIDR(processedInvoices.reduce((s, x) => s + (x.total || 0), 0))}</b>
+          </span>
+          <button onClick={() => setInvMonth("")} className="underline cursor-pointer" style={{ color: colorConfig?.accent }}>hapus filter bulan</button>
+        </div>
+      )}
       <ResponsiveTable minWidth={700} colorConfig={colorConfig}>
         <thead>
           <tr style={{ background: colorConfig?.primarySoft }}>
@@ -1807,7 +1840,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                 <td className="px-4 py-2.5" style={{ color: colorConfig?.ink }}>{custName}</td>
                 <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(inv.date)}</td>
                 <td className="px-4 py-2.5 tabular-nums" style={{ color: colorConfig?.ink }}>{fmtIDR(total)}</td>
-                <td className="px-4 py-2.5"><Badge tone={sisa > 0 ? "warn" : "good"} colorConfig={colorConfig}>{sisa > 0 ? fmtIDR(sisa) : "Lunas"}</Badge></td>
+                <td className="px-4 py-2.5"><Badge tone={sisa > 0 ? "warn" : "good"} colorConfig={colorConfig}>{sisa > 0 ? fmtIDR(sisa) : "Lunas"}</Badge>{sisa <= 0 && inv.paidDate && <div className="text-[10px] mt-0.5 tabular-nums" style={{ color: colorConfig?.inkSoft }}>{fmtDate(inv.paidDate)}</div>}</td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
                   <div className="flex items-center justify-end gap-2">
                     <button onClick={() => (isCleared(inv) ? setPrintInv(inv) : notify(blockedReason(inv, `Faktur ${inv.noFaktur}`), "danger"))} className="text-xs flex items-center gap-1 font-semibold cursor-pointer" style={{ color: isCleared(inv) ? colorConfig?.primary : colorConfig?.inkSoft }}><Printer size={13} /> Cetak</button>
