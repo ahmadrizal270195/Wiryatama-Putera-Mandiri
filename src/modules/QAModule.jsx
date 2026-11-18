@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from "react";
+import { withAtomic } from "../atomicScope";
 import { Plus, Search, CheckCircle2, XCircle, Clock, ShieldCheck, AlertTriangle, ChevronDown, ChevronUp, GitBranch } from "lucide-react";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import {
   QA_CLASSES, qaClassOf, reviewState, applyDecision, myOfficerFor, officerStatus, QABadge,
-  officerRoleLabel, decisionByText, onBehalfOfFor, printSigner,
+  officerRoleLabel, decisionByText, onBehalfOfFor, printSigner, approvalVerified, signatureMode,
 } from "../qa";
+import { createSignature } from "../qaSignatures";
 import { PrintArea, DocHeader, DocParties, DocTable } from "../print";
 
 const FLOW_KEY = "erp-qa-flow-open";
@@ -205,7 +207,7 @@ function QueueTab(props) {
   const rows = docs.filter((r) => {
     const st = reviewState(r.doc);
     const rv = r.doc.qaReview;
-    if (filter === "mine" && !rv.required.some((cls) => mineClasses.includes(cls) && (rv[cls]?.status || "pending") === "pending")) return false;
+    if (filter === "mine" && !rv.required.some((cls) => mineClasses.includes(cls) && ((rv[cls]?.status || "pending") === "pending" || (rv[cls]?.status === "approved" && !approvalVerified(r.doc, cls))))) return false;
     if (filter === "pending" && st !== "pending") return false;
     if (filter === "hold" && st !== "rejected") return false;
     if (q && !`${r.no} ${r.party} ${r.kindLabel}`.toLowerCase().includes(q.toLowerCase())) return false;
@@ -214,7 +216,9 @@ function QueueTab(props) {
 
   const saverOf = { so: [sos, saveSOs], po: [pos, savePOs], inv: [invoices, saveInvoices], bpb: [pReceipts, savePReceipts], pinv: [pInvoices, savePInvoices] };
 
-  async function submitDecision() {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const submitDecision = (...args) => withAtomic(() => submitDecision__raw(...args));
+  async function submitDecision__raw() {
     const { row, cls, status } = decide;
     if (status === "rejected" && !note.trim()) return notify("Alasan penolakan wajib diisi (untuk catatan audit)", "danger");
     const officer = myOfficerFor(officers, userEmail, cls);
@@ -223,7 +227,23 @@ function QueueTab(props) {
     try {
       const [list, save] = saverOf[row.kind];
       const current = (list || []).find((d) => d.id === row.doc.id) || row.doc;
-      const updated = applyDecision(current, cls, status, officer, note.trim());
+      // Tanda tangan digital dulu. Kalau rules menolak (bukan APJ/PJT terdaftar), keputusan batal.
+      let sigId = null;
+      if (signatureMode() !== "off") {
+        try {
+          sigId = await createSignature({
+            docKind: row.kind, docId: current.id, cls, status,
+            by: userEmail, byName: officer.name || userEmail, note: note.trim(),
+            reviewCreatedAt: current.qaReview?.createdAt || "",
+          });
+        } catch (e) {
+          console.error("Gagal tanda tangan QA:", e);
+          return notify(e?.code === "permission-denied"
+            ? `Server menolak: akun ini belum terdaftar sebagai ${QA_CLASSES[cls].role} aktif. Minta Super Admin cek Master APJ/PJT.`
+            : "Gagal menyimpan tanda tangan digital. Cek koneksi lalu ulangi.", "danger");
+        }
+      }
+      const updated = applyDecision(current, cls, status, officer, note.trim(), sigId);
       await save((list || []).map((d) => (d.id === updated.id ? updated : d)));
 
       // Penerimaan barang: batch baru lepas dari karantina setelah semua kategori setuju.
@@ -338,7 +358,10 @@ function ReviewCard({ r, products, c, fmtDate, mineClasses, onDecide, onPrintRej
 
       <div className="grid gap-3 md:grid-cols-2">
         {rv.required.map((cls) => {
-          const d = rv[cls] || { status: "pending" };
+          const raw = rv[cls] || { status: "pending" };
+          // Status "disetujui" tanpa tanda tangan yang valid dianggap belum disetujui
+          const forged = raw.status === "approved" && !approvalVerified(r.doc, cls) && signatureMode() === "on";
+          const d = forged ? { ...raw, status: "pending" } : raw;
           const clsItems = items.filter((it) => qaClassOf((products || []).find((p) => p.id === it.productId)) === cls);
           const canAct = mineClasses.includes(cls);
           const tone = d.status === "approved" ? c.good : d.status === "rejected" ? c.danger : c.warn;
@@ -362,6 +385,11 @@ function ReviewCard({ r, products, c, fmtDate, mineClasses, onDecide, onPrintRej
                   );
                 })}
               </ul>
+              {forged && (
+                <div className="text-[11px] mb-2 font-semibold" style={{ color: c.danger }}>
+                  Tercatat "disetujui", tapi tanda tangan digital {QA_CLASSES[cls].role} nggak ditemukan. Perlu direview ulang.
+                </div>
+              )}
               {d.status !== "pending" && (
                 <div className="text-[11px] mb-2" style={{ color: c.inkSoft }}>
                   {decisionByText(d)} · {d.at ? new Date(d.at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }) : ""}{d.note ? ` · "${d.note}"` : ""}
