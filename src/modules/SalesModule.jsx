@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Plus, Search, Printer, FileText, Trash2 } from "lucide-react";
 import { newReview, isCleared, blockedReason, QABadge, reviewState, qaSignatureText, requiredClasses } from "../qa";
-import { invoiceSoIds, invoiceHasSO, mergeDeductions, newestFirst, createdRank } from "../invoiceLinks";
+import { invoiceSoIds, invoiceHasSO, mergeDeductions, newestFirst, createdRank, remainingSOItems, soIsSplit } from "../invoiceLinks";
 import { golonganCodeString } from "../docNumber";
 import { nextDocNumber, isNumberTaken, golonganOfItems, docCode, isAutoFormat, numberGolMismatch, mixedMessage, GOLONGAN_LABEL, splitOrderByGolongan, nextDocNumbersForGroups } from "../docNumber";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
@@ -65,7 +65,7 @@ function itemsChanged(oldItems, newItems) {
 export default function SalesView({
   products, customers, sos, batches, deliveryNotes, invoices, returns, paymentsIn,
   saveSOs, saveBatches, saveDeliveryNotes, saveInvoices, saveReturns, saveCustomers,
-  allocateFEFO, findName, notify, stockByProduct, soTotal, invoiceTotal, soDPAmount,
+  allocateFEFO, findName, notify, stockByProduct, soTotal, invoiceTotal, soDPAmount, invoiceDPAmount,
   invoicePaidAmount, invoiceReturnedAmount, colorConfig, uid, todayISO, fmtDate, fmtIDR,
   calcTax, COMPANY_PROFILE, CUSTOMER_TYPES
 }) {
@@ -79,7 +79,11 @@ export default function SalesView({
   }
 
   function getSOStatus(so) {
-    if ((invoices || []).some((inv) => invoiceHasSO(inv, so.id))) return "invoiced";
+    if ((invoices || []).some((inv) => invoiceHasSO(inv, so.id))) {
+      // SO yang fakturnya dipecah: baru "sudah difaktur" kalau semua barang yang diterima sudah masuk faktur
+      if (soIsSplit(invoices, so.id) && remainingSOItems(so, deliveryNotes, invoices).length > 0) return "ready_to_invoice";
+      return "invoiced";
+    }
     if (so.isClosedPartial) return "ready_to_invoice";
     
     const dns = (deliveryNotes || []).filter((dn) => dn.soId === so.id);
@@ -177,7 +181,7 @@ export default function SalesView({
         <SJTab {...{ products, customers, sos, batches, deliveryNotes, invoices, returns, saveBatches, saveDeliveryNotes, saveReturns, findName, notify, getSOStatus, shippedQty, soTotal, invoiceTotal, colorConfig, uid, todayISO, fmtDate, fmtIDR, COMPANY_PROFILE }} />
       )}
       {subTab === "faktur" && (
-        <FakturTab {...{ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, batches, saveBatches, saveInvoices, saveCustomers, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount, stockByProduct, allocateFEFO, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES }} />
+        <FakturTab {...{ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, batches, saveBatches, saveInvoices, saveCustomers, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoiceDPAmount, invoicePaidAmount, invoiceReturnedAmount, stockByProduct, allocateFEFO, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES }} />
       )}
       {subTab === "retur" && (
         <ReturTab {...{ products, customers, sos, invoices, returns, deliveryNotes, batches, saveBatches, saveReturns, findName, notify, invoiceTotal, invoiceReturnedAmount, colorConfig, uid, todayISO, fmtDate, fmtIDR, COMPANY_PROFILE }} />
@@ -1224,7 +1228,7 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
 }
 
 // --- SUB-KOMPONEN FAKTUR TAB ---
-function FakturTab({ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, batches, saveBatches, saveInvoices, saveCustomers, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoicePaidAmount, invoiceReturnedAmount, stockByProduct, allocateFEFO, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES }) {
+function FakturTab({ products, customers, sos, deliveryNotes, invoices, paymentsIn, returns, batches, saveBatches, saveInvoices, saveCustomers, findName, notify, getSOStatus, invoiceTotal, soDPAmount, invoiceDPAmount, invoicePaidAmount, invoiceReturnedAmount, stockByProduct, allocateFEFO, colorConfig, uid, todayISO, fmtDate, fmtIDR, calcTax, COMPANY_PROFILE, CUSTOMER_TYPES }) {
   const [detailInv, setDetailInv] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [isEditingFromSO, setIsEditingFromSO] = useState(false);
@@ -1248,6 +1252,13 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   const [invSortBy, setInvSortBy] = useState("created_desc");
   // SO yang dicentang buat digabung jadi 1 faktur
   const [pickSO, setPickSO] = useState(() => new Set());
+  // Pecah 1 SO jadi beberapa faktur
+  const [splitSO, setSplitSO] = useState(null);      // SO yang lagi dipecah
+  const [splitRows, setSplitRows] = useState([]);    // sisa item SO
+  const [splitQty, setSplitQty] = useState([]);      // qty yang masuk faktur ini
+  const [splitNo, setSplitNo] = useState("");
+  const [splitNoTouched, setSplitNoTouched] = useState(false);
+  const [splitOngkir, setSplitOngkir] = useState("");
   const [invSearch, setInvSearch] = useState("");
 
   const eligibleSOs = (sos || []).filter((so) => getSOStatus(so) === "ready_to_invoice");
@@ -1259,7 +1270,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         const total = invoiceTotal ? invoiceTotal(inv) : 0;
         const paid = invoicePaidAmount ? invoicePaidAmount(inv.id) : 0;
         const ret = invoiceReturnedAmount ? invoiceReturnedAmount(inv.id) : 0;
-        const dp = soDPAmount ? soDPAmount(invoiceSoIds(inv)) : 0;
+        const dp = invoiceDPAmount ? invoiceDPAmount(inv) : (soDPAmount ? soDPAmount(invoiceSoIds(inv)) : 0);
         const sisa = Math.max(0, total - ret - dp - paid);
         const isLunas = sisa <= 0;
         return { ...inv, sisa, total, isLunas };
@@ -1283,7 +1294,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
         if (invSortBy === "total_asc") return a.total - b.total;
         return 0;
       });
-  }, [invoices, invSearch, invStatusFilter, invSortBy, customers, sos, invoiceTotal, invoicePaidAmount, invoiceReturnedAmount, soDPAmount, findName]);
+  }, [invoices, invSearch, invStatusFilter, invSortBy, customers, sos, invoiceTotal, invoicePaidAmount, invoiceReturnedAmount, soDPAmount, invoiceDPAmount, findName]);
 
   // Nomor faktur langsung ikut golongan item (OB / OK / AL)
   React.useEffect(() => {
@@ -1376,7 +1387,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       if (shortages.length > 0) return notify("Stok tidak cukup — " + shortages.join(", "), "danger");
       await saveBatches(working);
     } else {
-      items.forEach(it => { itemsWithAlloc.push({ productId: it.productId, qty: it.qty, unitPrice: it.unitPrice, discountType: it.discountType || "percent", discountPercent: Number(it.discountPercent || 0) }); });
+      items.forEach(it => { itemsWithAlloc.push({ productId: it.productId, qty: it.qty, unitPrice: it.unitPrice, discountType: it.discountType || "percent", discountPercent: Number(it.discountPercent || 0), ...(it.soId ? { soId: it.soId } : {}) }); });
     }
 
     const payload = { 
@@ -1413,27 +1424,62 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     setModalDirect(false); setEditingId(null); setIsEditingFromSO(false);
   }
 
+  // Batas nilai per faktur dari data pelanggan (0 = nggak ada batas)
+  const custLimit = (customerId) => Number((customers || []).find((c) => c.id === customerId)?.maxInvoiceAmount) || 0;
+
+  // Potongan untuk faktur pecahan: potongan % tetap; potongan Rp dibagi sesuai porsi nilai,
+  // faktur terakhir (yang menghabiskan sisa SO) ambil sisa potongan biar totalnya pas.
+  function partialDeductions(so, invItems) {
+    const fullRaw = itemsSubtotal(remainingSOItems(so, deliveryNotes, [])) || 0;
+    const share = fullRaw > 0 ? itemsSubtotal(invItems) / fullRaw : 1;
+    const after = remainingSOItems(so, deliveryNotes, [...(invoices || []), { id: "__baru__", soId: so.id, items: invItems }]);
+    const isFinal = after.length === 0;
+    const prior = (invoices || []).filter((i) => invoiceHasSO(i, so.id));
+    return normalizeDeductions(so).map((d) => {
+      if (d.mode !== "amount") return { ...d };
+      const total = Number(d.value) || 0;
+      if (!isFinal) return { ...d, value: Math.round(total * share) };
+      const used = prior.reduce((sum, i) => sum + normalizeDeductions(i)
+        .filter((x) => x.mode === "amount" && x.kind === d.kind && (x.note || "") === (d.note || ""))
+        .reduce((t, x) => t + (Number(x.value) || 0), 0), 0);
+      return { ...d, value: Math.max(0, Math.round((total - used) * 100) / 100) };
+    });
+  }
+
+  // Cek batas nilai faktur pelanggan. true = lanjut simpan.
+  function okWithLimit(customerId, total) {
+    const limit = custLimit(customerId);
+    if (!limit || total <= limit) return true;
+    return confirm(`Total faktur ${fmtIDR(total)} melebihi batas pelanggan ini (${fmtIDR(limit)} per faktur).\n\nTetap buat 1 faktur?\n(Pilih Batal kalau mau dipecah pakai tombol "Pecah Faktur")`);
+  }
+
   async function createInvoice(so) {
-    const dns = (deliveryNotes || []).filter((dn) => dn.soId === so.id && dn.status === "diterima");
-    const receivedByProduct = {};
-    dns.forEach((dn) => (dn.items || []).forEach((it) => {
-      receivedByProduct[it.productId] = (receivedByProduct[it.productId] || 0) + (it.receivedQty ?? it.qty);
-    }));
-
-    const invItems = (so.items || []).map((it) => ({ productId: it.productId, qty: receivedByProduct[it.productId] || 0, unitPrice: it.unitPrice, discountType: it.discountType || "percent", discountPercent: Number(it.discountPercent || 0) })).filter((it) => it.qty > 0);
+    const split = soIsSplit(invoices, so.id);
+    // SO yang sudah dipecah: faktur ini = sisa barang yang belum difakturkan
+    const invItems = remainingSOItems(so, deliveryNotes, split ? invoices : []);
     if (invItems.length === 0) return notify("Tidak ada barang yang diterima untuk difakturkan", "danger");
+    const deductions = split ? partialDeductions(so, invItems) : (Array.isArray(so.deductions) ? so.deductions : null);
 
-    const gSO = golonganOfItems(so.items, products);
-    const nextNo = nextDocNumber((invoices || []).map((x) => x.noFaktur), docCode("INV", gSO.mixed ? gSO.highest : gSO.code));
+    const gSO = golonganOfItems(invItems, products);
+    const nextNo = nextDocNumber((invoices || []).map((x) => x.noFaktur), docCode("INV", gSO.mixed ? golonganCodeString(gSO) : gSO.code));
 
-    const inputFaktur = prompt("Masukkan Nomor Faktur Penjualan / Pajak:", nextNo);
+    const inputFaktur = prompt(`Masukkan Nomor Faktur Penjualan / Pajak${split ? " (sisa SO " + so.soNumber + ")" : ""}:`, nextNo);
     if (!inputFaktur) return;
     if (isNumberTaken(invoices, "noFaktur", inputFaktur)) return notify(`Nomor Faktur ${inputFaktur.trim()} sudah dipakai faktur lain. Faktur nggak dibuat, coba lagi dengan nomor lain.`, "danger");
 
     const inputOngkir = prompt("Biaya ongkir tambahan ke customer (Rp, kosongkan/0 jika tidak ada):", "0");
     const ongkirVal = Number(inputOngkir) || 0;
 
-    await saveInvoices([...(invoices || []), { id: uid(), noFaktur: inputFaktur.trim(), soId: so.id, customerId: so.customerId, date: todayISO(), taxType: so.taxType || "none", discountType: so.discountType || "percent", ...(Array.isArray(so.deductions) ? { deductions: so.deductions } : {}), discountPercent: Number(so.discountPercent || 0), ongkir: ongkirVal, items: invItems }]);
+    const doc = {
+      id: uid(), noFaktur: inputFaktur.trim(), soId: so.id, customerId: so.customerId, date: todayISO(), taxType: so.taxType || "none",
+      ...(deductions
+        ? { ...legacyDiscountFields(deductions, itemsSubtotal(invItems)), deductions }
+        : { discountType: so.discountType || "percent", discountPercent: Number(so.discountPercent || 0) }),
+      ongkir: ongkirVal, items: invItems,
+      ...(split ? { splitFromSO: true } : {}),
+    };
+    if (!okWithLimit(so.customerId, computeBill(doc).total)) return;
+    await saveInvoices([...(invoices || []), doc]);
     notify(`${inputFaktur.trim()} dibuat`);
   }
 
@@ -1455,6 +1501,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     if (list.length < 2) return notify("Pilih minimal 2 SO untuk digabung", "danger");
     if (new Set(list.map((so) => so.customerId)).size > 1) return notify("SO yang digabung harus dari pelanggan yang sama", "danger");
     if (new Set(list.map((so) => so.taxType || "none")).size > 1) return notify("SO yang digabung harus punya jenis PPN yang sama", "danger");
+    const splitOnes = list.filter((so) => soIsSplit(invoices, so.id));
+    if (splitOnes.length) return notify(`SO ${splitOnes.map((so) => so.soNumber).join(", ")} sudah sebagian difaktur (dipecah). Fakturkan sisanya sendiri, jangan digabung.`, "danger");
     const merged = mergeDeductions(list);
     if (!merged.ok) return notify("Potongan persen (diskon/fee %) di SO-SO ini beda, jadi nggak bisa digabung otomatis. Samakan dulu potongannya atau buat faktur terpisah.", "danger");
 
@@ -1473,15 +1521,86 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     const ongkirVal = Number(inputOngkir) || 0;
 
     const first = list[0];
-    await saveInvoices([...(invoices || []), {
+    const doc = {
       id: uid(), noFaktur: inputFaktur.trim(),
       soId: first.id, soIds: list.map((so) => so.id),
       customerId: first.customerId, date: todayISO(), taxType: first.taxType || "none",
       ...legacyDiscountFields(merged.deductions, itemsSubtotal(invItems)), deductions: merged.deductions,
       ongkir: ongkirVal, items: invItems,
-    }]);
+    };
+    if (!okWithLimit(first.customerId, computeBill(doc).total)) return;
+    await saveInvoices([...(invoices || []), doc]);
     setPickSO(new Set());
     notify(`${inputFaktur.trim()} dibuat dari ${list.length} SO (${soNos})`);
+  }
+
+  function openSplit(so) {
+    const rows = remainingSOItems(so, deliveryNotes, soIsSplit(invoices, so.id) ? invoices : []);
+    if (rows.length === 0) return notify("Tidak ada sisa barang yang bisa difakturkan", "danger");
+    setSplitSO(so); setSplitRows(rows); setSplitQty(rows.map((r) => r.qty));
+    setSplitNo(""); setSplitNoTouched(false); setSplitOngkir("");
+  }
+
+  const splitChosen = splitRows.map((r, i) => ({ ...r, qty: Math.max(0, Math.min(r.qty, Number(splitQty[i]) || 0)) })).filter((r) => r.qty > 0);
+  const splitDoc = splitSO ? {
+    items: splitChosen, taxType: splitSO.taxType || "none",
+    deductions: splitChosen.length ? partialDeductions(splitSO, splitChosen) : [],
+    ongkir: Number(splitOngkir) || 0,
+  } : null;
+  const splitTotal = splitDoc ? computeBill(splitDoc).total : 0;
+  const splitLimit = splitSO ? custLimit(splitSO.customerId) : 0;
+  const splitSuggestNo = (() => {
+    if (!splitSO || splitChosen.length === 0) return "";
+    const g = golonganOfItems(splitChosen, products);
+    return nextDocNumber((invoices || []).map((x) => x.noFaktur), docCode("INV", g.mixed ? golonganCodeString(g) : g.code));
+  })();
+  const splitNoShown = splitNoTouched ? splitNo : splitSuggestNo;
+
+  // Isi qty otomatis dari atas sampai total faktur nyentuh batas pelanggan
+  function fillToLimit() {
+    if (!splitLimit || !splitSO) return;
+    const q = splitRows.map(() => 0);
+    const totalWith = (arr) => {
+      const items = splitRows.map((r, i) => ({ ...r, qty: arr[i] })).filter((r) => r.qty > 0);
+      if (!items.length) return 0;
+      return computeBill({ items, taxType: splitSO.taxType || "none", deductions: partialDeductions(splitSO, items), ongkir: Number(splitOngkir) || 0 }).total;
+    };
+    for (let i = 0; i < splitRows.length; i++) {
+      let lo = 0, hi = splitRows[i].qty;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        const t = [...q]; t[i] = mid;
+        if (totalWith(t) <= splitLimit) lo = mid; else hi = mid - 1;
+      }
+      q[i] = lo;
+      if (lo < splitRows[i].qty) break;
+    }
+    setSplitQty(q);
+  }
+
+  async function saveSplitInvoice() {
+    const so = splitSO;
+    if (!so) return;
+    if (splitChosen.length === 0) return notify("Isi qty minimal 1 item untuk faktur ini", "danger");
+    const no = (splitNoShown || "").trim();
+    if (!no) return notify("Nomor faktur wajib diisi", "danger");
+    if (isNumberTaken(invoices, "noFaktur", no)) return notify(`Nomor Faktur ${no} sudah dipakai faktur lain`, "danger");
+    if (splitLimit && splitTotal > splitLimit && !confirm(`Total faktur ini ${fmtIDR(splitTotal)} masih di atas batas pelanggan (${fmtIDR(splitLimit)}). Tetap simpan?`)) return;
+    const deductions = partialDeductions(so, splitChosen);
+    const doc = {
+      id: uid(), noFaktur: no, soId: so.id, customerId: so.customerId, date: todayISO(), taxType: so.taxType || "none",
+      ...legacyDiscountFields(deductions, itemsSubtotal(splitChosen)), deductions,
+      ongkir: Number(splitOngkir) || 0, items: splitChosen, splitFromSO: true,
+    };
+    await saveInvoices([...(invoices || []), doc]);
+    const left = remainingSOItems(so, deliveryNotes, [...(invoices || []), doc]);
+    notify(left.length ? `${no} dibuat · sisa ${left.length} item SO ${so.soNumber} bisa difakturkan lagi` : `${no} dibuat · semua barang SO ${so.soNumber} sudah difakturkan`);
+    if (left.length) {
+      // langsung lanjut ke faktur berikutnya untuk sisanya
+      setSplitRows(left); setSplitQty(left.map((r) => r.qty)); setSplitNo(""); setSplitNoTouched(false); setSplitOngkir("");
+    } else {
+      setSplitSO(null);
+    }
   }
 
   async function cancelInvoice(inv) {
@@ -1556,20 +1675,83 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
           <div className="flex flex-col gap-2">
             {newestFirst(eligibleSOs).map((so) => {
               const pickedCust = eligibleSOs.find((x) => pickSO.has(x.id))?.customerId;
-              const lockOut = pickSO.size > 0 && !pickSO.has(so.id) && pickedCust && pickedCust !== so.customerId;
+              const lockOut = soIsSplit(invoices, so.id) || (pickSO.size > 0 && !pickSO.has(so.id) && pickedCust && pickedCust !== so.customerId);
               return (
                 <div key={so.id} className="flex items-center justify-between gap-2 text-sm py-1" style={{ borderBottom: `1px solid ${colorConfig?.border}`, opacity: lockOut ? 0.45 : 1 }}>
                   <label className="flex items-center gap-2 cursor-pointer" title={lockOut ? "Beda pelanggan, nggak bisa digabung" : "Centang buat digabung"}>
                     <input type="checkbox" disabled={lockOut} checked={pickSO.has(so.id)}
                       onChange={() => setPickSO((prev) => { const n = new Set(prev); n.has(so.id) ? n.delete(so.id) : n.add(so.id); return n; })} />
                     <span style={{ color: colorConfig?.ink }}>{so.soNumber} · {findName(customers, so.customerId)}</span>
+                    {soIsSplit(invoices, so.id) && <Badge tone="warn" colorConfig={colorConfig}>sebagian difaktur · sisa {remainingSOItems(so, deliveryNotes, invoices).length} item</Badge>}
+                    {custLimit(so.customerId) > 0 && <span className="text-[10px]" style={{ color: colorConfig?.inkSoft }}>maks {fmtIDR(custLimit(so.customerId))}/faktur</span>}
                   </label>
-                  <Button onClick={() => createInvoice(so)} variant="ghost" colorConfig={colorConfig}><FileText size={13} /> Buat Faktur</Button>
+                  <div className="flex gap-1">
+                    <Button onClick={() => openSplit(so)} variant="ghost" colorConfig={colorConfig}>Pecah Faktur</Button>
+                    <Button onClick={() => createInvoice(so)} variant="ghost" colorConfig={colorConfig}><FileText size={13} /> {soIsSplit(invoices, so.id) ? "Fakturkan Sisa" : "Buat Faktur"}</Button>
+                  </div>
                 </div>
               );
             })}
           </div>
         </Card>
+      )}
+
+      {splitSO && (
+        <Modal title={`Pecah Faktur — ${splitSO.soNumber}`} onClose={() => setSplitSO(null)} wide colorConfig={colorConfig}>
+          <p className="text-xs mb-3" style={{ color: colorConfig?.inkSoft }}>
+            Isi qty yang masuk ke faktur ini. Sisanya tetap di SO dan bisa difakturkan lagi (langsung lanjut setelah simpan).
+            Pelanggan: <b>{findName(customers, splitSO.customerId)}</b>
+            {splitLimit > 0 && <> · batas <b>{fmtIDR(splitLimit)}</b> per faktur</>}
+          </p>
+          <div className="border rounded-lg overflow-x-auto mb-3" style={{ borderColor: colorConfig?.border }}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: colorConfig?.primarySoft }}>
+                  {["Produk", "Sisa", "Qty faktur ini", "Harga", "Subtotal"].map((h) => <th key={h} className="text-left px-3 py-2 text-xs uppercase" style={{ color: colorConfig?.primary }}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {splitRows.map((r, i) => {
+                  const p = (products || []).find((x) => x.id === r.productId);
+                  const q = Math.max(0, Math.min(r.qty, Number(splitQty[i]) || 0));
+                  const gross = q * (Number(r.unitPrice) || 0);
+                  const disc = getItemDiscountAmount(q, r.unitPrice, r.discountType, r.discountPercent);
+                  return (
+                    <tr key={i} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
+                      <td className="px-3 py-2" style={{ color: colorConfig?.ink }}>{p?.name || "-"}</td>
+                      <td className="px-3 py-2 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{r.qty} {p?.unit || ""}</td>
+                      <td className="px-3 py-2 w-32">
+                        <TextInput type="number" min={0} max={r.qty} value={splitQty[i] ?? ""} onChange={(e) => setSplitQty((prev) => prev.map((v, k) => (k === i ? e.target.value : v)))} colorConfig={colorConfig} />
+                      </td>
+                      <td className="px-3 py-2 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtIDR(r.unitPrice)}</td>
+                      <td className="px-3 py-2 tabular-nums font-semibold" style={{ color: colorConfig?.ink }}>{fmtIDR(Math.max(0, gross - disc))}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-wrap gap-2 mb-3">
+            <Button variant="ghost" onClick={() => setSplitQty(splitRows.map((r) => r.qty))} colorConfig={colorConfig}>Isi semua sisa</Button>
+            <Button variant="ghost" onClick={() => setSplitQty(splitRows.map(() => 0))} colorConfig={colorConfig}>Kosongkan</Button>
+            {splitLimit > 0 && <Button variant="ghost" onClick={fillToLimit} colorConfig={colorConfig}>Isi otomatis sampai batas</Button>}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3">
+            <Field label="Nomor Faktur" colorConfig={colorConfig}>
+              <TextInput value={splitNoShown} onChange={(e) => { setSplitNoTouched(true); setSplitNo(e.target.value); }} colorConfig={colorConfig} />
+            </Field>
+            <Field label="Ongkir (Rp, opsional)" colorConfig={colorConfig}>
+              <TextInput type="number" value={splitOngkir} onChange={(e) => setSplitOngkir(e.target.value)} colorConfig={colorConfig} />
+            </Field>
+          </div>
+          <div className="flex items-center justify-between text-sm mb-3 p-2 rounded-lg" style={{ background: splitLimit > 0 && splitTotal > splitLimit ? (colorConfig?.dangerSoft || "#FEF2F2") : (colorConfig?.primarySoft || "#ECFDF5") }}>
+            <span style={{ color: colorConfig?.ink }}>Total faktur ini (termasuk PPN & potongan)</span>
+            <span className="tabular-nums font-bold" style={{ color: splitLimit > 0 && splitTotal > splitLimit ? (colorConfig?.danger || "#DC2626") : colorConfig?.ink }}>
+              {fmtIDR(splitTotal)}{splitLimit > 0 && splitTotal > splitLimit ? " · lewat batas" : ""}
+            </span>
+          </div>
+          <Button onClick={saveSplitInvoice} disabled={splitChosen.length === 0} className="w-full justify-center" colorConfig={colorConfig}>Simpan Faktur Ini</Button>
+        </Modal>
       )}
 
       <ResponsiveTable minWidth={700} colorConfig={colorConfig}>
@@ -1745,7 +1927,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
               {(() => {
                 const so = (sos || []).find((s) => s.id === printInv.soId);
                 const cust = printInv.isDirect ? (customers || []).find((c) => c.id === printInv.customerId) : (customers || []).find((c) => c.id === so?.customerId);
-                const dp = invoiceSoIds(printInv).length ? soDPAmount(invoiceSoIds(printInv)) : 0;
+                const dp = invoiceDPAmount ? invoiceDPAmount(printInv) : (invoiceSoIds(printInv).length ? soDPAmount(invoiceSoIds(printInv)) : 0);
                 const paid = invoicePaidAmount(printInv.id);
                 const ret = invoiceReturnedAmount(printInv.id);
                 
