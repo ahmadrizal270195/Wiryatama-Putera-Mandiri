@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Plus, Download } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { Plus, Download, Search } from "lucide-react";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select } from "../components/UIComponents";
 
 const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Individu/Dokter Pribadi", "Distributor Lain"];
@@ -7,6 +7,27 @@ const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Individu/Dokter Prib
 export default function CustomersView({ customers, sos, invoices, save, notify, colorConfig, uid, todayISO }) {
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({ name: "", type: CUSTOMER_TYPES[0], npwp: "", contact: "", address: "" });
+  const [q, setQ] = useState("");
+  const [typeFilter, setTypeFilter] = useState("ALL");
+  const [sortBy, setSortBy] = useState("name_asc");
+
+  // Daftar pelanggan: dicari (nama, tipe, NPWP, kontak, alamat) lalu diurutkan
+  const shown = useMemo(() => {
+    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const rank = new Map((customers || []).map((c, i) => [c.id, i]));
+    const list = (customers || []).filter((c) => {
+      if (typeFilter !== "ALL" && c.type !== typeFilter) return false;
+      const hay = [c.name, c.type, c.npwp, c.contact, c.address].filter(Boolean).join(" ").toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+    const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""), "id", { sensitivity: "base", numeric: true });
+    return list.sort((a, b) => {
+      if (sortBy === "name_desc") return byName(b, a);
+      if (sortBy === "newest") return (rank.get(b.id) ?? 0) - (rank.get(a.id) ?? 0);
+      if (sortBy === "type") return String(a.type || "").localeCompare(String(b.type || ""), "id") || byName(a, b);
+      return byName(a, b);
+    });
+  }, [customers, q, typeFilter, sortBy]);
 
   function openNew() {
     setForm({ name: "", type: CUSTOMER_TYPES[0], npwp: "", contact: "", address: "" });
@@ -92,8 +113,31 @@ export default function CustomersView({ customers, sos, invoices, save, notify, 
         </div>
       </div>
 
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+        <div className="relative w-full sm:w-80">
+          <Search size={14} className="absolute left-3 top-2.5" color={colorConfig?.inkSoft} />
+          <TextInput placeholder="Cari nama, NPWP, kontak, alamat..." value={q} onChange={(e) => setQ(e.target.value)} className="pl-8" colorConfig={colorConfig} />
+        </div>
+        <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="w-full sm:w-52" colorConfig={colorConfig}>
+          <option value="ALL">Semua Tipe</option>
+          {CUSTOMER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </Select>
+        <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="w-full sm:w-48" colorConfig={colorConfig}>
+          <option value="name_asc">Nama A–Z</option>
+          <option value="name_desc">Nama Z–A</option>
+          <option value="type">Per Tipe</option>
+          <option value="newest">Terakhir Ditambah</option>
+        </Select>
+        <span className="text-xs sm:ml-auto" style={{ color: colorConfig?.inkSoft }}>{shown.length} dari {(customers || []).length} pelanggan</span>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {(customers || []).map((c) => (
+        {shown.length === 0 && (
+          <div className="text-sm py-8 text-center md:col-span-2" style={{ color: colorConfig?.inkSoft }}>
+            {(customers || []).length === 0 ? "Belum ada pelanggan." : `Nggak ada pelanggan yang cocok dengan "${q}".`}
+          </div>
+        )}
+        {shown.map((c) => (
           <Card key={c.id} colorConfig={colorConfig}>
             <div className="flex items-start justify-between">
               <div>
