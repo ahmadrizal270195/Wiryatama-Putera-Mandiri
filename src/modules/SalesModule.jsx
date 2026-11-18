@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { withAtomic } from "../atomicScope";
+import PaymentHistory from "../components/PaymentHistory";
 import { Plus, Search, Printer, FileText, Trash2 } from "lucide-react";
 import { newReview, isCleared, blockedReason, QABadge, reviewState, qaSignatureText, requiredClasses } from "../qa";
 import { invoiceSoIds, invoiceHasSO, mergeDeductions, newestFirst, createdRank, remainingSOItems, soIsSplit } from "../invoiceLinks";
@@ -1273,6 +1274,31 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   const [invSearch, setInvSearch] = useState("");
   // Filter bulan: "paid" = bulan faktur itu LUNAS (tanggal bayar terakhir), "date" = bulan tanggal faktur
   const [invMonth, setInvMonth] = useState("");
+  // Faktur yang riwayat pembayarannya lagi dibuka
+  const [openHist, setOpenHist] = useState(() => new Set());
+  const toggleHist = (id) => setOpenHist((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  function invoiceHistory(inv) {
+    const soIds = invoiceSoIds(inv);
+    const soNo = (id) => (sos || []).find((x) => x.id === id)?.soNumber || "SO";
+    const rows = [];
+    (paymentsIn || []).forEach((p) => {
+      if (p.invoiceId === inv.id) rows.push({ date: p.date, kind: "bayar", label: p.type || "Pelunasan", sub: [p.method, p.note].filter(Boolean).join(" · "), amount: Number(p.amount) || 0 });
+      else if (p.soId && soIds.includes(p.soId)) rows.push({ date: p.date, kind: "dp", label: `DP ${soNo(p.soId)}`, sub: [p.method, p.note].filter(Boolean).join(" · "), amount: Number(p.amount) || 0 });
+    });
+    (returns || []).filter((r) => r.invoiceId === inv.id).forEach((r) => {
+      rows.push({ date: r.date, kind: "retur", label: `Retur ${r.noRetur || ""}`.trim(), sub: "mengurangi tagihan", amount: (r.items || []).reduce((t, it) => t + (Number(it.qty) || 0) * (Number(it.unitPrice) || 0), 0) });
+    });
+    const dpUsed = invoiceDPAmount ? invoiceDPAmount(inv) : 0;
+    const dpPaid = rows.filter((r) => r.kind === "dp").reduce((s, r) => s + r.amount, 0);
+    return {
+      rows,
+      deductions: [
+        { label: "Retur", amount: invoiceReturnedAmount ? invoiceReturnedAmount(inv.id) : 0 },
+        { label: dpPaid > dpUsed + 0.5 ? "DP (bagian yang dipakai faktur ini)" : "DP", amount: dpUsed },
+        { label: "Dibayar", amount: invoicePaidAmount ? invoicePaidAmount(inv.id) : 0 },
+      ],
+    };
+  }
   const [invMonthBy, setInvMonthBy] = useState("paid");
   const setMonthFilter = (v) => { setInvMonth(v); if (v && invMonthBy === "paid") setInvStatusFilter("LUNAS"); };
 
@@ -1828,8 +1854,10 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
             const total = inv.total;
             const sisa = inv.sisa;
             const canEditOrCancel = invoicePaidAmount(inv.id) === 0 && !(returns || []).some((r) => r.invoiceId === inv.id);
+            const histOpen = openHist.has(inv.id);
             return (
-              <tr key={inv.id} style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
+              <React.Fragment key={inv.id}>
+              <tr style={{ borderTop: `1px solid ${colorConfig?.border}` }}>
                 <td className="px-4 py-2.5 tabular-nums font-semibold" style={{ color: colorConfig?.ink }}>{inv.noFaktur}</td>
                 <td className="px-4 py-2.5">
                   <div className="flex flex-col items-start gap-1">
@@ -1845,6 +1873,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                   <div className="flex items-center justify-end gap-2">
                     <button onClick={() => (isCleared(inv) ? setPrintInv(inv) : notify(blockedReason(inv, `Faktur ${inv.noFaktur}`), "danger"))} className="text-xs flex items-center gap-1 font-semibold cursor-pointer" style={{ color: isCleared(inv) ? colorConfig?.primary : colorConfig?.inkSoft }}><Printer size={13} /> Cetak</button>
                     <button onClick={() => setDetailInv(inv)} className="text-xs font-medium cursor-pointer" style={{ color: colorConfig?.accent }}>Detail</button>
+                    <button onClick={() => toggleHist(inv.id)} className="text-xs font-medium cursor-pointer" style={{ color: colorConfig?.accent }}>{histOpen ? "Tutup Riwayat" : "Riwayat"}</button>
                     {canEditOrCancel && (
                       <>
                         <button onClick={() => openEditInvoice(inv)} className="text-xs font-semibold cursor-pointer" style={{ color: colorConfig?.accent }}>Edit</button>
@@ -1854,6 +1883,17 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                   </div>
                 </td>
               </tr>
+              {histOpen && (() => {
+                const h = invoiceHistory(inv);
+                return (
+                  <tr>
+                    <td colSpan={7} className="px-4 pb-3">
+                      <PaymentHistory rows={h.rows} total={total} deductions={h.deductions} sisa={sisa} fmtIDR={fmtIDR} fmtDate={fmtDate} colorConfig={colorConfig} />
+                    </td>
+                  </tr>
+                );
+              })()}
+              </React.Fragment>
             );
           })}
           {processedInvoices.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-sm" style={{ color: colorConfig?.inkSoft }}>Belum ada Faktur Penjualan yang sesuai.</td></tr>}
