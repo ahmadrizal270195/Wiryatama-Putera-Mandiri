@@ -20,6 +20,7 @@ export default function CustomersView({ customers, sos, invoices, save, notify, 
 
   async function submit() {
     if (!form.name.trim()) return notify("Nama pelanggan wajib diisi", "danger");
+    form.maxInvoiceAmount = Number(form.maxInvoiceAmount) > 0 ? Number(form.maxInvoiceAmount) : 0;
     if (modal === "new") {
       await save([...(customers || []), { ...form, id: uid() }]);
       notify("Pelanggan ditambahkan");
@@ -100,6 +101,7 @@ export default function CustomersView({ customers, sos, invoices, save, notify, 
                 <div className="flex items-center gap-2 mt-0.5">
                   <Badge tone="neutral" colorConfig={colorConfig}>{c.type}</Badge>
                   {c.npwp && <span className="text-[11px] tabular-nums text-emerald-700 font-medium">NPWP: {c.npwp}</span>}
+                  {Number(c.maxInvoiceAmount) > 0 && <span className="text-[11px] tabular-nums font-medium" style={{ color: colorConfig?.warn || "#D97706" }}>Maks/faktur: Rp{Number(c.maxInvoiceAmount).toLocaleString("id-ID")}</span>}
                 </div>
                 <div className="text-xs mt-1" style={{ color: colorConfig?.inkSoft }}>{c.contact}</div>
                 <div className="text-xs" style={{ color: colorConfig?.inkSoft }}>{c.address}</div>
@@ -136,6 +138,10 @@ export default function CustomersView({ customers, sos, invoices, save, notify, 
           </Field>
           <Field label="Alamat" colorConfig={colorConfig}>
             <TextInput value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} colorConfig={colorConfig} />
+          </Field>
+          <Field label="Maks nilai per faktur (Rp, opsional)" colorConfig={colorConfig}>
+            <TextInput type="number" placeholder="Contoh: 50000000 · kosongkan kalau nggak ada batas" value={form.maxInvoiceAmount || ""} onChange={(e) => setForm({ ...form, maxInvoiceAmount: e.target.value })} colorConfig={colorConfig} />
+            <p className="text-[11px] mt-1" style={{ color: colorConfig?.inkSoft }}>Kalau diisi, sistem ngingetin waktu faktur ke pelanggan ini lewat batas, dan bisa dipecah pakai tombol Pecah Faktur.</p>
           </Field>
           <Button onClick={submit} className="w-full justify-center mt-2" colorConfig={colorConfig}>Simpan</Button>
         </Modal>
