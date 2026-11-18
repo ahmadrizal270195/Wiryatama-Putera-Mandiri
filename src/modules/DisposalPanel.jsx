@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { withAtomic } from "../atomicScope";
 import { Plus, Trash2, Printer, Flame, Search } from "lucide-react";
 import { Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import { isNumberTaken } from "../docNumber";
@@ -70,7 +71,9 @@ export default function DisposalPanel({
     setLines([...lines, { batchId: b.id, qty: Number(b.qty) }]);
   }
 
-  async function submit() {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const submit = (...args) => withAtomic(() => submit__raw(...args));
+  async function submit__raw() {
     if (!form.noBA.trim()) return notify("Nomor Berita Acara wajib diisi", "danger");
     if (isNumberTaken(disposals, "noBA", form.noBA)) return notify(`Nomor Berita Acara ${form.noBA.trim()} sudah dipakai. Ganti nomornya dulu.`, "danger");
     if (lines.length === 0) return notify("Pilih minimal 1 batch yang dimusnahkan", "danger");
@@ -100,7 +103,9 @@ export default function DisposalPanel({
     }
   }
 
-  async function cancelBA(d) {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const cancelBA = (...args) => withAtomic(() => cancelBA__raw(...args));
+  async function cancelBA__raw(d) {
     if (!confirm(`Batalkan ${d.noBA}? Qty barang akan dikembalikan ke batch asalnya.`)) return;
     const back = {};
     (d.items || []).forEach((it) => { back[it.batchId] = (back[it.batchId] || 0) + Number(it.qty || 0); });
