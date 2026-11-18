@@ -966,6 +966,10 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
   // STATE BARU: FILTER & SORTING FAKTUR PEMBELIAN
   const [pInvStatusFilter, setPInvStatusFilter] = useState("ALL");
+  // Filter bulan: "paid" = bulan faktur itu LUNAS (tanggal bayar terakhir), "date" = bulan tanggal faktur
+  const [pInvMonth, setPInvMonth] = useState("");
+  const [pInvMonthBy, setPInvMonthBy] = useState("paid");
+  const setMonthFilter = (v) => { setPInvMonth(v); if (v && pInvMonthBy === "paid") setPInvStatusFilter("LUNAS"); };
   const [pInvSortBy, setPInvSortBy] = useState("created_desc");
   const [pInvSearch, setPInvSearch] = useState("");
 
@@ -1006,7 +1010,12 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         const ret = pInvoiceReturnedAmount ? pInvoiceReturnedAmount(inv.id) : 0;
         const sisa = Math.max(0, total - paid - ret);
         const isLunas = sisa <= 0 && total > 0; // Hanya Lunas jika Total > 0
-        return { ...inv, sisa, total, isLunas };
+        let paidDate = "";
+        if (isLunas) {
+          (paymentsOut || []).forEach((p) => { if (p.pInvoiceId === inv.id && (p.date || "") > paidDate) paidDate = p.date || ""; });
+          if (!paidDate) paidDate = inv.date || ""; // lunas lewat retur/deposit saja
+        }
+        return { ...inv, sisa, total, isLunas, paidDate };
       })
       .filter((inv) => {
         const suppName = findName(suppliers, inv.supplierId).toLowerCase();
@@ -1016,7 +1025,14 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         if (pInvStatusFilter === "LUNAS") matchStatus = inv.isLunas;
         if (pInvStatusFilter === "BELUM_LUNAS") matchStatus = !inv.isLunas;
 
-        return matchSearch && matchStatus;
+        let matchMonth = true;
+        if (pInvMonth) {
+          matchMonth = pInvMonthBy === "paid"
+            ? inv.isLunas && String(inv.paidDate || "").slice(0, 7) === pInvMonth
+            : String(inv.date || "").slice(0, 7) === pInvMonth;
+        }
+
+        return matchSearch && matchStatus && matchMonth;
       })
       .sort((a, b) => {
         if (pInvSortBy === "created_desc") return rankPInv(b) - rankPInv(a);
@@ -1026,7 +1042,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         if (pInvSortBy === "total_asc") return a.total - b.total;
         return 0;
       });
-  }, [pInvoices, pInvSearch, pInvStatusFilter, pInvSortBy, suppliers, pInvoiceSisa, pInvoiceTotal, findName]);
+  }, [pInvoices, pInvSearch, pInvStatusFilter, pInvSortBy, pInvMonth, pInvMonthBy, paymentsOut, suppliers, pInvoiceSisa, pInvoiceTotal, findName]);
 
   // Nomor faktur pembelian langsung ikut golongan item (OB / OK / AL)
   React.useEffect(() => {
@@ -1390,7 +1406,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
 
       {/* BARIS TOOLBAR FILTER & SORTING VENDOR */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 no-print">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto flex-1 max-w-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto flex-1 max-w-4xl">
           <TextInput
             placeholder="Cari No. Faktur Vendor / Supplier..."
             value={pInvSearch}
@@ -1401,6 +1417,11 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
             <option value="ALL">Semua Status</option>
             <option value="BELUM_LUNAS">Belum Lunas (Hutang)</option>
             <option value="LUNAS">Sudah Lunas</option>
+          </Select>
+          <TextInput type="month" value={pInvMonth} onChange={(e) => setMonthFilter(e.target.value)} colorConfig={colorConfig} title="Filter bulan (kosongkan = semua)" />
+          <Select value={pInvMonthBy} onChange={(e) => setPInvMonthBy(e.target.value)} colorConfig={colorConfig}>
+            <option value="paid">Bulan dilunasi</option>
+            <option value="date">Bulan faktur</option>
           </Select>
         </div>
 
@@ -1430,6 +1451,14 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
         </Card>
       )}
 
+      {pInvMonth && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs mb-2 no-print" style={{ color: colorConfig?.inkSoft }}>
+          <span>
+            {pInvMonthBy === "paid" ? "Dilunasi" : "Faktur"} bulan <b style={{ color: colorConfig?.ink }}>{new Date(pInvMonth + "-01").toLocaleDateString("id-ID", { month: "long", year: "numeric" })}</b>: {processedPInvoices.length} faktur · total <b style={{ color: colorConfig?.ink }}>{fmtIDR(processedPInvoices.reduce((s, x) => s + (x.total || 0), 0))}</b>
+          </span>
+          <button onClick={() => setPInvMonth("")} className="underline cursor-pointer" style={{ color: colorConfig?.accent }}>hapus filter bulan</button>
+        </div>
+      )}
       <ResponsiveTable minWidth={700} colorConfig={colorConfig}>
         <thead>
           <tr style={{ background: colorConfig?.primarySoft }}>
@@ -1449,7 +1478,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
                 <td className="px-4 py-2.5" style={{ color: colorConfig?.ink }}>{findName(suppliers, inv.supplierId)}</td>
                 <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: colorConfig?.inkSoft }}>{fmtDate(inv.date)}</td>
                 <td className="px-4 py-2.5 tabular-nums" style={{ color: colorConfig?.ink }}>{fmtIDR(total)}</td>
-                <td className="px-4 py-2.5"><Badge tone={sisa > 0 ? "danger" : "good"} colorConfig={colorConfig}>{sisa > 0 ? fmtIDR(sisa) : "Lunas"}</Badge></td>
+                <td className="px-4 py-2.5"><Badge tone={sisa > 0 ? "danger" : "good"} colorConfig={colorConfig}>{sisa > 0 ? fmtIDR(sisa) : "Lunas"}</Badge>{sisa <= 0 && inv.paidDate && <div className="text-[10px] mt-0.5 tabular-nums" style={{ color: colorConfig?.inkSoft }}>{fmtDate(inv.paidDate)}</div>}</td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
                   <div className="flex items-center justify-end gap-2">
                     <button onClick={() => setDetailInv(inv)} className="text-xs font-medium cursor-pointer" style={{ color: colorConfig?.accent }}>Detail</button>
