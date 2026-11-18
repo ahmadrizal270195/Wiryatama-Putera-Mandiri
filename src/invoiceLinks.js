@@ -43,3 +43,56 @@ export function createdRank(list) {
   (list || []).forEach((d, i) => m.set(d?.id, i));
   return (d) => (m.has(d?.id) ? m.get(d.id) : -1);
 }
+
+// =====================================================================
+//  PECAH 1 SO JADI BEBERAPA FAKTUR
+//  Faktur hasil pecahan ditandai splitFromSO: true. Item faktur nyimpen soId asalnya.
+// =====================================================================
+export function itemSoId(inv, it) {
+  return it?.soId || inv?.soId || null;
+}
+
+// Qty yang sudah diterima pelanggan (SJ status diterima) per produk
+export function receivedQtyBySO(deliveryNotes, soId) {
+  const m = {};
+  (deliveryNotes || []).filter((dn) => dn.soId === soId && dn.status === "diterima")
+    .forEach((dn) => (dn.items || []).forEach((it) => {
+      m[it.productId] = (m[it.productId] || 0) + (Number(it.receivedQty ?? it.qty) || 0);
+    }));
+  return m;
+}
+
+// Qty yang sudah masuk faktur per produk (dari SO ini saja)
+export function invoicedQtyBySO(invoices, soId, excludeInvId) {
+  const m = {};
+  (invoices || []).filter((inv) => inv.id !== excludeInvId && invoiceHasSO(inv, soId))
+    .forEach((inv) => (inv.items || []).forEach((it) => {
+      if (itemSoId(inv, it) !== soId) return;
+      m[it.productId] = (m[it.productId] || 0) + (Number(it.qty) || 0);
+    }));
+  return m;
+}
+
+// Item SO yang barangnya sudah diterima tapi belum difakturkan (harga & diskon item ikut SO)
+export function remainingSOItems(so, deliveryNotes, invoices) {
+  const rec = receivedQtyBySO(deliveryNotes, so.id);
+  const done = invoicedQtyBySO(invoices, so.id);
+  const pool = {};
+  Object.keys(rec).forEach((pid) => { pool[pid] = Math.max(0, rec[pid] - (done[pid] || 0)); });
+  const out = [];
+  const lines = so.items || [];
+  lines.forEach((it, idx) => {
+    const left = pool[it.productId] || 0;
+    if (left <= 0) return;
+    const isLastLine = !lines.slice(idx + 1).some((x) => x.productId === it.productId);
+    const qty = isLastLine ? left : Math.min(left, Number(it.qty) || 0);
+    pool[it.productId] = left - qty;
+    if (qty > 0) out.push({ productId: it.productId, qty, unitPrice: it.unitPrice, discountType: it.discountType || "percent", discountPercent: Number(it.discountPercent || 0), soId: so.id });
+  });
+  return out;
+}
+
+// SO ini sudah pernah dipecah fakturnya?
+export function soIsSplit(invoices, soId) {
+  return (invoices || []).some((inv) => inv.splitFromSO && invoiceHasSO(inv, soId));
+}
