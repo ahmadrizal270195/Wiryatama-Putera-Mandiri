@@ -1518,12 +1518,20 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     if (list.length < 2) return notify("Pilih minimal 2 SO untuk digabung", "danger");
     if (new Set(list.map((so) => so.customerId)).size > 1) return notify("SO yang digabung harus dari pelanggan yang sama", "danger");
     if (new Set(list.map((so) => so.taxType || "none")).size > 1) return notify("SO yang digabung harus punya jenis PPN yang sama", "danger");
-    const splitOnes = list.filter((so) => soIsSplit(invoices, so.id));
-    if (splitOnes.length) return notify(`SO ${splitOnes.map((so) => so.soNumber).join(", ")} sudah sebagian difaktur (dipecah). Fakturkan sisanya sendiri, jangan digabung.`, "danger");
-    const merged = mergeDeductions(list);
+    // SO yang sudah sebagian difaktur (dipecah) ikut digabung, tapi yang masuk cuma SISA barangnya.
+    // Potongan Rp-nya juga cuma sisa yang belum dipakai faktur sebelumnya.
+    const perSO = list.map((so) => {
+      const split = soIsSplit(invoices, so.id);
+      const items = split ? remainingSOItems(so, deliveryNotes, invoices) : soInvoiceItems(so);
+      return { so, split, items, deductions: split ? partialDeductions(so, items) : normalizeDeductions(so) };
+    });
+    const empty = perSO.filter((x) => x.items.length === 0);
+    if (empty.length) return notify(`SO ${empty.map((x) => x.so.soNumber).join(", ")} nggak punya sisa barang buat difakturkan`, "danger");
+    const anySplit = perSO.some((x) => x.split);
+    const merged = mergeDeductions(perSO.map((x) => ({ deductions: x.deductions })));
     if (!merged.ok) return notify("Potongan persen (diskon/fee %) di SO-SO ini beda, jadi nggak bisa digabung otomatis. Samakan dulu potongannya atau buat faktur terpisah.", "danger");
 
-    const invItems = list.flatMap((so) => soInvoiceItems(so));
+    const invItems = perSO.flatMap((x) => x.items);
     if (invItems.length === 0) return notify("Tidak ada barang yang diterima untuk difakturkan", "danger");
 
     const g = golonganOfItems(invItems, products);
@@ -1531,7 +1539,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     const nextNo = nextDocNumber((invoices || []).map((x) => x.noFaktur), docCode("INV", gol));
     const soNos = list.map((so) => so.soNumber).join(", ");
 
-    const inputFaktur = prompt(`Gabung ${list.length} SO jadi 1 faktur:\n${soNos}\n\nNomor Faktur Penjualan / Pajak:`, nextNo);
+    const inputFaktur = prompt(`Gabung ${list.length} SO jadi 1 faktur:\n${soNos}${anySplit ? "\n(SO yang sudah sebagian difaktur: yang masuk cuma sisanya)" : ""}\n\nNomor Faktur Penjualan / Pajak:`, nextNo);
     if (!inputFaktur) return;
     if (isNumberTaken(invoices, "noFaktur", inputFaktur)) return notify(`Nomor Faktur ${inputFaktur.trim()} sudah dipakai faktur lain. Faktur nggak dibuat, coba lagi dengan nomor lain.`, "danger");
     const inputOngkir = prompt("Biaya ongkir tambahan ke customer (Rp, kosongkan/0 jika tidak ada):", "0");
@@ -1544,6 +1552,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       customerId: first.customerId, date: todayISO(), taxType: first.taxType || "none",
       ...legacyDiscountFields(merged.deductions, itemsSubtotal(invItems)), deductions: merged.deductions,
       ongkir: ongkirVal, items: invItems,
+      ...(anySplit ? { splitFromSO: true } : {}),
     };
     if (!okWithLimit(first.customerId, computeBill(doc).total)) return;
     await saveInvoices([...(invoices || []), doc]);
@@ -1686,7 +1695,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       {eligibleSOs.length > 0 && (
         <Card className="mb-4 no-print" colorConfig={colorConfig}>
           <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <div className="text-xs font-medium" style={{ color: colorConfig?.inkSoft }}>SO siap difaktur (barang sudah diterima penuh) · centang beberapa SO pelanggan yang sama buat digabung jadi 1 faktur</div>
+            <div className="text-xs font-medium" style={{ color: colorConfig?.inkSoft }}>SO siap difaktur (barang sudah diterima penuh) · centang beberapa SO pelanggan yang sama buat digabung jadi 1 faktur, termasuk sisa SO yang sudah dipecah</div>
             {pickSO.size >= 2 && (
               <Button onClick={createCombinedInvoice} colorConfig={colorConfig}><FileText size={13} /> Gabung {pickSO.size} SO jadi 1 Faktur</Button>
             )}
@@ -1694,7 +1703,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
           <div className="flex flex-col gap-2">
             {newestFirst(eligibleSOs).map((so) => {
               const pickedCust = eligibleSOs.find((x) => pickSO.has(x.id))?.customerId;
-              const lockOut = soIsSplit(invoices, so.id) || (pickSO.size > 0 && !pickSO.has(so.id) && pickedCust && pickedCust !== so.customerId);
+              const lockOut = pickSO.size > 0 && !pickSO.has(so.id) && pickedCust && pickedCust !== so.customerId;
               return (
                 <div key={so.id} className="flex items-center justify-between gap-2 text-sm py-1" style={{ borderBottom: `1px solid ${colorConfig?.border}`, opacity: lockOut ? 0.45 : 1 }}>
                   <label className="flex items-center gap-2 cursor-pointer" title={lockOut ? "Beda pelanggan, nggak bisa digabung" : "Centang buat digabung"}>
