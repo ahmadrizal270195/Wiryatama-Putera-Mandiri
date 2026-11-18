@@ -63,6 +63,22 @@ export function golonganOf(product) {
   return qaClassOf(product) === "obat" ? "OK" : "AL";
 }
 
+// CDOB: obat keras cuma boleh disalurkan ke sarana resmi (apotek, RS, klinik, PBF lain).
+// Pelanggan tipe ini nggak boleh beli obat keras.
+export const OBAT_KERAS_BLOCKED_TYPES = ["Individu/Dokter Pribadi"];
+
+// Mengembalikan pesan penolakan (string) atau "" kalau aman.
+export function obatKerasBlockMessage(items, products, customer) {
+  if (!customer || !OBAT_KERAS_BLOCKED_TYPES.includes(customer.type)) return "";
+  const names = [];
+  (items || []).forEach((it) => {
+    const p = (products || []).find((x) => x.id === it.productId);
+    if (golonganOf(p) === "OK" && !names.includes(p.name)) names.push(p.name);
+  });
+  if (!names.length) return "";
+  return `${customer.name} bertipe "${customer.type}", nggak boleh beli obat keras (CDOB): ${names.join(", ")}. Hapus itemnya, atau kalau pelanggan ini sebenarnya klinik/apotek, ubah tipenya dulu di Master Pelanggan.`;
+}
+
 export function golonganOfItems(items, products) {
   const set = new Set();
   (items || []).forEach((it) => {
