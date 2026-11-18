@@ -52,11 +52,46 @@ export function newReview(items, products) {
   return review;
 }
 
+// ---------------------------------------------------------------------
+//  Verifikasi tanda tangan (lihat qaSignatures.js)
+//  null      = tanda tangan belum termuat / koleksi belum bisa dibaca
+//              (rules belum di-deploy) -> pakai cara lama, percaya status.
+//  Map       = sudah termuat -> "disetujui" wajib ada tanda tangannya.
+// ---------------------------------------------------------------------
+let SIG_CACHE = null;
+let SIG_MODE = "loading"; // loading | on | off
+export function setSignaturesCache(list, mode = "on") {
+  SIG_MODE = mode;
+  SIG_CACHE = mode === "on" ? new Map((list || []).map((x) => [x.id, x])) : null;
+}
+export function addSignatureToCache(sig) { if (SIG_CACHE && sig?.id) SIG_CACHE.set(sig.id, sig); }
+export function signatureMode() { return SIG_MODE; }
+
+export function approvalVerified(doc, c) {
+  const a = doc?.qaReview?.[c];
+  if (!a || a.status !== "approved") return false;
+  if (SIG_MODE === "off") return true;
+  if (!SIG_CACHE) return false; // masih memuat: tahan dulu, sebentar
+  const sig = SIG_CACHE.get(a.sigId || `legacy__${doc.id}__${c}`);
+  if (!sig || String(sig.docId) !== String(doc.id) || sig.cls !== c || sig.status !== "approved") return false;
+  return sig.legacy ? true : (sig.reviewCreatedAt || "") === (doc.qaReview.createdAt || "");
+}
+
+// Persetujuan yang tercatat di dokumen tapi tanda tangannya nggak ada / nggak cocok.
+export function unverifiedClasses(doc) {
+  const r = doc?.qaReview;
+  if (!r || !Array.isArray(r.required) || SIG_MODE !== "on") return [];
+  return r.required.filter((c) => r[c]?.status === "approved" && !approvalVerified(doc, c));
+}
+
 // "none" = dokumen lama / tidak perlu review, lalu pending | approved | rejected
 export function reviewState(doc) {
   const r = doc && doc.qaReview;
   if (!r || !Array.isArray(r.required) || r.required.length === 0) return "none";
-  const sts = r.required.map((c) => (r[c] && r[c].status) || "pending");
+  const sts = r.required.map((c) => {
+    const st = (r[c] && r[c].status) || "pending";
+    return st === "approved" && !approvalVerified(doc, c) ? "pending" : st;
+  });
   if (sts.includes("rejected")) return "rejected";
   if (sts.every((s) => s === "approved")) return "approved";
   return "pending";
@@ -77,7 +112,10 @@ export function blockedReason(doc, what = "Transaksi") {
 export function pendingRoles(doc) {
   const r = doc?.qaReview;
   if (!r) return [];
-  return r.required.filter((c) => (r[c]?.status || "pending") === "pending").map((c) => QA_CLASSES[c].role);
+  return r.required.filter((c) => {
+    const st = r[c]?.status || "pending";
+    return st === "pending" || (st === "approved" && !approvalVerified(doc, c));
+  }).map((c) => QA_CLASSES[c].role);
 }
 
 export function rejectedRoles(doc) {
@@ -87,7 +125,7 @@ export function rejectedRoles(doc) {
 }
 
 // Terapkan keputusan satu kategori ke dokumen (mengembalikan dokumen baru).
-export function applyDecision(doc, cls, status, officer, note) {
+export function applyDecision(doc, cls, status, officer, note, sigId = null) {
   const r = doc.qaReview || { required: [cls] };
   return {
     ...doc,
@@ -105,6 +143,7 @@ export function applyDecision(doc, cls, status, officer, note) {
         onBehalfOfLicense: officer.delegate ? (principalFor(onBehalfOfFor(officer, cls), cls)?.sipa || "") : "",
         at: new Date().toISOString(),
         note: note || "",
+        ...(sigId ? { sigId } : {}),
       },
     },
   };
@@ -207,7 +246,7 @@ export function qaSignatureText(doc, fmtDate = (d) => d) {
   const r = doc?.qaReview;
   if (!r || !r.required?.length) return "";
   return r.required
-    .filter((c) => r[c]?.status === "approved")
+    .filter((c) => r[c]?.status === "approved" && approvalVerified(doc, c))
     .map((c) => `${QA_CLASSES[c].role} ${QA_CLASSES[c].label}: ${printSigner(r[c], c).name}${printSigner(r[c], c).license ? " (" + printSigner(r[c], c).license + ")" : ""}, ${fmtDate((r[c].at || "").slice(0, 10))}`)
     .join("  |  ");
 }
