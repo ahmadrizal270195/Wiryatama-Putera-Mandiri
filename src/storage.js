@@ -34,7 +34,7 @@ export function getStorageMode() { return MODE; }
 function reportSaveError(key, e) {
   console.error("Gagal menyimpan data:", key, e);
   try {
-    window.dispatchEvent(new CustomEvent("erp-save-error", { detail: { key, message: e?.message || String(e) } }));
+    window.dispatchEvent(new CustomEvent("erp-save-error", { detail: { key, code: e?.code, message: e?.message || String(e) } }));
   } catch (_) { /* abaikan */ }
 }
 
@@ -241,8 +241,39 @@ function subscribeListV2(key, onData, onError) {
 // ---------------------------------------------------------------------
 //  V2: SIMPAN PERUBAHAN (transaksi)
 // ---------------------------------------------------------------------
-async function saveShardedDiff(key, upserts, deletes) {
-  await runTransaction(db, async (tx) => {
+// Stok batch disimpan sebagai SELISIH (delta) terhadap data yang dilihat layar,
+// bukan angka mutlak. Jadi kalau 2 user jual batch yang sama barengan,
+// dua-duanya kepotong (10 - 3 - 2 = 5), bukan saling timpa.
+export const DELTA_QTY_KEYS = new Set(["erp-stock-batches"]);
+
+export class StockConflictError extends Error {
+  constructor(message) { super(message); this.name = "StockConflictError"; this.code = "stock-conflict"; }
+}
+
+const roundQty = (n) => Math.round(Number(n) * 1000) / 1000;
+
+function resolveDeltaQty(key, it, server, prevById) {
+  if (!DELTA_QTY_KEYS.has(key) || !prevById) return it;
+  const id = String(it.id);
+  const before = prevById.get(id);
+  if (!before) return it; // batch baru
+  if (!server) {
+    throw new StockConflictError(`Batch ${it.batchNo || id} sudah dihapus user lain. Data terbaru sudah dimuat, silakan ulangi.`);
+  }
+  const d = Number(it.qty || 0) - Number(before.qty || 0);
+  if (!d) return { ...it, qty: server.qty };
+  const q = roundQty(Number(server.qty || 0) + d);
+  if (d < 0 && q < 0) {
+    throw new StockConflictError(`Stok batch ${it.batchNo || id} nggak cukup. Barusan dipakai transaksi lain, sisa di server tinggal ${server.qty}. Data terbaru sudah dimuat, silakan ulangi.`);
+  }
+  return { ...it, qty: q };
+}
+
+// Baca + hitung perubahan di dalam transaksi, TANPA menulis. Hasilnya fungsi
+// yang menulis. Dipisah begini supaya beberapa jenis data bisa disimpan dalam
+// SATU transaksi (Firestore wajib semua baca dulu baru tulis).
+async function prepareShardedDiff(tx, key, upserts, deletes, prevById) {
+  {
     const manSnap = await tx.get(manifestRef(key));
     const man = manSnap.exists() ? manSnap.data() : {};
     const shardIds = Array.isArray(man.shards) ? man.shards : [];
@@ -309,13 +340,14 @@ async function saveShardedDiff(key, upserts, deletes) {
       const l = loc.get(id);
       if (l) { shards[l[0]].items[l[1]] = null; shards[l[0]].dirty = true; loc.delete(id); }
     }
-    for (const it of upserts) {
+    for (let it of upserts) {
       const id = String(it.id);
       const l = loc.get(id);
       if (l) {
-        shards[l[0]].items[l[1]] = it;
+        shards[l[0]].items[l[1]] = resolveDeltaQty(key, it, shards[l[0]].items[l[1]], prevById);
         shards[l[0]].dirty = true;
       } else {
+        it = resolveDeltaQty(key, it, null, prevById);
         if (!shards.length) shards.push({ id: newShardId(), order: 0, items: [], dirty: true, isNew: true });
         const last = shards[shards.length - 1];
         if (last.items === null) await readShards([last]); // seharusnya sudah terbaca
@@ -344,13 +376,50 @@ async function saveShardedDiff(key, upserts, deletes) {
       });
     });
 
-    for (const s of result) {
-      if (!s.dirty) continue;
-      tx.set(shardRef(key, s.id), { value: JSON.stringify(s.items), order: s.order, count: s.items.length, updatedAt: Date.now() });
-    }
-    for (const id of toDelete) tx.delete(shardRef(key, id));
-    tx.set(manifestRef(key), { shards: result.map((s) => s.id), orders: result.map((s) => s.order), updatedAt: Date.now() });
+    return () => {
+      for (const s of result) {
+        if (!s.dirty) continue;
+        tx.set(shardRef(key, s.id), { value: JSON.stringify(s.items), order: s.order, count: s.items.length, updatedAt: Date.now() });
+      }
+      for (const id of toDelete) tx.delete(shardRef(key, id));
+      tx.set(manifestRef(key), { shards: result.map((s) => s.id), orders: result.map((s) => s.order), updatedAt: Date.now() });
+    };
+  }
+}
+
+const prevMapOf = (prev) => new Map((prev || []).filter((it) => it && it.id != null).map((it) => [String(it.id), it]));
+
+async function saveShardedDiff(key, upserts, deletes, prevById) {
+  await runTransaction(db, async (tx) => {
+    const write = await prepareShardedDiff(tx, key, upserts, deletes, prevById);
+    write();
   });
+}
+
+// Simpan beberapa jenis data sekaligus: berhasil semua atau gagal semua.
+// ops = [{ key, prev, next }]. Contoh: potong stok + simpan faktur.
+export async function saveListsAtomic(ops) {
+  if (MODE !== "v2") {
+    for (const o of ops) if ((await saveKey(o.key, o.next)) === false) return false;
+    return true;
+  }
+  try {
+    const users = ops.filter((o) => o.key === USERS_KEY);
+    const plan = ops.filter((o) => o.key !== USERS_KEY).map((o) => ({ key: o.key, ...diffLists(o.prev, o.next), prevById: prevMapOf(o.prev) }))
+      .filter((p) => p.upserts.length || p.deletes.length);
+    if (plan.length) {
+      await runTransaction(db, async (tx) => {
+        const writes = [];
+        for (const p of plan) writes.push(await prepareShardedDiff(tx, p.key, p.upserts, p.deletes, p.prevById));
+        writes.forEach((w) => w());
+      });
+    }
+    for (const u of users) await saveUsersDiff(u.prev, u.next);
+    return true;
+  } catch (e) {
+    reportSaveError(ops.map((o) => o.key).join(","), e);
+    return false;
+  }
 }
 
 async function saveUsersDiff(prev, next) {
@@ -399,7 +468,7 @@ export async function saveList(key, prev, next) {
       await saveUsersDiff(prev, next);
     } else {
       const { upserts, deletes } = diffLists(prev, next);
-      if (upserts.length || deletes.length) await saveShardedDiff(key, upserts, deletes);
+      if (upserts.length || deletes.length) await saveShardedDiff(key, upserts, deletes, prevMapOf(prev));
     }
     return true;
   } catch (e) {
