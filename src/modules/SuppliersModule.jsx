@@ -1,10 +1,31 @@
-import React, { useState } from "react";
-import { Plus } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { Plus, Search } from "lucide-react";
 import { Eyebrow, Card, Button, Modal, Field, TextInput, Select } from "../components/UIComponents";
 
 export default function SuppliersView({ suppliers, pos, pInvoices, save, notify, colorConfig, uid }) {
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({ name: "", category: "PBF", npwp: "", contact: "", address: "" });
+  const [q, setQ] = useState("");
+  const [catFilter, setCatFilter] = useState("ALL");
+  const [sortBy, setSortBy] = useState("name_asc");
+
+  // Daftar supplier: dicari (nama, kategori, NPWP, kontak, alamat) lalu diurutkan
+  const shown = useMemo(() => {
+    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const rank = new Map((suppliers || []).map((x, i) => [x.id, i]));
+    const list = (suppliers || []).filter((x) => {
+      if (catFilter !== "ALL" && (x.category || "PBF") !== catFilter) return false;
+      const hay = [x.name, x.category || "PBF", x.npwp, x.contact, x.address].filter(Boolean).join(" ").toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+    const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""), "id", { sensitivity: "base", numeric: true });
+    return list.sort((a, b) => {
+      if (sortBy === "name_desc") return byName(b, a);
+      if (sortBy === "newest") return (rank.get(b.id) ?? 0) - (rank.get(a.id) ?? 0);
+      if (sortBy === "category") return String(a.category || "PBF").localeCompare(String(b.category || "PBF"), "id") || byName(a, b);
+      return byName(a, b);
+    });
+  }, [suppliers, q, catFilter, sortBy]);
 
   function openNew() {
     setForm({ name: "", category: "PBF", npwp: "", contact: "", address: "" });
@@ -53,8 +74,32 @@ export default function SuppliersView({ suppliers, pos, pInvoices, save, notify,
         </Button>
       </div>
 
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+        <div className="relative w-full sm:w-80">
+          <Search size={14} className="absolute left-3 top-2.5" color={colorConfig?.inkSoft} />
+          <TextInput placeholder="Cari nama, NPWP, kontak, alamat..." value={q} onChange={(e) => setQ(e.target.value)} className="pl-8" colorConfig={colorConfig} />
+        </div>
+        <Select value={catFilter} onChange={(e) => setCatFilter(e.target.value)} className="w-full sm:w-52" colorConfig={colorConfig}>
+          <option value="ALL">Semua Kategori</option>
+          <option value="PBF">PBF (Obat)</option>
+          <option value="Alkes">Distributor Alkes</option>
+        </Select>
+        <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="w-full sm:w-48" colorConfig={colorConfig}>
+          <option value="name_asc">Nama A–Z</option>
+          <option value="name_desc">Nama Z–A</option>
+          <option value="category">Per Kategori</option>
+          <option value="newest">Terakhir Ditambah</option>
+        </Select>
+        <span className="text-xs sm:ml-auto" style={{ color: colorConfig?.inkSoft }}>{shown.length} dari {(suppliers || []).length} supplier</span>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {(suppliers || []).map((s) => (
+        {shown.length === 0 && (
+          <div className="text-sm py-8 text-center md:col-span-2" style={{ color: colorConfig?.inkSoft }}>
+            {(suppliers || []).length === 0 ? "Belum ada supplier." : `Nggak ada supplier yang cocok dengan "${q}".`}
+          </div>
+        )}
+        {shown.map((s) => (
           <Card key={s.id} colorConfig={colorConfig}>
             <div className="flex items-start justify-between">
               <div>
