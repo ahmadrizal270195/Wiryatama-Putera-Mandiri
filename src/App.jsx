@@ -29,9 +29,12 @@ import PurchasesView from "./modules/PurchasesModule";
 import SalesView from "./modules/SalesModule";
 import FinanceView from "./modules/FinanceModule";
 import QAView from "./modules/QAModule";
-import { myClasses, setOfficersCache } from "./qa";
+import { myClasses, setOfficersCache, setSignaturesCache, signatureMode } from "./qa";
+import { subscribeSignatures, subscribeRoles, syncRoles, backfillLegacySignatures, watchBackfill } from "./qaSignatures";
 import { computeBill, itemLineTotal } from "./billing";
 import { invoiceSoIds, invoiceHasSO } from "./invoiceLinks";
+import { saveListsAtomic } from "./storage";
+import { setAtomicCommitter, currentAtomicScope, queueAtomic } from "./atomicScope";
 import { setPaymentSettings, PAYMENT_GROUPS } from "./print";
 import SearchableSelect from "./components/SearchableSelect";
 import ActivityLogView from "./modules/ActivityLogModule";
@@ -1228,10 +1231,11 @@ function PharmaERP({ userEmail, onLogout }) {
 
   // Kalau ada data yang gagal disimpan ke Firestore, kasih tahu user (dulu cuma diam di console).
   useEffect(() => {
-    const onSaveError = () => {
-      setSyncState("error");
-      setToast({ msg: "Data GAGAL tersimpan ke server. Cek koneksi internet, lalu ulangi input terakhir.", tone: "danger" });
-      setTimeout(() => setToast(null), 8000);
+    const onSaveError = (ev) => {
+      const conflict = ev?.detail?.code === "stock-conflict";
+      if (!conflict) setSyncState("error");
+      setToast({ msg: conflict ? ev.detail.message : "Data GAGAL tersimpan ke server, jadi tidak ada yang tersimpan. Cek koneksi internet, lalu ulangi input terakhir.", tone: "danger" });
+      setTimeout(() => setToast(null), 10000);
     };
     window.addEventListener("erp-save-error", onSaveError);
     return () => window.removeEventListener("erp-save-error", onSaveError);
@@ -1239,7 +1243,7 @@ function PharmaERP({ userEmail, onLogout }) {
 
   function notify(msg, tone = "good") {
     setToast({ msg, tone });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), tone === "danger" ? 7000 : 3000);
   }
 
   // Tiap simpan mengirim perubahan relatif terhadap daftar yang sedang dilihat layar
@@ -1265,9 +1269,39 @@ function PharmaERP({ userEmail, onLogout }) {
     return undefined;
   };
 
+  const SETTER_BY_KEY = {
+    [KEYS.products]: setProducts, [KEYS.suppliers]: setSuppliers, [KEYS.customers]: setCustomers,
+    [KEYS.batches]: setBatches, [KEYS.pos]: setPOs, [KEYS.pReceipts]: setPReceipts,
+    [KEYS.pInvoices]: setPInvoices, [KEYS.pReturns]: setPReturns, [KEYS.sos]: setSOs,
+    [KEYS.paymentsOut]: setPaymentsOut, [KEYS.paymentsIn]: setPaymentsIn, [KEYS.expenses]: setExpenses,
+    [KEYS.deliveryNotes]: setDeliveryNotes, [KEYS.invoices]: setInvoices, [KEYS.returns]: setReturns,
+    [KEYS.users]: setUsers, [KEYS.qaOfficers]: setQaOfficers, [KEYS.disposals]: setDisposals,
+  };
+  // Kalau simpan gagal, layar sudah terlanjur menampilkan data baru. Muat ulang dari server
+  // supaya yang tampil = yang benar-benar tersimpan.
+  const reloadFromServer = async (keys) => {
+    for (const k of keys) {
+      const setter = SETTER_BY_KEY[k];
+      if (!setter) continue;
+      try { setter(await loadList(k)); } catch (_) { /* biar listener realtime yang benerin */ }
+    }
+  };
+
+  // Committer untuk withAtomic(): kirim semua perubahan dalam 1 transaksi.
+  setAtomicCommitter(async (ops, { aborted }) => {
+    if (aborted) { await reloadFromServer(ops.map((o) => o.key)); return false; }
+    const ok = await saveListsAtomic(ops);
+    if (ok) ops.forEach((o) => logListChange(o.key, o.prev, o.next, describeForLog(o.key)));
+    else await reloadFromServer(ops.map((o) => o.key));
+    return ok;
+  });
+
   const auditedSave = async (key, prev, next) => {
+    const scope = currentAtomicScope();
+    if (scope) { queueAtomic(scope, key, prev, next); return true; }
     const ok = await saveList(key, prev, next);
     if (ok !== false) logListChange(key, prev, next, describeForLog(key));
+    else await reloadFromServer([key]);
     return ok;
   };
 
@@ -1461,6 +1495,65 @@ const isFinanceOrAdmin = isHardAdmin || myRole === "finance" || currentUserAcces
 const NAV = ALL_NAV.filter((n) => n.id === "ar_aging" || (n.id === "qa" ? canOpenQA : n.id === "activity" ? isHardAdmin : currentUserAccess.includes(n.id)));
 // Identitas pencatat untuk Log Aktivitas
 setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHardAdmin ? "Super Admin" : (currentUser?.role || "") });
+
+  // Produk dipakai di dokumen apa saja (buat cegah hapus produk yang sudah bertransaksi)
+  const productUsage = (pid) => {
+    const has = (doc) => (doc?.items || []).some((it) => it.productId === pid);
+    const rows = [
+      ["batch stok", (batches || []).filter((b) => b.productId === pid).length],
+      ["PO", (pos || []).filter(has).length],
+      ["BPB", (pReceipts || []).filter(has).length],
+      ["faktur pembelian", (pInvoices || []).filter(has).length],
+      ["retur pembelian", (pReturns || []).filter(has).length],
+      ["SO", (sos || []).filter(has).length],
+      ["surat jalan", (deliveryNotes || []).filter(has).length],
+      ["faktur penjualan", (invoices || []).filter(has).length],
+      ["retur penjualan", (returns || []).filter(has).length],
+      ["pemusnahan", (disposals || []).filter((d) => has(d) || d.productId === pid).length],
+    ];
+    return rows.filter(([, n]) => n > 0).map(([label, n]) => `${n} ${label}`);
+  };
+
+  // ---- Tanda tangan digital APJ/PJT (anti-pemalsuan status "disetujui") ----
+  const [sigTick, setSigTick] = useState(0);
+  const [qaRoles, setQaRoles] = useState(null);
+  const [sigBackfilled, setSigBackfilled] = useState(null);
+  const offSig = () => { setSignaturesCache([], "off"); setSigTick((t) => t + 1); };
+  useEffect(() => {
+    if (getStorageMode() !== "v2") { offSig(); return; }
+    return watchBackfill((done) => setSigBackfilled(done), () => setSigBackfilled(false));
+  }, []);
+  useEffect(() => {
+    if (sigBackfilled === null) return;
+    // Sebelum Super Admin membuat tanda tangan legacy, verifikasi belum dinyalakan (cara lama)
+    if (!sigBackfilled) { offSig(); return; }
+    const unsub = subscribeSignatures(
+      (list) => { setSignaturesCache(list, "on"); setSigTick((t) => t + 1); },
+      // Rules belum di-deploy -> koleksi belum bisa dibaca, pakai cara lama dulu
+      () => offSig()
+    );
+    return () => unsub();
+  }, [sigBackfilled]);
+  useEffect(() => {
+    if (!isHardAdmin || getStorageMode() !== "v2") return;
+    return subscribeRoles((m) => setQaRoles(m), () => setQaRoles(null));
+  }, [isHardAdmin]);
+  // Super Admin: daftar APJ/PJT aktif disalin ke erp_qa_roles (dipakai rules untuk cek tanda tangan)
+  useEffect(() => {
+    if (!isHardAdmin || loading || qaRoles === null) return;
+    syncRoles(qaOfficers, qaRoles).catch((e) => console.error("Gagal sinkron peran APJ/PJT:", e));
+  }, [isHardAdmin, loading, qaOfficers, qaRoles]);
+  // Super Admin, sekali saja: persetujuan lama dicatat sebagai tanda tangan "legacy"
+  useEffect(() => {
+    if (!isHardAdmin || loading || getStorageMode() !== "v2" || sigBackfilled !== false) return;
+    (async () => {
+      try {
+        const [s1, s2, s3, s4, s5] = await Promise.all([KEYS.sos, KEYS.pos, KEYS.invoices, KEYS.pReceipts, KEYS.pInvoices].map((k) => loadList(k)));
+        const n = await backfillLegacySignatures({ so: s1, po: s2, inv: s3, bpb: s4, pinv: s5 });
+        if (n) { setSigTick((t) => t + 1); console.log(`${n} persetujuan lama dicatat sebagai tanda tangan legacy`); }
+      } catch (e) { console.warn("Backfill tanda tangan QA belum jalan:", e?.code || e); }
+    })();
+  }, [isHardAdmin, loading, sigBackfilled]);
 
   if (loading) {
     return (
@@ -1917,6 +2010,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
     <ProductsView 
       products={products} 
       save={persist.products} 
+      productUsage={productUsage} 
       stockByProduct={stockByProduct} 
       notify={notify} 
       colorConfig={COLOR} 
