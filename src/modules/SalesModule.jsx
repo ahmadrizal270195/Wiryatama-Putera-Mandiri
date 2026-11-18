@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from "react";
+import { withAtomic } from "../atomicScope";
 import { Plus, Search, Printer, FileText, Trash2 } from "lucide-react";
 import { newReview, isCleared, blockedReason, QABadge, reviewState, qaSignatureText, requiredClasses } from "../qa";
 import { invoiceSoIds, invoiceHasSO, mergeDeductions, newestFirst, createdRank, remainingSOItems, soIsSplit } from "../invoiceLinks";
-import { golonganCodeString } from "../docNumber";
+import { golonganCodeString, obatKerasBlockMessage } from "../docNumber";
 import { nextDocNumber, isNumberTaken, golonganOfItems, docCode, isAutoFormat, numberGolMismatch, mixedMessage, GOLONGAN_LABEL, splitOrderByGolongan, nextDocNumbersForGroups } from "../docNumber";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select, ResponsiveTable } from "../components/UIComponents";
 import { choosePaperAndPrint, printDocumentContent, QASignatureBlock, PrintArea, DocHeader, DocParties, DocTable, SignatureRow, PaymentInfo } from "../print";
@@ -337,6 +338,10 @@ function SOTab({ products, customers, sos, deliveryNotes, invoices, saveSOs, sav
     if (isNumberTaken(sos, "soNumber", soNumber, editingId)) return notify(`Nomor SO ${soNumber.trim()} sudah dipakai SO lain. Ganti nomornya dulu.`, "danger");
     if (!customerId) return notify("Pilih pelanggan", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
+    {
+      const blockMsg = obatKerasBlockMessage(items, products, (customers || []).find((c) => c.id === customerId));
+      if (blockMsg) return notify(blockMsg, "danger");
+    }
     {
       const gol = golonganOfItems(items, products);
       if (gol.mixed && editingId) return notify(mixedMessage(gol), "danger");
@@ -809,7 +814,9 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
     setShipQty(init);
   }
 
-  async function submitSJ() {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const submitSJ = (...args) => withAtomic(() => submitSJ__raw(...args));
+  async function submitSJ__raw() {
     if (!noSJ.trim()) return notify("Nomor Surat Jalan wajib diisi", "danger");
     if (isNumberTaken(deliveryNotes, "noSJ", noSJ, editingId)) return notify(`Nomor Surat Jalan ${noSJ.trim()} sudah dipakai. Ganti nomornya dulu.`, "danger");
     if (!selectedSO) return notify("Pilih SO terlebih dahulu", "danger");
@@ -874,7 +881,9 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
     setReceiveForm(init); setModal({ receive: dn });
   }
 
-  async function submitReceive(dn) {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const submitReceive = (...args) => withAtomic(() => submitReceive__raw(...args));
+  async function submitReceive__raw(dn) {
     let working = (batches || []).map((b) => ({ ...b }));
     const newReturnItems = [];
     const updatedItems = (dn.items || []).map((it, i) => {
@@ -907,7 +916,9 @@ function SJTab({ products, customers, sos, batches, deliveryNotes, invoices, ret
     setModal(null);
   }
 
-  async function cancelSJ(dn) {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const cancelSJ = (...args) => withAtomic(() => cancelSJ__raw(...args));
+  async function cancelSJ__raw(dn) {
     if ((invoices || []).some((inv) => invoiceHasSO(inv, dn.soId))) {
       return notify("Gagal membatalkan: Faktur Penjualan untuk transaksi ini sudah terbit. Batalkan Faktur terlebih dahulu.", "danger");
     }
@@ -1342,11 +1353,17 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   function updateDirectItem(i, patch) { setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it))); }
   function removeDirectItem(i) { setItems(items.filter((_, idx) => idx !== i)); }
 
-  async function submitDirectInvoice() {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const submitDirectInvoice = (...args) => withAtomic(() => submitDirectInvoice__raw(...args));
+  async function submitDirectInvoice__raw() {
     if (!noFakturDirect.trim()) return notify("Nomor Faktur Penjualan wajib diisi", "danger");
     if (isNumberTaken(invoices, "noFaktur", noFakturDirect, editingId)) return notify(`Nomor Faktur ${noFakturDirect.trim()} sudah dipakai faktur lain. Ganti nomornya dulu.`, "danger");
     if (!customerId) return notify("Pilih pelanggan terlebih dahulu", "danger");
     if (items.length === 0) return notify("Tambahkan minimal 1 item produk", "danger");
+    {
+      const blockMsg = obatKerasBlockMessage(items, products, (customers || []).find((c) => c.id === customerId));
+      if (blockMsg) return notify(blockMsg, "danger");
+    }
     {
       const gol = golonganOfItems(items, products);
       if (gol.mixed && editingId && !isEditingFromSO) return notify(mixedMessage(gol), "danger");
@@ -1603,7 +1620,9 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     }
   }
 
-  async function cancelInvoice(inv) {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const cancelInvoice = (...args) => withAtomic(() => cancelInvoice__raw(...args));
+  async function cancelInvoice__raw(inv) {
     if (invoicePaidAmount(inv.id) > 0) return notify("Gagal membatalkan: Faktur ini sudah memiliki riwayat pembayaran pelunasan.", "danger");
     if ((returns || []).some((r) => r.invoiceId === inv.id)) return notify("Gagal membatalkan: Faktur ini memiliki transaksi retur. Batalkan retur terlebih dahulu.", "danger");
 
@@ -2067,7 +2086,9 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
     return restocked;
   }
 
-  async function submitRetur() {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const submitRetur = (...args) => withAtomic(() => submitRetur__raw(...args));
+  async function submitRetur__raw() {
     if (!selectedInvoice) return notify("Pilih Faktur terlebih dahulu", "danger");
     const lines = (selectedInvoice.items || []).map((it) => ({ ...it, qtyReturn: Number(returnQty[it.productId]) || 0, maxReturn: it.qty - alreadyReturnedQty(selectedInvoice.id, it.productId) })).filter((l) => l.qtyReturn > 0);
     if (lines.length === 0) return notify("Isi jumlah barang yang mau diretur", "danger");
@@ -2097,7 +2118,9 @@ function ReturTab({ products, customers, sos, invoices, returns, deliveryNotes, 
     notify(`${noRetur} berhasil dicatat & stok dikembalikan ke gudang`); setModal(null);
   }
 
-  async function cancelReturn(ret) {
+  // Disimpan atomik: stok & dokumen tersimpan bareng atau nggak sama sekali
+  const cancelReturn = (...args) => withAtomic(() => cancelReturn__raw(...args));
+  async function cancelReturn__raw(ret) {
     let working = (batches || []).map((b) => ({ ...b }));
     let shortage = false;
     (ret.items || []).forEach((it) => {
