@@ -29,7 +29,7 @@ import PurchasesView from "./modules/PurchasesModule";
 import SalesView from "./modules/SalesModule";
 import FinanceView from "./modules/FinanceModule";
 import QAView from "./modules/QAModule";
-import { myClasses, setOfficersCache, setSignaturesCache, signatureMode } from "./qa";
+import { myClasses, setOfficersCache, setSignaturesCache, signatureMode, isCleared } from "./qa";
 import { subscribeSignatures, subscribeRoles, syncRoles, backfillLegacySignatures, watchBackfill } from "./qaSignatures";
 import { computeBill, itemLineTotal } from "./billing";
 import { invoiceSoIds, invoiceHasSO } from "./invoiceLinks";
@@ -1554,6 +1554,20 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       } catch (e) { console.warn("Backfill tanda tangan QA belum jalan:", e?.code || e); }
     })();
   }, [isHardAdmin, loading, sigBackfilled]);
+
+  // Batch yang masih karantina padahal dokumen penerimaannya (BPB / pembelian langsung) sudah
+  // disetujui APJ/PJT -> lepas otomatis. Nyangkut karena dulu edit faktur yang sudah disetujui
+  // bikin batch-nya karantina lagi.
+  useEffect(() => {
+    if (loading || signatureMode() === "loading") return;
+    const docs = new Map([...(pReceipts || []), ...(pInvoices || [])].map((d) => [d.id, d]));
+    const stuck = (batches || []).filter((b) => b.quarantine && b.qaDocId && docs.has(b.qaDocId) && isCleared(docs.get(b.qaDocId)));
+    if (!stuck.length) return;
+    const ids = new Set(stuck.map((b) => b.id));
+    const now = new Date().toISOString();
+    persist.batches((batches || []).map((b) => (ids.has(b.id) ? { ...b, quarantine: false, releasedAt: now, releasedNote: "Otomatis: dokumen sudah disetujui APJ/PJT" } : b)))
+      .catch(() => {});
+  }, [loading, batches, pReceipts, pInvoices, sigTick]);
 
   if (loading) {
     return (
