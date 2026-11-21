@@ -1197,7 +1197,9 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
   const oldInvQA = editingId ? (pInvoices || []).find((x) => x.id === editingId) : null;
   const keepReview = !!oldInvQA && !itemsChanged(oldInvQA.items, items);
   const qaReview = keepReview ? oldInvQA.qaReview : newReview(items, products);
-  const needQuarantine = !isCleared({ qaReview });
+  // id wajib ikut: tanda tangan APJ/PJT dicocokkan ke id dokumen. Tanpa id, faktur yang sudah
+  // disetujui dianggap belum disetujui dan batch-nya masuk karantina lagi tiap kali diedit.
+  const needQuarantine = !isCleared({ id: editingId, qaReview });
   const invId = editingId || uid();
 
   // 3. Buat batch baru hasil perbaikan Exp Date/Qty
