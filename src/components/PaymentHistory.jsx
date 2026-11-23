@@ -4,7 +4,7 @@ import React from "react";
 // rows: [{ date, label, sub, amount, kind: "bayar" | "dp" | "retur" }]
 export default function PaymentHistory({ rows, total, docNo, partyLabel, partyName, deductions = [], sisa, fmtIDR, fmtDate, colorConfig: c, emptyText = "Belum ada pembayaran." }) {
   const sorted = [...(rows || [])].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
-  const tone = (k) => (k === "retur" ? c?.warn : k === "dp" ? c?.accent : c?.good);
+  const tone = (k) => (k === "retur" || k === "potongan" ? c?.warn : k === "dp" ? c?.accent : c?.good);
   return (
     <div className="rounded-lg p-3 text-xs" style={{ background: c?.bg, border: `1px solid ${c?.border}` }}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 mb-2">
