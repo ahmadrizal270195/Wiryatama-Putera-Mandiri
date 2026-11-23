@@ -29,6 +29,7 @@ import PurchasesView from "./modules/PurchasesModule";
 import SalesView from "./modules/SalesModule";
 import FinanceView from "./modules/FinanceModule";
 import QAView from "./modules/QAModule";
+import PelunasanReport from "./modules/PelunasanReport";
 import { myClasses, setOfficersCache, setSignaturesCache, signatureMode, isCleared } from "./qa";
 import { subscribeSignatures, subscribeRoles, syncRoles, backfillLegacySignatures, watchBackfill } from "./qaSignatures";
 import { computeBill, itemLineTotal } from "./billing";
@@ -2167,6 +2168,8 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       returns={returns} 
       pReturns={pReturns} 
       paymentsIn={paymentsIn} /* <-- PASTIKAN PROP INI DISERTAKAN */
+      paymentsOut={paymentsOut} invoiceDPAmount={invoiceDPAmount}
+      invoiceReturnedAmount={invoiceReturnedAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount}
       expenses={expenses} 
       batches={batches} 
       deliveryNotes={deliveryNotes} 
@@ -2870,7 +2873,7 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
   );
 }
 
-function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvoices, pReceipts, returns, pReturns, paymentsIn, expenses, batches, deliveryNotes, findName, pInvoiceTotal, invoiceTotal, invoiceNetSalesDPP, currentUserEmail, canSeePnL, company }) {
+function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvoices, pReceipts, returns, pReturns, paymentsIn, paymentsOut, invoiceDPAmount, invoiceReturnedAmount, pInvoiceReturnedAmount, expenses, batches, deliveryNotes, findName, pInvoiceTotal, invoiceTotal, invoiceNetSalesDPP, currentUserEmail, canSeePnL, company }) {
   const isSuperAdminOrFinance = !!canSeePnL || ADMIN_FINANCE_EMAILS.includes((currentUserEmail || "").toLowerCase());
 
   const [subTab, setSubTab] = useState(isSuperAdminOrFinance ? "pnl" : "sales");
@@ -3106,6 +3109,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
     { id: "sales", label: "Penjualan" },
     { id: "purchases", label: "Pembelian" },
     { id: "ar_aging", label: "Umur Piutang" },
+    { id: "pelunasan", label: "Pelunasan" },
     ...(isSuperAdminOrFinance ? [{ id: "pnl", label: "Laba Rugi (P&L)" }] : []),
   ];
 
@@ -3396,6 +3400,19 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
           products={products} COLOR={COLOR} fmtDate={fmtDate} fmtIDR={fmtIDR}
           profitById={profitById} showHpp={isSuperAdminOrFinance} pnlData={pnlData}
           companyName={(company || COMPANY_PROFILE)?.name}
+        />
+      )}
+
+      {/* TAB: LAPORAN PELUNASAN (faktur lunas per tanggal pelunasan) */}
+      {subTab === "pelunasan" && (
+        <PelunasanReport
+          start={start} end={end} canSeePurchase={isSuperAdminOrFinance}
+          invoices={invoices} pInvoices={pInvoices} sos={sos} pos={pos} customers={customers} suppliers={suppliers}
+          paymentsIn={paymentsIn} paymentsOut={paymentsOut} returns={returns} pReturns={pReturns}
+          invoiceTotal={invoiceTotal} pInvoiceTotal={pInvoiceTotal} invoiceDPAmount={invoiceDPAmount}
+          invoiceReturnedAmount={invoiceReturnedAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount}
+          findName={findName} fmtDate={fmtDate} fmtIDR={fmtIDR} COLOR={COLOR}
+          companyName={(company || COMPANY_PROFILE)?.name} printStyle={REPORT_PRINT_STYLE}
         />
       )}
 
