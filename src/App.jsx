@@ -30,6 +30,7 @@ import SalesView from "./modules/SalesModule";
 import FinanceView from "./modules/FinanceModule";
 import QAView from "./modules/QAModule";
 import PelunasanReport from "./modules/PelunasanReport";
+import { settledAmount, potonganOf, potonganLabel } from "./paymentDeductions";
 import { myClasses, setOfficersCache, setSignaturesCache, signatureMode, isCleared } from "./qa";
 import { subscribeSignatures, subscribeRoles, syncRoles, backfillLegacySignatures, watchBackfill } from "./qaSignatures";
 import { computeBill, itemLineTotal } from "./billing";
@@ -1447,7 +1448,8 @@ function PharmaERP({ userEmail, onLogout }) {
     const ids = (Array.isArray(soId) ? soId : [soId]).filter(Boolean);
     return (paymentsIn || []).filter((p) => ids.includes(p.soId) && p.type === "DP").reduce((s, p) => s + p.amount, 0);
   }
-  function invoicePaidAmount(invId) { return (paymentsIn || []).filter((p) => p.invoiceId === invId).reduce((s, p) => s + p.amount, 0); }
+  // Yang melunasi faktur = uang masuk + potongan (PPN dipungut, PPh, admin bank, dll)
+  function invoicePaidAmount(invId) { return (paymentsIn || []).filter((p) => p.invoiceId === invId).reduce((s, p) => s + settledAmount(p), 0); }
   function invoiceReturnedAmount(invId) { return (returns || []).filter((r) => r.invoiceId === invId).reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + it.qty * it.unitPrice, 0), 0); }
   const costOf = useMemo(() => makeCostResolver(batches, pInvoices, pReceipts, pos), [batches, pInvoices, pReceipts, pos]);
   // HPP neto per faktur: rumus yang sama dengan Laporan Penjualan & Laba Rugi
@@ -3029,14 +3031,16 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
     const raw = (invoices || []).map((inv) => {
       const paid = (paymentsIn || [])
         .filter((p) => p.invoiceId === inv.id)
-        .reduce((s, p) => s + Number(p.amount || 0), 0);
+        .reduce((s, p) => s + settledAmount(p), 0);
+      // DP dari SO juga mengurangi piutang (sebelumnya nggak dihitung, jadi beda sama menu Finance)
+      const dpUsed = typeof invoiceDPAmount === "function" ? invoiceDPAmount(inv) : 0;
 
       const ret = (returns || [])
         .filter((r) => r.invoiceId === inv.id)
         .reduce((s, r) => s + (r.items || []).reduce((sub, it) => sub + (it.qty * it.unitPrice), 0), 0);
 
       const total = inv.totalAmount || inv.total || invoiceTotal(inv);
-      const sisaHutang = Math.max(0, total - paid - ret);
+      const sisaHutang = Math.max(0, total - paid - ret - dpUsed);
 
       const invDate = new Date(inv.date || todayISO());
       const diffDays = Math.floor((today - invDate) / (1000 * 60 * 60 * 24));
@@ -3065,7 +3069,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
 
       return matchSearch && matchCust && matchBucket;
     });
-  }, [invoices, paymentsIn, returns, customers, agingCust, agingBucket, agingSearch, findName, invoiceTotal]);
+  }, [invoices, paymentsIn, returns, customers, agingCust, agingBucket, agingSearch, findName, invoiceTotal, invoiceDPAmount]);
 
   const totalARAging = agingData.reduce((s, i) => s + i.sisaHutang, 0);
 
@@ -3157,6 +3161,18 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
       const cat = e.category || "Lain-lain";
       expenseByCategory[cat] = (expenseByCategory[cat] || 0) + val;
     });
+    // Potongan saat pelanggan membayar (biaya admin bank / potongan lain) = beban periode tanggal bayar.
+    // PPN dipungut & PPh dipotong BUKAN beban (pajak dibayar di muka / bukan pendapatan).
+    (paymentsIn || []).forEach((p) => {
+      if (!inRange(p.date)) return;
+      ["admin", "lain"].forEach((k) => {
+        const v = potonganOf(p, k);
+        if (!v) return;
+        const cat = `${potonganLabel(k)} (dipotong pelanggan)`;
+        periodExpenses += v;
+        expenseByCategory[cat] = (expenseByCategory[cat] || 0) + v;
+      });
+    });
     const expenseCategoryList = Object.entries(expenseByCategory)
       .filter(([, v]) => v > 0)
       .sort((a, b) => b[1] - a[1]);
@@ -3176,7 +3192,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
     const netProfit = grossProfit - periodExpenses + feePembelian;
 
     return { grossSalesDPP, salesReturnsVal, netSales, totalCOGS, grossProfit, periodExpenses, expenseCategoryList, ongkirPembelian, feePenjualan, feePembelian, netProfit };
-  }, [invoiceProfitRows, filteredInvoices, expenses, pInvoices, start, end]);
+  }, [invoiceProfitRows, filteredInvoices, expenses, pInvoices, paymentsIn, start, end]);
 
   function aggregateByProduct(docs) {
     const map = {};
