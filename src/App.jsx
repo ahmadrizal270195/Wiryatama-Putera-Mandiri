@@ -2346,7 +2346,7 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
 // --- Komponen baris detail item (dipakai oleh Sales & Purchase report tab) ---
 // Di layar: tersembunyi by default, muncul kalau induk di-expand.
 // Di print: selalu muncul (CSS @media print).
-function InvoiceItemRows({ doc, products, fmtIDR, APP_COLOR, colSpan }) {
+function InvoiceItemRows({ doc, products, fmtIDR, COLOR: APP_COLOR, colSpan }) {
   return (
     <tr
       className="report-invoice-detail"
@@ -2412,7 +2412,7 @@ const HPP_ISSUE_HELP = {
   dipulihkan: "Batch aslinya sudah hilang / modalnya 0, harga modal diambil dari Faktur Pembelian / BPB dengan batch yang sama. Ini info aja, HPP-nya udah keisi.",
 };
 
-function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, APP_COLOR, fmtDate, fmtIDR, profitById = {}, showHpp = false, pnlData, companyName }) {
+function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR: APP_COLOR, fmtDate, fmtIDR, profitById = {}, showHpp = false, pnlData, companyName }) {
   const [expanded, setExpanded] = useState(new Set());
   const toggle = (id) => setExpanded((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
   const allOpen = allSalesDocs.length > 0 && allSalesDocs.every((d) => expanded.has(d.id));
@@ -2656,7 +2656,7 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, APP_CO
   );
 }
 
-function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, products, APP_COLOR, fmtDate, fmtIDR, companyName }) {
+function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, products, COLOR: APP_COLOR, fmtDate, fmtIDR, companyName }) {
   const [expanded, setExpanded] = useState(new Set());
   const [expandedProd, setExpandedProd] = useState(new Set());
   const [prodSearch, setProdSearch] = useState("");
@@ -3403,7 +3403,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         <SalesReportTab
           start={start} end={end}
           salesTotal={salesTotal} salesAgg={salesAgg} allSalesDocs={allSalesDocs}
-          products={products} APP_COLOR={APP_COLOR} fmtDate={fmtDate} fmtIDR={fmtIDR}
+          products={products} COLOR={APP_COLOR} fmtDate={fmtDate} fmtIDR={fmtIDR}
           profitById={profitById} showHpp={isSuperAdminOrFinance} pnlData={pnlData}
           companyName={(company || COMPANY_PROFILE)?.name}
         />
@@ -3417,7 +3417,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
           paymentsIn={paymentsIn} paymentsOut={paymentsOut} returns={returns} pReturns={pReturns}
           invoiceTotal={invoiceTotal} pInvoiceTotal={pInvoiceTotal} invoiceDPAmount={invoiceDPAmount}
           invoiceReturnedAmount={invoiceReturnedAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount}
-          findName={findName} fmtDate={fmtDate} fmtIDR={fmtIDR} APP_COLOR={APP_COLOR}
+          findName={findName} fmtDate={fmtDate} fmtIDR={fmtIDR} COLOR={APP_COLOR}
           companyName={(company || COMPANY_PROFILE)?.name} printStyle={REPORT_PRINT_STYLE}
         />
       )}
@@ -3427,7 +3427,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         <PurchaseReportTab
           start={start} end={end}
           purchaseTotal={purchaseTotal} purchaseAgg={purchaseAgg} allPurchaseDocs={allPurchaseDocs}
-          products={products} APP_COLOR={APP_COLOR} fmtDate={fmtDate} fmtIDR={fmtIDR}
+          products={products} COLOR={APP_COLOR} fmtDate={fmtDate} fmtIDR={fmtIDR}
           companyName={(company || COMPANY_PROFILE)?.name}
         />
       )}
