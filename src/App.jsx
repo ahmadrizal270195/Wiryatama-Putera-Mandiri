@@ -89,8 +89,60 @@ const getCOLOR = (isDark = false) => {
   return isDark ? THEME.dark : THEME.light;
 };
 
-// Fallback default untuk komponen luar (Light Mode)
+// Fallback default untuk komponen luar (Light Mode): halaman login & landing selalu terang
 const COLOR = getCOLOR(false);
+// Warna untuk komponen di dalam aplikasi (Laporan, Dashboard, Pengaturan, dll). Ikut mode
+// terang/gelap: PharmaERP mengisinya ulang tiap render, login & landing mengembalikannya ke terang.
+const APP_COLOR = { ...THEME.light };
+const syncAppColor = (c) => { Object.assign(APP_COLOR, c); };
+
+// ---------------------------------------------------------------------
+//  PERBAIKAN KONTRAS MODE GELAP
+//  Banyak tampilan masih pakai kelas Tailwind warna terang (bg-white, text-gray-900, ...)
+//  atau warna inline tetap. Di mode gelap semuanya ditimpa ke versi gelap.
+//  PENGECUALIAN: dokumen cetak (id="printable-...") tetap putih seperti kertas.
+// ---------------------------------------------------------------------
+const NOT_PAPER = ':not([id^="printable-"]):not([id^="printable-"] *)';
+const inlineColor = (rgb) => [`[style^="color: ${rgb}"]`, `[style*="; color: ${rgb}"]`];
+const inlineBg = (rgb) => [`[style*="background: ${rgb}"]`, `[style*="background-color: ${rgb}"]`];
+const darkRule = (selectors, decl) => `${selectors.map((x) => x + NOT_PAPER).join(",\n")} { ${decl} }`;
+const DARK_FIXES_CSS = [
+  // Permukaan terang -> kartu gelap
+  darkRule([".bg-white", ".bg-gray-50", ".bg-gray-100", ".bg-slate-50", ".bg-slate-100",
+    ...inlineBg("rgb(255, 255, 255)"), ...inlineBg("rgb(248, 250, 252)"), ...inlineBg("rgb(241, 245, 249)"), ...inlineBg("rgb(249, 250, 251)")],
+    "background-color: #0F172A !important; color: #F8FAFC !important; border-color: #1E293B !important;"),
+  darkRule([".bg-gray-200", ".bg-slate-200"], "background-color: #1E293B !important;"),
+  // Latar berwarna lembut -> versi transparan
+  darkRule([".bg-emerald-50", ".bg-emerald-100", ".bg-green-50", ...inlineBg("rgb(236, 253, 245)")], "background-color: rgba(16, 185, 129, 0.12) !important;"),
+  darkRule([".bg-amber-50", ".bg-amber-100", ".bg-yellow-50", ...inlineBg("rgb(255, 251, 235)"), ...inlineBg("rgb(254, 243, 199)")], "background-color: rgba(245, 158, 11, 0.12) !important;"),
+  darkRule([".bg-red-50", ".bg-red-100", ...inlineBg("rgb(254, 242, 242)")], "background-color: rgba(239, 68, 68, 0.12) !important;"),
+  darkRule([".bg-blue-50", ".bg-indigo-50"], "background-color: rgba(59, 130, 246, 0.12) !important;"),
+  // Header tabel
+  darkRule(["table thead tr"], "background-color: #1E293B !important;"),
+  darkRule(["table thead th", "table thead th *"], "color: #34D399 !important; font-weight: 700 !important;"),
+  // Teks gelap -> terang
+  darkRule([".text-black", ".text-gray-900", ".text-gray-800", ".text-gray-700", ".text-slate-900", ".text-slate-800", ".text-slate-700",
+    ...inlineColor("rgb(0, 0, 0)"), ...inlineColor("rgb(15, 23, 42)"), ...inlineColor("rgb(17, 24, 39)"), ...inlineColor("rgb(31, 41, 55)"),
+    ...inlineColor("rgb(30, 41, 59)"), ...inlineColor("rgb(51, 65, 85)"), ...inlineColor("rgb(55, 65, 81)")],
+    "color: #F1F5F9 !important;"),
+  darkRule([".text-gray-600", ".text-slate-600", ...inlineColor("rgb(71, 85, 105)"), ...inlineColor("rgb(75, 85, 99)")], "color: #CBD5E1 !important;"),
+  darkRule([".text-gray-500", ".text-gray-400", ".text-slate-500", ".text-slate-400", ...inlineColor("rgb(100, 116, 139)"), ...inlineColor("rgb(107, 114, 128)")], "color: #94A3B8 !important;"),
+  // Teks berwarna gelap -> versi terang
+  darkRule([".text-emerald-700", ".text-emerald-800", ".text-emerald-900", ".text-green-700", ".text-green-800", ...inlineColor("rgb(6, 95, 70)"), ...inlineColor("rgb(4, 120, 87)"), ...inlineColor("rgb(5, 150, 105)")], "color: #34D399 !important;"),
+  darkRule([".text-amber-700", ".text-amber-800", ".text-amber-900", ...inlineColor("rgb(180, 83, 9)"), ...inlineColor("rgb(146, 64, 14)"), ...inlineColor("rgb(217, 119, 6)")], "color: #FBBF24 !important;"),
+  darkRule([".text-red-500", ".text-red-600", ".text-red-700", ".text-red-900", ...inlineColor("rgb(220, 38, 38)"), ...inlineColor("rgb(185, 28, 28)")], "color: #F87171 !important;"),
+  darkRule([".text-blue-600", ".text-blue-700", ".text-indigo-600", ".text-indigo-700"], "color: #93C5FD !important;"),
+  // Warna dasar: teks yang nggak punya warna sendiri (td, p, li, label, ...) mewarisi ini
+  `.main-container { color: #E2E8F0; }`,
+  darkRule(["h1:not([style*='color'])", "h2:not([style*='color'])", "h3:not([style*='color'])", "h4:not([style*='color'])", "h5:not([style*='color'])", "h6:not([style*='color'])"],
+    "color: #F8FAFC !important;"),
+  // Garis
+  darkRule([".border-gray-100", ".border-gray-200", ".border-gray-300", ".border-gray-800", ".border-slate-200", ".border-emerald-200", ".border-amber-200", "table tbody tr", "div[style*='border-bottom']", "hr"], "border-color: #1E293B !important;"),
+  // Badge bulat tanpa warna sendiri
+  darkRule(["span.rounded-full:not([style])"], "background-color: #1E293B !important; color: #34D399 !important; border: 1px solid #34D399 !important;"),
+  // Dokumen cetak di layar tetap putih seperti kertas
+  `[id^="printable-"] { background-color: #FFFFFF !important; color: #1F2937 !important; }`,
+].join("\n");
 
 // ---------- CONSTANTS & COMPANY PROFILE CONFIG ----------
 const CATEGORIES = ["Dental Material", "Alat Kesehatan", "Obat Bebas", "Obat Keras", "Consumables"];
@@ -524,6 +576,7 @@ export default function App() {
 
 // ---------- 1. LANDING PAGE PUBLIK ----------
 function PublicLandingPage({ isLoggedIn }) {
+  syncAppColor(THEME.light);
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState("");
   const [profile, setProfile] = useState(() => ({ ...COMPANY_PROFILE }));
@@ -707,6 +760,7 @@ function PublicLandingPage({ isLoggedIn }) {
 
 // ---------- 2. LOGIN SCREEN ----------
 function LoginScreen() {
+  syncAppColor(THEME.light);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -760,7 +814,7 @@ function LoginScreen() {
 
 // ---------- UI HELPER COMPONENTS ----------
 function Eyebrow({ children }) {
-  return <div style={{ color: COLOR.inkSoft, letterSpacing: "0.08em" }} className="text-[11px] tabular-nums uppercase mb-1">{children}</div>;
+  return <div style={{ color: APP_COLOR.inkSoft, letterSpacing: "0.08em" }} className="text-[11px] tabular-nums uppercase mb-1">{children}</div>;
 }
 
 function Card({ children, style, className = "" }) {
@@ -768,9 +822,9 @@ function Card({ children, style, className = "" }) {
     <div
       className={"rounded-xl p-4 " + className}
       style={{ 
-        background: COLOR.surface, 
-        border: `1px solid ${COLOR.border}`, 
-        color: COLOR.ink, 
+        background: APP_COLOR.surface, 
+        border: `1px solid ${APP_COLOR.border}`, 
+        color: APP_COLOR.ink, 
         boxShadow: "0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.04)",
         ...style 
       }}
@@ -782,25 +836,25 @@ function Card({ children, style, className = "" }) {
 
 // Hapus ketersambungan hardcode #fff pada input
 const inputStyle = {
-  border: `1px solid ${COLOR.border}`,
-  color: COLOR.ink,
+  border: `1px solid ${APP_COLOR.border}`,
+  color: APP_COLOR.ink,
 };
 
 
 
 function Badge({ tone = "good", children }) {
   const map = {
-    good: [COLOR.goodSoft, COLOR.good],
-    warn: [COLOR.warnSoft, COLOR.warn],
-    danger: [COLOR.dangerSoft, COLOR.danger],
-    neutral: [COLOR.primarySoft, COLOR.primary],
+    good: [APP_COLOR.goodSoft, APP_COLOR.good],
+    warn: [APP_COLOR.warnSoft, APP_COLOR.warn],
+    danger: [APP_COLOR.dangerSoft, APP_COLOR.danger],
+    neutral: [APP_COLOR.primarySoft, APP_COLOR.primary],
   };
   const [bg, fg] = map[tone];
 
   return (
     <span
       className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] tabular-nums font-bold border"
-      style={{ background: bg, color: fg, borderColor: COLOR.border }}
+      style={{ background: bg, color: fg, borderColor: APP_COLOR.border }}
     >
       {children}
     </span>
@@ -811,10 +865,10 @@ function Button({ children, onClick, variant = "primary", type = "button", class
   const base = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-opacity disabled:opacity-40";
   const styles =
     variant === "primary"
-      ? { background: COLOR.primary, color: "#fff" }
+      ? { background: APP_COLOR.primary, color: "#fff" }
       : variant === "danger"
-      ? { background: COLOR.dangerSoft, color: COLOR.danger }
-      : { background: "transparent", color: COLOR.ink, border: `1px solid ${COLOR.border}` };
+      ? { background: APP_COLOR.dangerSoft, color: APP_COLOR.danger }
+      : { background: "transparent", color: APP_COLOR.ink, border: `1px solid ${APP_COLOR.border}` };
   return (
     <button type={type} disabled={disabled} onClick={onClick} className={base + " " + className} style={styles}>
       {children}
@@ -825,7 +879,7 @@ function Button({ children, onClick, variant = "primary", type = "button", class
 function Field({ label, children }) {
   return (
     <label className="block mb-3">
-      <div className="text-xs font-medium mb-1" style={{ color: COLOR.inkSoft }}>{label}</div>
+      <div className="text-xs font-medium mb-1" style={{ color: APP_COLOR.inkSoft }}>{label}</div>
       {children}
     </label>
   );
@@ -852,7 +906,7 @@ function DateInput(props) {
         className={"w-full rounded-lg pl-3 pr-9 py-1.5 text-sm outline-none " + className}
         style={{ ...inputStyle, ...style }}
       />
-      <Calendar size={15} className="absolute right-3 pointer-events-none" style={{ color: COLOR.inkSoft }} />
+      <Calendar size={15} className="absolute right-3 pointer-events-none" style={{ color: APP_COLOR.inkSoft }} />
       <input
         type="date"
         value={value || ""}
@@ -899,7 +953,7 @@ function TextInput(props) {
           "w-full rounded-lg px-3 py-1.5 text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none " +
           (props.className || "")
         }
-        style={{ ...inputStyle, background: COLOR.surface, color: COLOR.ink, ...props.style }}
+        style={{ ...inputStyle, background: APP_COLOR.surface, color: APP_COLOR.ink, ...props.style }}
       />
     );
   }
@@ -908,7 +962,7 @@ function TextInput(props) {
     <input 
       {...props} 
       className={"w-full rounded-lg px-3 py-1.5 text-sm outline-none " + (props.className || "")} 
-      style={{ ...inputStyle, background: COLOR.surface, color: COLOR.ink, ...props.style }} 
+      style={{ ...inputStyle, background: APP_COLOR.surface, color: APP_COLOR.ink, ...props.style }} 
     />
   );
 }
@@ -918,7 +972,7 @@ function Select(props) {
     <select 
       {...props} 
       className={"w-full rounded-lg px-3 py-1.5 text-sm outline-none " + (props.className || "")} 
-      style={{ ...inputStyle, background: COLOR.surface, color: COLOR.ink, ...props.style }}
+      style={{ ...inputStyle, background: APP_COLOR.surface, color: APP_COLOR.ink, ...props.style }}
     >
       {props.children}
     </select>
@@ -948,11 +1002,11 @@ function Modal({ title, onClose, children, wide, isSubModal = false }) {
       <div
         onClick={(e) => e.stopPropagation()}
         className={"rounded-2xl w-full " + (wide ? "max-w-3xl" : "max-w-md") + " max-h-[85vh] overflow-y-auto modal-content shadow-2xl"}
-        style={{ background: COLOR.surface, color: COLOR.ink, border: `1px solid ${COLOR.border}` }}
+        style={{ background: APP_COLOR.surface, color: APP_COLOR.ink, border: `1px solid ${APP_COLOR.border}` }}
       >
-        <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10 no-print" style={{ background: COLOR.surface, borderBottom: `1px solid ${COLOR.border}` }}>
-          <h3 className="font-semibold text-base" style={{ color: COLOR.ink }}>{title}</h3>
-          <button type="button" onClick={onClose} className="p-1 rounded-lg hover:opacity-60 cursor-pointer"><X size={18} color={COLOR.inkSoft} /></button>
+        <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10 no-print" style={{ background: APP_COLOR.surface, borderBottom: `1px solid ${APP_COLOR.border}` }}>
+          <h3 className="font-semibold text-base" style={{ color: APP_COLOR.ink }}>{title}</h3>
+          <button type="button" onClick={onClose} className="p-1 rounded-lg hover:opacity-60 cursor-pointer"><X size={18} color={APP_COLOR.inkSoft} /></button>
         </div>
         <div className="p-5">{children}</div>
       </div>
@@ -962,19 +1016,19 @@ function Modal({ title, onClose, children, wide, isSubModal = false }) {
 
 function urgencyOf(expiryDate) {
   const d = daysUntil(expiryDate);
-  if (d < 0) return { tone: "danger", label: "Kedaluwarsa", color: COLOR.danger };
-  if (d <= 30) return { tone: "danger", label: `${d}h lagi`, color: COLOR.danger };
-  if (d <= 90) return { tone: "warn", label: `${d}h lagi`, color: COLOR.warn };
-  return { tone: "good", label: `${d}h lagi`, color: COLOR.good };
+  if (d < 0) return { tone: "danger", label: "Kedaluwarsa", color: APP_COLOR.danger };
+  if (d <= 30) return { tone: "danger", label: `${d}h lagi`, color: APP_COLOR.danger };
+  if (d <= 90) return { tone: "warn", label: `${d}h lagi`, color: APP_COLOR.warn };
+  return { tone: "good", label: `${d}h lagi`, color: APP_COLOR.good };
 }
 
 function ExpiryRibbon({ productBatches }) {
   const total = (productBatches || []).reduce((s, b) => s + b.qty, 0);
-  if (total === 0) return <div className="text-xs" style={{ color: COLOR.inkSoft }}>Tidak ada stok</div>;
+  if (total === 0) return <div className="text-xs" style={{ color: APP_COLOR.inkSoft }}>Tidak ada stok</div>;
   const sorted = [...productBatches].sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
   return (
     <div>
-      <div className="flex w-full h-2.5 rounded-full overflow-hidden" style={{ background: COLOR.border }}>
+      <div className="flex w-full h-2.5 rounded-full overflow-hidden" style={{ background: APP_COLOR.border }}>
         {sorted.map((b) => (
           <div key={b.id} style={{ width: `${(b.qty / total) * 100}%`, background: urgencyOf(b.expiryDate).color }} title={`${b.batchNo}: ${b.qty} unit, exp ${fmtDate(b.expiryDate)}`} />
         ))}
@@ -1020,6 +1074,7 @@ function PharmaERP({ userEmail, onLogout }) {
 
   // Timpa/Dapatkan warna aktif secara dinamis berdasarkan mode
   const COLOR = getCOLOR(isDarkMode);
+  syncAppColor(COLOR);
   // ------------------------------------------------------------
 
   useEffect(() => {
@@ -1572,14 +1627,14 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96 gap-2" style={{ color: COLOR.inkSoft }}>
+      <div className="flex items-center justify-center h-96 gap-2" style={{ color: APP_COLOR.inkSoft }}>
         <Loader2 className="animate-spin" size={18} /> Memuat data ERP...
       </div>
     );
   }
 
   return (
-    <div style={{ background: COLOR.bg, color: COLOR.ink, minHeight: "100vh", fontFamily: "ui-sans-serif, system-ui, sans-serif" }} className="flex flex-col md:flex-row min-h-screen relative transition-colors duration-300">
+    <div style={{ background: APP_COLOR.bg, color: APP_COLOR.ink, minHeight: "100vh", fontFamily: "ui-sans-serif, system-ui, sans-serif" }} className="flex flex-col md:flex-row min-h-screen relative transition-colors duration-300">
 
       <style>{`
 
@@ -1661,56 +1716,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       color: #94A3B8 !important;
     }
 
-    /* General Dark Mode Fixes */
-    .bg-white, .bg-gray-50, .bg-gray-100, .bg-emerald-50, .bg-amber-50, 
-    div[style*="background: rgb(255, 255, 255)"], 
-    div[style*="background-color: rgb(255, 255, 255)"],
-    div[style*="background: #FFFFFF"], 
-    div[style*="background: #ffffff"],
-    div[style*="background-color: #FFFFFF"],
-    div[style*="background-color: #ffffff"] {
-      background-color: #0F172A !important;
-      color: #F8FAFC !important;
-      border-color: #1E293B !important;
-    }
-
-    table thead tr,
-    tr[style*="background: rgb(236, 253, 245)"],
-    tr[style*="background: #ECFDF5"] {
-      background-color: #1E293B !important;
-    }
-    table thead th,
-    table thead th * {
-      color: #34D399 !important;
-      font-weight: 700 !important;
-    }
-
-    h1, h2, h3, h4, h5, h6,
-    p, a, td,
-    div[style*="color: rgb(30, 41, 59)"],
-    div[style*="color: #1E293B"],
-    span[style*="color: rgb(30, 41, 59)"],
-    span[style*="color: #1E293B"] {
-      color: #F8FAFC !important;
-    }
-
-    .text-gray-500, .text-gray-400,
-    div[style*="color: rgb(100, 116, 139)"],
-    div[style*="color: #64748B"] {
-      color: #94A3B8 !important;
-    }
-
-    span.rounded-full, 
-    span[class*="rounded-full"] {
-      background-color: #1E293B !important;
-      color: #34D399 !important;
-      border: 1px solid #34D399 !important;
-      font-weight: 700 !important;
-    }
-
-    table tbody tr, div[style*="border-bottom"] {
-      border-color: #1E293B !important;
-    }
+    ${DARK_FIXES_CSS}
 
     /* FIX INPUT FIELD MODE GELAP */
     input, select, textarea {
@@ -1810,12 +1816,12 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       {/* HEADER HP / MOBILE NAV BAR */}
       {isMobile && (
         <div className="flex items-center justify-between gap-2 px-3 py-2.5 sticky top-0 z-30 border-b no-print"
-          style={{ background: isDarkMode ? "#0F172A" : "#FFFFFF", borderColor: COLOR.border, boxShadow: "0 1px 3px rgba(15,23,42,0.06)" }}>
+          style={{ background: isDarkMode ? "#0F172A" : "#FFFFFF", borderColor: APP_COLOR.border, boxShadow: "0 1px 3px rgba(15,23,42,0.06)" }}>
           <div className="flex items-center gap-2 min-w-0">
-            <img src={companyProfile.logoUrl} alt="Logo" className="h-8 w-8 rounded-md object-contain bg-white shrink-0" style={{ border: `1px solid ${COLOR.border}` }} />
+            <img src={companyProfile.logoUrl} alt="Logo" className="h-8 w-8 rounded-md object-contain bg-white shrink-0" style={{ border: `1px solid ${APP_COLOR.border}` }} />
             <div className="min-w-0">
               <div className="font-bold text-sm leading-tight truncate" style={{ color: isDarkMode ? "#34D399" : "#059669" }}>{companyProfile.name}</div>
-              <div className="text-[10px] tracking-wider" style={{ color: COLOR.inkSoft }}>ERP SYSTEM</div>
+              <div className="text-[10px] tracking-wider" style={{ color: APP_COLOR.inkSoft }}>ERP SYSTEM</div>
             </div>
 
           </div>
@@ -1824,7 +1830,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
               type="button"
               onClick={toggleTheme}
               className="w-9 h-9 rounded-lg border flex items-center justify-center cursor-pointer"
-              style={{ borderColor: COLOR.border }}
+              style={{ borderColor: APP_COLOR.border }}
               title={isDarkMode ? "Ganti ke Mode Terang" : "Ganti ke Mode Gelap"}
             >
               {isDarkMode ? <Sun size={17} className="text-amber-400" /> : <Moon size={17} className="text-indigo-500" />}
@@ -1877,7 +1883,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
                 type="button"
                 onClick={toggleSidebar}
                 className="absolute -right-3 top-8 z-20 w-6 h-6 rounded-full border flex items-center justify-center shadow-sm cursor-pointer hover:text-emerald-500"
-                style={{ background: SB.bg, borderColor: SB.border, color: COLOR.inkSoft }}
+                style={{ background: SB.bg, borderColor: SB.border, color: APP_COLOR.inkSoft }}
                 title={collapsed ? "Buka Sidebar" : "Tutup Sidebar"}
               >
                 {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
@@ -1905,7 +1911,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
                 {!collapsed && (
                   <div className="min-w-0">
                     <div className="font-bold text-sm leading-tight truncate" style={{ color: isDarkMode ? "#34D399" : "#059669" }}>{companyProfile.name}</div>
-                    <div className="text-[11px] tracking-wider mt-0.5" style={{ color: COLOR.inkSoft }}>ERP SYSTEM</div>
+                    <div className="text-[11px] tracking-wider mt-0.5" style={{ color: APP_COLOR.inkSoft }}>ERP SYSTEM</div>
                   </div>
                 )}
 
@@ -1967,20 +1973,20 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
                     type="button"
                     onClick={toggleTheme}
                     className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium cursor-pointer hover:bg-emerald-500/10"
-                    style={{ color: COLOR.inkSoft }}
+                    style={{ color: APP_COLOR.inkSoft }}
                     title={isDarkMode ? "Ganti ke Mode Terang" : "Ganti ke Mode Gelap"}
                   >
                     {isDarkMode ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-indigo-500" />}
                     {!collapsed && (isDarkMode ? "Mode Terang" : "Mode Gelap")}
                   </button>
-                  <div className="flex items-center gap-1.5 text-[11px]" style={{ color: COLOR.inkSoft }} title={syncText}>
+                  <div className="flex items-center gap-1.5 text-[11px]" style={{ color: APP_COLOR.inkSoft }} title={syncText}>
                     <div className="w-1.5 h-1.5 rounded-full" style={{ background: syncColor }} />
                     {!collapsed && <span>{syncState === "error" ? "Gagal sync" : syncState === "syncing" ? "Sync..." : "Online"}</span>}
                   </div>
                 </div>
                 {userEmail && (
                   <div className={`flex items-center border-t pt-2 ${collapsed ? "justify-center" : "justify-between gap-2"}`} style={{ borderColor: SB.border }}>
-                    {!collapsed && <div className="text-[11px] truncate" style={{ color: COLOR.inkSoft }} title={userEmail}>{userEmail}</div>}
+                    {!collapsed && <div className="text-[11px] truncate" style={{ color: APP_COLOR.inkSoft }} title={userEmail}>{userEmail}</div>}
                     <button type="button" onClick={onLogout} className="flex items-center gap-1 text-[11px] shrink-0 cursor-pointer text-red-500 hover:text-red-600" title="Keluar">
                       <LogOut size={13} /> {!collapsed && "Keluar"}
                     </button>
@@ -1988,7 +1994,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
                 )}
               </div>
               {!collapsed && (
-                <button onClick={() => navigate("/")} className="text-[11px] hover:underline px-1 cursor-pointer" style={{ color: COLOR.inkSoft }}>
+                <button onClick={() => navigate("/")} className="text-[11px] hover:underline px-1 cursor-pointer" style={{ color: APP_COLOR.inkSoft }}>
                   &larr; Lihat Web Publik
                 </button>
               )}
@@ -2028,7 +2034,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       productUsage={productUsage} 
       stockByProduct={stockByProduct} 
       notify={notify} 
-      colorConfig={COLOR} 
+      colorConfig={APP_COLOR} 
       uid={uid} 
       fmtIDR={fmtIDR} 
     />
@@ -2046,7 +2052,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       stockByProduct={stockByProduct} 
       notify={notify} 
       findName={findName} 
-      colorConfig={COLOR} 
+      colorConfig={APP_COLOR} 
       uid={uid} 
       todayISO={todayISO} 
       daysUntil={daysUntil} 
@@ -2072,7 +2078,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       pInvoices={pInvoices} 
       save={persist.suppliers} 
       notify={notify} 
-      colorConfig={COLOR} 
+      colorConfig={APP_COLOR} 
       uid={uid} 
     />
   ) : <AccessDenied />
@@ -2087,7 +2093,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
               invoices={invoices} 
               save={persist.customers} 
               notify={notify} 
-              colorConfig={COLOR} 
+              colorConfig={APP_COLOR} 
               uid={uid} 
               todayISO={todayISO} 
             />
@@ -2105,7 +2111,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       findName={findName} notify={notify} poTotal={poTotal} pInvoiceTotal={pInvoiceTotal} 
       pInvoicePaidAmount={pInvoicePaidAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount} 
       pInvoiceSisa={pInvoiceSisa} stockByProduct={stockByProduct}
-      colorConfig={COLOR} uid={uid} todayISO={todayISO} fmtDate={fmtDate} fmtIDR={fmtIDR}
+      colorConfig={APP_COLOR} uid={uid} todayISO={todayISO} fmtDate={fmtDate} fmtIDR={fmtIDR}
       calcTax={calcTax} COMPANY_PROFILE={companyProfile}
     />
   ) : <AccessDenied />
@@ -2122,7 +2128,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       allocateFEFO={allocateFEFO} findName={findName} notify={notify} stockByProduct={stockByProduct}
       soTotal={soTotal} invoiceTotal={invoiceTotal} soDPAmount={soDPAmount} invoiceDPAmount={invoiceDPAmount}
       invoicePaidAmount={invoicePaidAmount} invoiceReturnedAmount={invoiceReturnedAmount}
-      colorConfig={COLOR} uid={uid} todayISO={todayISO} fmtDate={fmtDate} fmtIDR={fmtIDR}
+      colorConfig={APP_COLOR} uid={uid} todayISO={todayISO} fmtDate={fmtDate} fmtIDR={fmtIDR}
       calcTax={calcTax} COMPANY_PROFILE={companyProfile} CUSTOMER_TYPES={CUSTOMER_TYPES}
     />
 
@@ -2143,7 +2149,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       savePaymentsOut={persist.paymentsOut} 
       savePaymentsIn={persist.paymentsIn} 
       saveExpenses={persist.expenses}
-      colorConfig={COLOR} 
+      colorConfig={APP_COLOR} 
       uid={uid} 
       todayISO={todayISO} 
       fmtDate={fmtDate} 
@@ -2191,7 +2197,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
               saveSOs={persist.sos} savePOs={persist.pos} saveInvoices={persist.invoices}
               savePReceipts={persist.pReceipts} savePInvoices={persist.pInvoices} saveBatches={persist.batches}
               userEmail={userEmail} canManage={isHardAdmin || currentUserAccess.includes("settings")}
-              findName={findName} notify={notify} colorConfig={COLOR} fmtDate={fmtDate} uid={uid}
+              findName={findName} notify={notify} colorConfig={APP_COLOR} fmtDate={fmtDate} uid={uid}
               company={companyProfile}
             />
 
@@ -2200,7 +2206,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
 
         {/* PENGATURAN */}
         {tab === "activity" && (
-          isHardAdmin ? <ActivityLogView users={users} colorConfig={COLOR} /> : <AccessDenied />
+          isHardAdmin ? <ActivityLogView users={users} colorConfig={APP_COLOR} /> : <AccessDenied />
         )}
         {tab === "settings" && (
           currentUserAccess.includes("settings") ? (
@@ -2214,7 +2220,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       </div>
 
       {toast && (
-        <div className="fixed bottom-6 right-6 z-[60] px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg no-print" style={{ background: toast.tone === "danger" ? COLOR.danger : COLOR.primary, color: "#fff" }}>
+        <div className="fixed bottom-6 right-6 z-[60] px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg no-print" style={{ background: toast.tone === "danger" ? APP_COLOR.danger : APP_COLOR.primary, color: "#fff" }}>
           {toast.msg}
         </div>
       )}
@@ -2230,24 +2236,24 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
   return (
     <div>
       <Eyebrow>Ringkasan bisnis</Eyebrow>
-      <h2 className="text-xl font-semibold mb-5" style={{ color: COLOR.ink }}>Dashboard ERP</h2>
+      <h2 className="text-xl font-semibold mb-5" style={{ color: APP_COLOR.ink }}>Dashboard ERP</h2>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <Card>
-  <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total SKU</div>
-  <div className="text-2xl tabular-nums font-semibold" style={{ color: COLOR.good }}>{(products || []).length}</div>
+  <div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>Total SKU</div>
+  <div className="text-2xl tabular-nums font-semibold" style={{ color: APP_COLOR.good }}>{(products || []).length}</div>
 </Card>
 <Card>
-  <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Nilai Stok</div>
-  <div className="text-lg sm:text-2xl tabular-nums font-semibold break-words" style={{ color: COLOR.good }}>{fmtIDR(totalStockValue)}</div>
+  <div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>Nilai Stok</div>
+  <div className="text-lg sm:text-2xl tabular-nums font-semibold break-words" style={{ color: APP_COLOR.good }}>{fmtIDR(totalStockValue)}</div>
 </Card>
-        <Card style={{ borderColor: lowStock.length ? COLOR.warn : COLOR.border }}>
-          <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Stok Menipis</div>
-          <div className="text-2xl tabular-nums font-semibold" style={{ color: lowStock.length ? COLOR.warn : COLOR.ink }}>{lowStock.length}</div>
+        <Card style={{ borderColor: lowStock.length ? APP_COLOR.warn : APP_COLOR.border }}>
+          <div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>Stok Menipis</div>
+          <div className="text-2xl tabular-nums font-semibold" style={{ color: lowStock.length ? APP_COLOR.warn : APP_COLOR.ink }}>{lowStock.length}</div>
         </Card>
-        <Card style={{ borderColor: (nearExpiry.length || expired.length) ? COLOR.danger : COLOR.border }}>
-          <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Mendekati / Lewat Exp</div>
-          <div className="text-2xl tabular-nums font-semibold" style={{ color: (nearExpiry.length || expired.length) ? COLOR.danger : COLOR.ink }}>{nearExpiry.length + expired.length}</div>
+        <Card style={{ borderColor: (nearExpiry.length || expired.length) ? APP_COLOR.danger : APP_COLOR.border }}>
+          <div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>Mendekati / Lewat Exp</div>
+          <div className="text-2xl tabular-nums font-semibold" style={{ color: (nearExpiry.length || expired.length) ? APP_COLOR.danger : APP_COLOR.ink }}>{nearExpiry.length + expired.length}</div>
         </Card>
       </div>
 
@@ -2257,24 +2263,24 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
     <Eyebrow>Ringkasan keuangan (bulan berjalan)</Eyebrow>
     <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6 dash-fin">
       <Card>
-        <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Piutang (AR)</div>
-        <div className="text-lg tabular-nums font-semibold" style={{ color: COLOR.warn }}>{fmtIDR(arOutstanding)}</div>
+        <div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>Piutang (AR)</div>
+        <div className="text-lg tabular-nums font-semibold" style={{ color: APP_COLOR.warn }}>{fmtIDR(arOutstanding)}</div>
       </Card>
       <Card>
-        <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Hutang (AP)</div>
-        <div className="text-lg tabular-nums font-semibold" style={{ color: COLOR.danger }}>{fmtIDR(apOutstanding)}</div>
+        <div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>Hutang (AP)</div>
+        <div className="text-lg tabular-nums font-semibold" style={{ color: APP_COLOR.danger }}>{fmtIDR(apOutstanding)}</div>
       </Card>
       <Card>
-        <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Kas Masuk</div>
-        <div className="text-lg tabular-nums font-semibold" style={{ color: COLOR.good }}>{fmtIDR(cashInMonth)}</div>
+        <div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>Kas Masuk</div>
+        <div className="text-lg tabular-nums font-semibold" style={{ color: APP_COLOR.good }}>{fmtIDR(cashInMonth)}</div>
       </Card>
       <Card>
-        <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Kas Keluar</div>
-        <div className="text-lg tabular-nums font-semibold" style={{ color: COLOR.danger }}>{fmtIDR(cashOutMonth)}</div>
+        <div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>Kas Keluar</div>
+        <div className="text-lg tabular-nums font-semibold" style={{ color: APP_COLOR.danger }}>{fmtIDR(cashOutMonth)}</div>
       </Card>
-      <Card style={{ borderColor: grossProfitMonth >= 0 ? COLOR.good : COLOR.danger }}>
-        <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Laba Kotor (Margin)</div>
-        <div className="text-lg tabular-nums font-semibold" style={{ color: grossProfitMonth >= 0 ? COLOR.good : COLOR.danger }}>{fmtIDR(grossProfitMonth)}</div>
+      <Card style={{ borderColor: grossProfitMonth >= 0 ? APP_COLOR.good : APP_COLOR.danger }}>
+        <div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>Laba Kotor (Margin)</div>
+        <div className="text-lg tabular-nums font-semibold" style={{ color: grossProfitMonth >= 0 ? APP_COLOR.good : APP_COLOR.danger }}>{fmtIDR(grossProfitMonth)}</div>
       </Card>
     </div>
   </>
@@ -2283,47 +2289,47 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <div className="flex items-center justify-between mb-3">
-            <div className="font-medium text-sm" style={{ color: COLOR.ink }}>Perlu perhatian — Stok & Expiry</div>
+            <div className="font-medium text-sm" style={{ color: APP_COLOR.ink }}>Perlu perhatian — Stok & Expiry</div>
           </div>
           <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
             {lowStock.map((s) => (
-              <div key={s.product.id} className="flex items-center justify-between text-sm py-1.5" style={{ borderBottom: `1px solid ${COLOR.border}` }}>
-                <span style={{ color: COLOR.ink }}>{s.product.name}</span>
+              <div key={s.product.id} className="flex items-center justify-between text-sm py-1.5" style={{ borderBottom: `1px solid ${APP_COLOR.border}` }}>
+                <span style={{ color: APP_COLOR.ink }}>{s.product.name}</span>
                 <Badge tone="warn">stok {s.qty} / min {s.product.minStock}</Badge>
               </div>
             ))}
             {[...expired, ...nearExpiry].map((b) => {
               const p = (products || []).find((x) => x.id === b.productId);
               return (
-                <div key={b.id} className="flex items-center justify-between text-sm py-1.5" style={{ borderBottom: `1px solid ${COLOR.border}` }}>
-                  <span style={{ color: COLOR.ink }}>{p ? p.name : "-"} <span className="tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>({b.batchNo})</span></span>
+                <div key={b.id} className="flex items-center justify-between text-sm py-1.5" style={{ borderBottom: `1px solid ${APP_COLOR.border}` }}>
+                  <span style={{ color: APP_COLOR.ink }}>{p ? p.name : "-"} <span className="tabular-nums text-xs" style={{ color: APP_COLOR.inkSoft }}>({b.batchNo})</span></span>
                   <Badge tone={urgencyOf(b.expiryDate).tone}>{urgencyOf(b.expiryDate).label}</Badge>
                 </div>
               );
             })}
             {lowStock.length === 0 && nearExpiry.length === 0 && expired.length === 0 && (
-              <div className="text-sm py-6 text-center" style={{ color: COLOR.inkSoft }}>Semua aman — tidak ada yang perlu perhatian saat ini.</div>
+              <div className="text-sm py-6 text-center" style={{ color: APP_COLOR.inkSoft }}>Semua aman — tidak ada yang perlu perhatian saat ini.</div>
             )}
           </div>
         </Card>
 
         <Card>
-          <div className="font-medium text-sm mb-3" style={{ color: COLOR.ink }}>Transaksi Terbaru</div>
+          <div className="font-medium text-sm mb-3" style={{ color: APP_COLOR.ink }}>Transaksi Terbaru</div>
           <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
             {recentPOs.map((po) => (
-              <div key={po.id} className="flex items-center justify-between text-sm py-1.5" style={{ borderBottom: `1px solid ${COLOR.border}` }}>
-                <span className="flex items-center gap-1.5" style={{ color: COLOR.ink }}><ArrowDownRight size={14} color={COLOR.warn} /> {po.poNumber} · {findName(suppliers, po.supplierId)}</span>
-                <span className="tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(po.date)}</span>
+              <div key={po.id} className="flex items-center justify-between text-sm py-1.5" style={{ borderBottom: `1px solid ${APP_COLOR.border}` }}>
+                <span className="flex items-center gap-1.5" style={{ color: APP_COLOR.ink }}><ArrowDownRight size={14} color={APP_COLOR.warn} /> {po.poNumber} · {findName(suppliers, po.supplierId)}</span>
+                <span className="tabular-nums text-xs" style={{ color: APP_COLOR.inkSoft }}>{fmtDate(po.date)}</span>
               </div>
             ))}
             {recentSOs.map((so) => (
-              <div key={so.id} className="flex items-center justify-between text-sm py-1.5" style={{ borderBottom: `1px solid ${COLOR.border}` }}>
-                <span className="flex items-center gap-1.5" style={{ color: COLOR.ink }}><ArrowUpRight size={14} color={COLOR.good} /> {so.soNumber} · {findName(customers, so.customerId)}</span>
-                <span className="tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(so.date)}</span>
+              <div key={so.id} className="flex items-center justify-between text-sm py-1.5" style={{ borderBottom: `1px solid ${APP_COLOR.border}` }}>
+                <span className="flex items-center gap-1.5" style={{ color: APP_COLOR.ink }}><ArrowUpRight size={14} color={APP_COLOR.good} /> {so.soNumber} · {findName(customers, so.customerId)}</span>
+                <span className="tabular-nums text-xs" style={{ color: APP_COLOR.inkSoft }}>{fmtDate(so.date)}</span>
               </div>
             ))}
             {recentPOs.length === 0 && recentSOs.length === 0 && (
-              <div className="text-sm py-6 text-center" style={{ color: COLOR.inkSoft }}>Belum ada transaksi.</div>
+              <div className="text-sm py-6 text-center" style={{ color: APP_COLOR.inkSoft }}>Belum ada transaksi.</div>
             )}
           </div>
         </Card>
@@ -2340,21 +2346,21 @@ function Dashboard({ products, pos, sos, stockByProduct, lowStock, nearExpiry, e
 // --- Komponen baris detail item (dipakai oleh Sales & Purchase report tab) ---
 // Di layar: tersembunyi by default, muncul kalau induk di-expand.
 // Di print: selalu muncul (CSS @media print).
-function InvoiceItemRows({ doc, products, fmtIDR, COLOR, colSpan }) {
+function InvoiceItemRows({ doc, products, fmtIDR, APP_COLOR, colSpan }) {
   return (
     <tr
       className="report-invoice-detail"
-      style={{ borderTop: `1px solid ${COLOR.border}`, background: "#f4f7fb" }}
+      style={{ borderTop: `1px solid ${APP_COLOR.border}`, background: "#f4f7fb" }}
     >
       <td />
       <td colSpan={colSpan}>
         <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
           <thead>
             <tr>
-              <th style={{ textAlign: "left", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Produk</th>
-              <th style={{ textAlign: "center", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Qty</th>
-              <th style={{ textAlign: "right", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Harga Satuan</th>
-              <th style={{ textAlign: "right", paddingBottom: 2, color: COLOR.inkSoft, fontWeight: 600 }}>Subtotal</th>
+              <th style={{ textAlign: "left", paddingBottom: 2, color: APP_COLOR.inkSoft, fontWeight: 600 }}>Produk</th>
+              <th style={{ textAlign: "center", paddingBottom: 2, color: APP_COLOR.inkSoft, fontWeight: 600 }}>Qty</th>
+              <th style={{ textAlign: "right", paddingBottom: 2, color: APP_COLOR.inkSoft, fontWeight: 600 }}>Harga Satuan</th>
+              <th style={{ textAlign: "right", paddingBottom: 2, color: APP_COLOR.inkSoft, fontWeight: 600 }}>Subtotal</th>
             </tr>
           </thead>
           <tbody>
@@ -2363,14 +2369,14 @@ function InvoiceItemRows({ doc, products, fmtIDR, COLOR, colSpan }) {
               const lineTotal = (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
               return (
                 <tr key={idx}>
-                  <td style={{ padding: "2px 0", color: COLOR.ink }}>{p?.name || "-"}</td>
-                  <td style={{ textAlign: "center", padding: "2px 4px", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>
+                  <td style={{ padding: "2px 0", color: APP_COLOR.ink }}>{p?.name || "-"}</td>
+                  <td style={{ textAlign: "center", padding: "2px 4px", color: APP_COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>
                     {it.qty} {p?.unit || ""}
                   </td>
-                  <td style={{ textAlign: "right", padding: "2px 0", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>
+                  <td style={{ textAlign: "right", padding: "2px 0", color: APP_COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>
                     {fmtIDR(it.unitPrice)}
                   </td>
-                  <td style={{ textAlign: "right", padding: "2px 0", fontWeight: 600, color: COLOR.ink, fontVariantNumeric: "tabular-nums" }}>
+                  <td style={{ textAlign: "right", padding: "2px 0", fontWeight: 600, color: APP_COLOR.ink, fontVariantNumeric: "tabular-nums" }}>
                     {fmtIDR(lineTotal)}
                   </td>
                 </tr>
@@ -2406,7 +2412,7 @@ const HPP_ISSUE_HELP = {
   dipulihkan: "Batch aslinya sudah hilang / modalnya 0, harga modal diambil dari Faktur Pembelian / BPB dengan batch yang sama. Ini info aja, HPP-nya udah keisi.",
 };
 
-function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR, fmtDate, fmtIDR, profitById = {}, showHpp = false, pnlData, companyName }) {
+function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, APP_COLOR, fmtDate, fmtIDR, profitById = {}, showHpp = false, pnlData, companyName }) {
   const [expanded, setExpanded] = useState(new Set());
   const toggle = (id) => setExpanded((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
   const allOpen = allSalesDocs.length > 0 && allSalesDocs.every((d) => expanded.has(d.id));
@@ -2447,28 +2453,28 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR,
         <Button onClick={() => window.print()} variant="ghost" className="text-xs"><Printer size={14} /> Cetak Laporan</Button>
       </div>
       <div className="border-b pb-3 mb-4 text-center">
-        <div className="text-base font-bold uppercase tracking-wide" style={{ color: COLOR.ink }}>{companyName || "PT WIRYATAMA PUTERA MANDIRI"}</div>
-        <h3 className="font-bold text-sm uppercase" style={{ color: COLOR.primary }}>{showHpp ? "Laporan Penjualan & Laba Kotor" : "Laporan Penjualan"}</h3>
+        <div className="text-base font-bold uppercase tracking-wide" style={{ color: APP_COLOR.ink }}>{companyName || "PT WIRYATAMA PUTERA MANDIRI"}</div>
+        <h3 className="font-bold text-sm uppercase" style={{ color: APP_COLOR.primary }}>{showHpp ? "Laporan Penjualan & Laba Kotor" : "Laporan Penjualan"}</h3>
         <p className="text-xs text-gray-500">Periode: {fmtDate(start)} s/d {fmtDate(end)}</p>
       </div>
 
       {showHpp && pnlData ? (
         <Card className="mb-4">
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-sm tabular-nums">
-            <div><div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Penjualan (DPP)</div><div className="font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(pnlData.grossSalesDPP)}</div></div>
-            <div><div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>(-) Retur</div><div className="font-semibold text-red-600">{fmtIDR(pnlData.salesReturnsVal)}</div></div>
-            <div><div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>(-) HPP</div><div className="font-semibold text-red-600">{fmtIDR(pnlData.totalCOGS)}</div></div>
-            <div><div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Laba Kotor</div><div className="font-bold text-emerald-700">{fmtIDR(pnlData.grossProfit)}</div></div>
-            <div><div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Margin Kotor</div><div className="font-semibold" style={{ color: COLOR.ink }}>{pct(pnlData.grossProfit, pnlData.netSales)}</div></div>
+            <div><div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>Penjualan (DPP)</div><div className="font-semibold" style={{ color: APP_COLOR.ink }}>{fmtIDR(pnlData.grossSalesDPP)}</div></div>
+            <div><div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>(-) Retur</div><div className="font-semibold text-red-600">{fmtIDR(pnlData.salesReturnsVal)}</div></div>
+            <div><div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>(-) HPP</div><div className="font-semibold text-red-600">{fmtIDR(pnlData.totalCOGS)}</div></div>
+            <div><div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>Laba Kotor</div><div className="font-bold text-emerald-700">{fmtIDR(pnlData.grossProfit)}</div></div>
+            <div><div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>Margin Kotor</div><div className="font-semibold" style={{ color: APP_COLOR.ink }}>{pct(pnlData.grossProfit, pnlData.netSales)}</div></div>
           </div>
-          <div className="text-[11px] mt-3 pt-2 border-t" style={{ color: COLOR.inkSoft, borderColor: COLOR.border }}>
+          <div className="text-[11px] mt-3 pt-2 border-t" style={{ color: APP_COLOR.inkSoft, borderColor: APP_COLOR.border }}>
             Total tagihan faktur (termasuk PPN/ongkir, setelah fee): <span className="font-semibold tabular-nums">{fmtIDR(salesTotal)}</span>. Angka DPP, Retur, HPP & Laba Kotor di atas dihitung dengan rumus yang sama dengan Laporan Laba Rugi periode ini, jadi harus sama persis.
           </div>
         </Card>
       ) : (
         <Card className="mb-4">
-          <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total Penjualan Berdasarkan Faktur ({fmtDate(start)} – {fmtDate(end)})</div>
-          <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(salesTotal)}</div>
+          <div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>Total Penjualan Berdasarkan Faktur ({fmtDate(start)} – {fmtDate(end)})</div>
+          <div className="text-xl tabular-nums font-semibold" style={{ color: APP_COLOR.ink }}>{fmtIDR(salesTotal)}</div>
         </Card>
       )}
 
@@ -2481,58 +2487,58 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR,
         </Card>
       )}
 
-      <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Rekap Produk Difakturkan</div>
+      <div className="text-xs font-medium mb-2" style={{ color: APP_COLOR.inkSoft }}>Rekap Produk Difakturkan</div>
       <Card className="!p-0 mb-5">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ background: COLOR.primarySoft }}>
-                <th className={th} style={{ color: COLOR.primary }}>Produk</th>
-                <th className={thR} style={{ color: COLOR.primary }}>Qty Terjual</th>
-                <th className={thR} style={{ color: COLOR.primary }}>Nilai Penjualan</th>
-                {showHpp && <th className={thR} style={{ color: COLOR.primary }}>Total HPP</th>}
-                {showHpp && <th className={thR} style={{ color: COLOR.primary }}>Margin</th>}
-                {showHpp && <th className={thR} style={{ color: COLOR.primary }}>%</th>}
+              <tr style={{ background: APP_COLOR.primarySoft }}>
+                <th className={th} style={{ color: APP_COLOR.primary }}>Produk</th>
+                <th className={thR} style={{ color: APP_COLOR.primary }}>Qty Terjual</th>
+                <th className={thR} style={{ color: APP_COLOR.primary }}>Nilai Penjualan</th>
+                {showHpp && <th className={thR} style={{ color: APP_COLOR.primary }}>Total HPP</th>}
+                {showHpp && <th className={thR} style={{ color: APP_COLOR.primary }}>Margin</th>}
+                {showHpp && <th className={thR} style={{ color: APP_COLOR.primary }}>%</th>}
               </tr>
             </thead>
             <tbody>
               {aggRows.map(([pid, a]) => {
                 const p = productOf(pid);
                 return (
-                  <tr key={pid} style={{ borderTop: `1px solid ${COLOR.border}` }}>
-                    <td className="px-3 py-2" style={{ color: COLOR.ink }}>{p?.name || "-"}</td>
-                    <td className="px-3 py-2 text-right tabular-nums" style={{ color: COLOR.inkSoft }}>{a.qty} {p?.unit}</td>
-                    <td className="px-3 py-2 text-right tabular-nums" style={{ color: COLOR.ink }}>{fmtIDR(a.value)}</td>
+                  <tr key={pid} style={{ borderTop: `1px solid ${APP_COLOR.border}` }}>
+                    <td className="px-3 py-2" style={{ color: APP_COLOR.ink }}>{p?.name || "-"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums" style={{ color: APP_COLOR.inkSoft }}>{a.qty} {p?.unit}</td>
+                    <td className="px-3 py-2 text-right tabular-nums" style={{ color: APP_COLOR.ink }}>{fmtIDR(a.value)}</td>
                     {showHpp && <td className="px-3 py-2 text-right tabular-nums text-red-600">{fmtIDR(a.hpp)}</td>}
                     {showHpp && <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{ color: a.value - a.hpp >= 0 ? "#047857" : "#DC2626" }}>{fmtIDR(a.value - a.hpp)}</td>}
-                    {showHpp && <td className="px-3 py-2 text-right tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{pct(a.value - a.hpp, a.value)}</td>}
+                    {showHpp && <td className="px-3 py-2 text-right tabular-nums text-xs" style={{ color: APP_COLOR.inkSoft }}>{pct(a.value - a.hpp, a.value)}</td>}
                   </tr>
                 );
               })}
-              {aggRows.length === 0 && <tr><td colSpan={showHpp ? 6 : 3} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Penjualan di periode ini.</td></tr>}
+              {aggRows.length === 0 && <tr><td colSpan={showHpp ? 6 : 3} className="text-center py-8 text-sm" style={{ color: APP_COLOR.inkSoft }}>Tidak ada Faktur Penjualan di periode ini.</td></tr>}
             </tbody>
           </table>
         </div>
         {showHpp && aggRows.length > 0 && (
-          <div className="px-3 py-2 text-[11px] border-t" style={{ color: COLOR.inkSoft, borderColor: COLOR.border }}>
+          <div className="px-3 py-2 text-[11px] border-t" style={{ color: APP_COLOR.inkSoft, borderColor: APP_COLOR.border }}>
             Nilai penjualan per produk = qty x harga setelah diskon item, sebelum diskon nota & pajak. Margin final per faktur ada di daftar di bawah.
           </div>
         )}
       </Card>
 
-      <div className="text-xs font-medium mb-2" style={{ color: COLOR.inkSoft }}>Daftar Faktur Penjualan {showHpp && "(klik baris buat lihat rincian harga jual vs HPP)"}</div>
+      <div className="text-xs font-medium mb-2" style={{ color: APP_COLOR.inkSoft }}>Daftar Faktur Penjualan {showHpp && "(klik baris buat lihat rincian harga jual vs HPP)"}</div>
       <Card className="!p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ background: COLOR.primarySoft }}>
+              <tr style={{ background: APP_COLOR.primarySoft }}>
                 <th className="w-8 px-2 py-2 report-toggle-btn" />
-                {mainCols.map((h) => <th key={h} className={th} style={{ color: COLOR.primary }}>{h}</th>)}
-                <th className={thR} style={{ color: COLOR.primary }}>Total Tagihan</th>
-                {showHpp && <th className={thR} style={{ color: COLOR.primary }}>DPP</th>}
-                {showHpp && <th className={thR} style={{ color: COLOR.primary }}>HPP</th>}
-                {showHpp && <th className={thR} style={{ color: COLOR.primary }}>Laba Kotor</th>}
-                {showHpp && <th className={thR} style={{ color: COLOR.primary }}>%</th>}
+                {mainCols.map((h) => <th key={h} className={th} style={{ color: APP_COLOR.primary }}>{h}</th>)}
+                <th className={thR} style={{ color: APP_COLOR.primary }}>Total Tagihan</th>
+                {showHpp && <th className={thR} style={{ color: APP_COLOR.primary }}>DPP</th>}
+                {showHpp && <th className={thR} style={{ color: APP_COLOR.primary }}>HPP</th>}
+                {showHpp && <th className={thR} style={{ color: APP_COLOR.primary }}>Laba Kotor</th>}
+                {showHpp && <th className={thR} style={{ color: APP_COLOR.primary }}>%</th>}
               </tr>
             </thead>
             <tbody>
@@ -2543,28 +2549,28 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR,
                 const lossTone = pr.grossProfit < 0 ? "#DC2626" : "#047857";
                 return (
                   <Fragment key={doc.id}>
-                    <tr style={{ borderTop: `1px solid ${COLOR.border}`, cursor: "pointer" }} onClick={() => toggle(doc.id)}>
-                      <td className="px-2 py-2.5 text-center select-none report-toggle-btn" style={{ color: COLOR.primary }}>
+                    <tr style={{ borderTop: `1px solid ${APP_COLOR.border}`, cursor: "pointer" }} onClick={() => toggle(doc.id)}>
+                      <td className="px-2 py-2.5 text-center select-none report-toggle-btn" style={{ color: APP_COLOR.primary }}>
                         <span style={{ display: "inline-block", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", fontSize: 11, fontWeight: 700 }}>▶</span>
                       </td>
-                      <td className="px-3 py-2.5 tabular-nums font-semibold whitespace-nowrap" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
+                      <td className="px-3 py-2.5 tabular-nums font-semibold whitespace-nowrap" style={{ color: APP_COLOR.ink }}>{doc.docNumber}</td>
                       <td className="px-3 py-2.5"><Badge tone={doc.type === "Langsung" ? "warn" : "neutral"}>{doc.type}</Badge></td>
-                      <td className="px-3 py-2.5" style={{ color: COLOR.ink }}>{doc.partyName}</td>
-                      <td className="px-3 py-2.5 tabular-nums text-xs whitespace-nowrap" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
-                      {showHpp && <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: COLOR.ink }}>{fmtIDR(pr.dpp)}</td>}
+                      <td className="px-3 py-2.5" style={{ color: APP_COLOR.ink }}>{doc.partyName}</td>
+                      <td className="px-3 py-2.5 tabular-nums text-xs whitespace-nowrap" style={{ color: APP_COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: APP_COLOR.ink }}>{fmtIDR(doc.total)}</td>
+                      {showHpp && <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: APP_COLOR.ink }}>{fmtIDR(pr.dpp)}</td>}
                       {showHpp && <td className="px-3 py-2.5 text-right tabular-nums text-red-600">{fmtIDR(pr.cogsNet)}</td>}
                       {showHpp && <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: lossTone }}>{fmtIDR(pr.grossProfit)}</td>}
-                      {showHpp && <td className="px-3 py-2.5 text-right tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{pct(pr.grossProfit, netSales)}</td>}
+                      {showHpp && <td className="px-3 py-2.5 text-right tabular-nums text-xs" style={{ color: APP_COLOR.inkSoft }}>{pct(pr.grossProfit, netSales)}</td>}
                     </tr>
 
                     {/* Detail – tersembunyi di layar kalau belum dibuka, selalu muncul saat print */}
-                    <tr className="report-invoice-detail" style={{ borderTop: `1px solid ${COLOR.border}`, background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}>
+                    <tr className="report-invoice-detail" style={{ borderTop: `1px solid ${APP_COLOR.border}`, background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}>
                       <td className="report-toggle-btn" />
                       <td colSpan={colCount - 1} style={{ padding: "6px 12px 10px" }}>
                         <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
                           <thead>
-                            <tr style={{ color: COLOR.inkSoft }}>
+                            <tr style={{ color: APP_COLOR.inkSoft }}>
                               <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>Produk</th>
                               <th style={{ textAlign: "right", paddingBottom: 3, fontWeight: 600 }}>Qty</th>
                               <th style={{ textAlign: "right", paddingBottom: 3, fontWeight: 600 }}>Harga Jual</th>
@@ -2580,11 +2586,11 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR,
                               const margin = it.lineTotal - it.hppTotal;
                               return (
                                 <tr key={idx} style={{ borderTop: "1px dashed #dbe3ee" }}>
-                                  <td style={{ padding: "3px 0", color: COLOR.ink }}>{p?.name || "-"}</td>
-                                  <td style={{ textAlign: "right", padding: "3px 6px", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{it.qty} {p?.unit || ""}</td>
-                                  <td style={{ textAlign: "right", padding: "3px 6px", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(it.unitPrice)}</td>
-                                  <td style={{ textAlign: "right", padding: "3px 6px", fontWeight: 600, color: COLOR.ink, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(it.lineTotal)}</td>
-                                  {showHpp && <td style={{ textAlign: "right", padding: "3px 6px", color: COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>
+                                  <td style={{ padding: "3px 0", color: APP_COLOR.ink }}>{p?.name || "-"}</td>
+                                  <td style={{ textAlign: "right", padding: "3px 6px", color: APP_COLOR.inkSoft, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{it.qty} {p?.unit || ""}</td>
+                                  <td style={{ textAlign: "right", padding: "3px 6px", color: APP_COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(it.unitPrice)}</td>
+                                  <td style={{ textAlign: "right", padding: "3px 6px", fontWeight: 600, color: APP_COLOR.ink, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(it.lineTotal)}</td>
+                                  {showHpp && <td style={{ textAlign: "right", padding: "3px 6px", color: APP_COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>
                                     {it.hppUnit > 0 ? fmtIDR(it.hppUnit) : null}
                                     {it.hppIssue && <div style={{ color: "#D97706", fontSize: 10, fontWeight: 600 }}>{HPP_ISSUE_LABEL[it.hppIssue]}</div>}
                                     {(it.trace || []).map((t, ti) => (
@@ -2603,14 +2609,14 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR,
 
                         {showHpp && (
                           <div style={{ marginTop: 8, marginLeft: "auto", maxWidth: 340, fontSize: "11px", fontVariantNumeric: "tabular-nums" }}>
-                            <div className="flex justify-between py-0.5"><span style={{ color: COLOR.inkSoft }}>Subtotal item</span><span>{fmtIDR(pr.raw)}</span></div>
+                            <div className="flex justify-between py-0.5"><span style={{ color: APP_COLOR.inkSoft }}>Subtotal item</span><span>{fmtIDR(pr.raw)}</span></div>
                             {pr.diskon > 0 && <div className="flex justify-between py-0.5 text-red-600"><span>(-) Diskon nota</span><span>- {fmtIDR(pr.diskon)}</span></div>}
                             {Math.abs(pr.raw - pr.diskon - pr.dpp) >= 1 && <div className="flex justify-between py-0.5 text-red-600"><span>(-) PPN termasuk harga</span><span>- {fmtIDR(pr.raw - pr.diskon - pr.dpp)}</span></div>}
-                            <div className="flex justify-between py-0.5 font-semibold border-t" style={{ borderColor: COLOR.border }}><span>Penjualan (DPP)</span><span>{fmtIDR(pr.dpp)}</span></div>
+                            <div className="flex justify-between py-0.5 font-semibold border-t" style={{ borderColor: APP_COLOR.border }}><span>Penjualan (DPP)</span><span>{fmtIDR(pr.dpp)}</span></div>
                             {pr.retVal > 0 && <div className="flex justify-between py-0.5 text-red-600"><span>(-) Retur penjualan</span><span>- {fmtIDR(pr.retVal)}</span></div>}
                             <div className="flex justify-between py-0.5 text-red-600"><span>(-) HPP barang terkirim</span><span>- {fmtIDR(pr.invCogs)}</span></div>
                             {pr.retCogs > 0 && <div className="flex justify-between py-0.5 text-emerald-700"><span>(+) HPP barang diretur</span><span>+ {fmtIDR(Math.min(pr.retCogs, pr.invCogs))}</span></div>}
-                            <div className="flex justify-between py-1 font-bold border-t" style={{ borderColor: COLOR.border, color: lossTone }}><span>Laba Kotor</span><span>{fmtIDR(pr.grossProfit)}</span></div>
+                            <div className="flex justify-between py-1 font-bold border-t" style={{ borderColor: APP_COLOR.border, color: lossTone }}><span>Laba Kotor</span><span>{fmtIDR(pr.grossProfit)}</span></div>
                             {Math.abs(pr.hppAdjust) >= 1 && (
                               <div className="mt-1 text-[10px]" style={{ color: "#B45309" }}>
                                 Catatan: HPP dari Surat Jalan beda {fmtIDR(Math.abs(pr.hppAdjust))} dari HPP qty di faktur (qty kirim ≠ qty faktur, atau ada produk di SJ yang nggak ada di faktur). Laba kotor tetap pakai HPP Surat Jalan, sama dengan Laba Rugi.
@@ -2628,13 +2634,13 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR,
                   </Fragment>
                 );
               })}
-              {allSalesDocs.length === 0 && <tr><td colSpan={colCount} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Penjualan di periode ini.</td></tr>}
+              {allSalesDocs.length === 0 && <tr><td colSpan={colCount} className="text-center py-8 text-sm" style={{ color: APP_COLOR.inkSoft }}>Tidak ada Faktur Penjualan di periode ini.</td></tr>}
             </tbody>
             {showHpp && allSalesDocs.length > 0 && pnlData && (
               <tfoot>
-                <tr style={{ borderTop: `2px solid ${COLOR.border}`, background: COLOR.primarySoft }}>
+                <tr style={{ borderTop: `2px solid ${APP_COLOR.border}`, background: APP_COLOR.primarySoft }}>
                   <td className="report-toggle-btn" />
-                  <td colSpan={mainCols.length} className="px-3 py-2.5 text-xs font-bold uppercase" style={{ color: COLOR.primary }}>Total Periode</td>
+                  <td colSpan={mainCols.length} className="px-3 py-2.5 text-xs font-bold uppercase" style={{ color: APP_COLOR.primary }}>Total Periode</td>
                   <td className="px-3 py-2.5 text-right tabular-nums font-bold">{fmtIDR(salesTotal)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums font-bold">{fmtIDR(pnlData.grossSalesDPP)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums font-bold text-red-600">{fmtIDR(pnlData.totalCOGS)}</td>
@@ -2650,7 +2656,7 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR,
   );
 }
 
-function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, products, COLOR, fmtDate, fmtIDR, companyName }) {
+function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, products, APP_COLOR, fmtDate, fmtIDR, companyName }) {
   const [expanded, setExpanded] = useState(new Set());
   const [expandedProd, setExpandedProd] = useState(new Set());
   const [prodSearch, setProdSearch] = useState("");
@@ -2697,18 +2703,18 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
         <Button onClick={() => window.print()} variant="ghost" className="text-xs"><Printer size={14} /> Cetak Laporan</Button>
       </div>
       <div className="border-b pb-3 mb-4 text-center">
-        <div className="text-base font-bold uppercase tracking-wide" style={{ color: COLOR.ink }}>{companyName || "PT WIRYATAMA PUTERA MANDIRI"}</div>
-        <h3 className="font-bold text-sm uppercase" style={{ color: COLOR.primary }}>Laporan Pembelian</h3>
+        <div className="text-base font-bold uppercase tracking-wide" style={{ color: APP_COLOR.ink }}>{companyName || "PT WIRYATAMA PUTERA MANDIRI"}</div>
+        <h3 className="font-bold text-sm uppercase" style={{ color: APP_COLOR.primary }}>Laporan Pembelian</h3>
         <p className="text-xs text-gray-500">Periode: {fmtDate(start)} s/d {fmtDate(end)}</p>
       </div>
 
       <Card className="mb-4">
-        <div className="text-xs mb-1" style={{ color: COLOR.inkSoft }}>Total Pembelian Berdasarkan Faktur Vendor ({fmtDate(start)} – {fmtDate(end)})</div>
-        <div className="text-xl tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(purchaseTotal)}</div>
+        <div className="text-xs mb-1" style={{ color: APP_COLOR.inkSoft }}>Total Pembelian Berdasarkan Faktur Vendor ({fmtDate(start)} – {fmtDate(end)})</div>
+        <div className="text-xl tabular-nums font-semibold" style={{ color: APP_COLOR.ink }}>{fmtIDR(purchaseTotal)}</div>
       </Card>
 
       <div className="flex flex-wrap items-end justify-between gap-2 mb-2">
-        <div className="text-xs font-medium" style={{ color: COLOR.inkSoft }}>Rekap Produk Difakturkan (klik produk buat lihat faktur pembelian asalnya)</div>
+        <div className="text-xs font-medium" style={{ color: APP_COLOR.inkSoft }}>Rekap Produk Difakturkan (klik produk buat lihat faktur pembelian asalnya)</div>
         <div className="flex gap-2 no-print">
           <TextInput placeholder="Cari produk..." value={prodSearch} onChange={(e) => setProdSearch(e.target.value)} />
           <Button onClick={() => setExpandedProd(allProdOpen ? new Set() : new Set(prodRows.map(([pid]) => pid)))} variant="ghost" className="text-xs whitespace-nowrap">{allProdOpen ? "Tutup Semua" : "Buka Semua"}</Button>
@@ -2718,13 +2724,13 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ background: COLOR.primarySoft }}>
+              <tr style={{ background: APP_COLOR.primarySoft }}>
                 <th className="w-8 px-2 py-2 report-toggle-btn" />
-                <th className={th} style={{ color: COLOR.primary }}>Produk</th>
-                <th className={thR} style={{ color: COLOR.primary }}>Jml. Faktur</th>
-                <th className={thR} style={{ color: COLOR.primary }}>Qty Dibeli</th>
-                <th className={thR} style={{ color: COLOR.primary }}>Rata-rata Harga Modal</th>
-                <th className={thR} style={{ color: COLOR.primary }}>Nilai Beli</th>
+                <th className={th} style={{ color: APP_COLOR.primary }}>Produk</th>
+                <th className={thR} style={{ color: APP_COLOR.primary }}>Jml. Faktur</th>
+                <th className={thR} style={{ color: APP_COLOR.primary }}>Qty Dibeli</th>
+                <th className={thR} style={{ color: APP_COLOR.primary }}>Rata-rata Harga Modal</th>
+                <th className={thR} style={{ color: APP_COLOR.primary }}>Nilai Beli</th>
               </tr>
             </thead>
             <tbody>
@@ -2735,25 +2741,25 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
                 const priceVaries = new Set(prices).size > 1;
                 return (
                   <Fragment key={pid}>
-                    <tr style={{ borderTop: `1px solid ${COLOR.border}`, cursor: "pointer" }} onClick={() => toggleProd(pid)}>
-                      <td className="px-2 py-2.5 text-center select-none report-toggle-btn" style={{ color: COLOR.primary }}>
+                    <tr style={{ borderTop: `1px solid ${APP_COLOR.border}`, cursor: "pointer" }} onClick={() => toggleProd(pid)}>
+                      <td className="px-2 py-2.5 text-center select-none report-toggle-btn" style={{ color: APP_COLOR.primary }}>
                         <span style={{ display: "inline-block", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", fontSize: 11, fontWeight: 700 }}>▶</span>
                       </td>
-                      <td className="px-3 py-2.5" style={{ color: COLOR.ink }}>
+                      <td className="px-3 py-2.5" style={{ color: APP_COLOR.ink }}>
                         {p?.name || "-"}
                         {priceVaries && <span className="ml-2 text-[10px] font-semibold" style={{ color: "#B45309" }}>harga beli beda-beda</span>}
                       </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{a.lines.length}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: COLOR.inkSoft }}>{a.qty} {p?.unit}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: COLOR.ink }}>{fmtIDR(a.qty > 0 ? a.modal / a.qty : 0)}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(a.value)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-xs" style={{ color: APP_COLOR.inkSoft }}>{a.lines.length}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: APP_COLOR.inkSoft }}>{a.qty} {p?.unit}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: APP_COLOR.ink }}>{fmtIDR(a.qty > 0 ? a.modal / a.qty : 0)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: APP_COLOR.ink }}>{fmtIDR(a.value)}</td>
                     </tr>
                     <tr className="report-invoice-detail" style={{ background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}>
                       <td className="report-toggle-btn" />
                       <td colSpan={5} style={{ padding: "6px 12px 10px" }}>
                         <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
                           <thead>
-                            <tr style={{ color: COLOR.inkSoft }}>
+                            <tr style={{ color: APP_COLOR.inkSoft }}>
                               <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>No. Faktur Vendor</th>
                               <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>Supplier</th>
                               <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>Tanggal</th>
@@ -2769,16 +2775,16 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
                           <tbody>
                             {a.lines.map((l) => (
                               <tr key={l.key} style={{ borderTop: "1px dashed #dbe3ee" }}>
-                                <td style={{ padding: "3px 0", fontWeight: 600, color: COLOR.ink, whiteSpace: "nowrap" }}>{l.docNumber}</td>
-                                <td style={{ padding: "3px 6px", color: COLOR.ink }}>{l.partyName}</td>
-                                <td style={{ padding: "3px 6px", color: COLOR.inkSoft, whiteSpace: "nowrap" }}>{fmtDate(l.date)}</td>
-                                <td style={{ padding: "3px 6px", color: COLOR.inkSoft }}>{l.batchNo}</td>
-                                <td style={{ ...sub, color: COLOR.inkSoft }}>{l.qty} {p?.unit || ""}</td>
-                                <td style={{ ...sub, color: COLOR.inkSoft }}>{fmtIDR(l.unitPrice)}</td>
-                                <td style={{ ...sub, color: l.discAmt > 0 ? "#DC2626" : COLOR.inkSoft }}>{l.discAmt > 0 ? `- ${fmtIDR(l.discAmt)}` : "-"}</td>
-                                <td style={{ ...sub, color: l.notaPct > 0.005 ? "#DC2626" : COLOR.inkSoft }}>{l.notaPct > 0.005 ? `- ${l.notaPct.toFixed(2).replace(/\.?0+$/, "")}%` : "-"}</td>
-                                <td style={{ ...sub, fontWeight: 700, color: COLOR.ink }}>{fmtIDR(l.netUnit)}</td>
-                                <td style={{ ...sub, fontWeight: 600, color: COLOR.ink }}>{fmtIDR(l.lineTotal)}</td>
+                                <td style={{ padding: "3px 0", fontWeight: 600, color: APP_COLOR.ink, whiteSpace: "nowrap" }}>{l.docNumber}</td>
+                                <td style={{ padding: "3px 6px", color: APP_COLOR.ink }}>{l.partyName}</td>
+                                <td style={{ padding: "3px 6px", color: APP_COLOR.inkSoft, whiteSpace: "nowrap" }}>{fmtDate(l.date)}</td>
+                                <td style={{ padding: "3px 6px", color: APP_COLOR.inkSoft }}>{l.batchNo}</td>
+                                <td style={{ ...sub, color: APP_COLOR.inkSoft }}>{l.qty} {p?.unit || ""}</td>
+                                <td style={{ ...sub, color: APP_COLOR.inkSoft }}>{fmtIDR(l.unitPrice)}</td>
+                                <td style={{ ...sub, color: l.discAmt > 0 ? "#DC2626" : APP_COLOR.inkSoft }}>{l.discAmt > 0 ? `- ${fmtIDR(l.discAmt)}` : "-"}</td>
+                                <td style={{ ...sub, color: l.notaPct > 0.005 ? "#DC2626" : APP_COLOR.inkSoft }}>{l.notaPct > 0.005 ? `- ${l.notaPct.toFixed(2).replace(/\.?0+$/, "")}%` : "-"}</td>
+                                <td style={{ ...sub, fontWeight: 700, color: APP_COLOR.ink }}>{fmtIDR(l.netUnit)}</td>
+                                <td style={{ ...sub, fontWeight: 600, color: APP_COLOR.ink }}>{fmtIDR(l.lineTotal)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -2788,30 +2794,30 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
                   </Fragment>
                 );
               })}
-              {prodRows.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>{q ? `Nggak ada produk yang cocok dengan "${prodSearch}" di periode ini.` : "Tidak ada Faktur Pembelian di periode ini."}</td></tr>}
+              {prodRows.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: APP_COLOR.inkSoft }}>{q ? `Nggak ada produk yang cocok dengan "${prodSearch}" di periode ini.` : "Tidak ada Faktur Pembelian di periode ini."}</td></tr>}
             </tbody>
           </table>
         </div>
-        <div className="px-3 py-2 text-[11px] border-t" style={{ color: COLOR.inkSoft, borderColor: COLOR.border }}>
+        <div className="px-3 py-2 text-[11px] border-t" style={{ color: APP_COLOR.inkSoft, borderColor: APP_COLOR.border }}>
           Harga Modal = harga beli setelah diskon item & diskon nota (dibagi proporsional), tanpa PPN. Ini angka yang sama dipakai jadi HPP batch.
           Kalau faktur yang dicari nggak muncul, lebarin rentang tanggal di atas.
         </div>
       </Card>
 
       <div className="flex items-end justify-between gap-2 mb-2">
-        <div className="text-xs font-medium" style={{ color: COLOR.inkSoft }}>Daftar Faktur Pembelian</div>
+        <div className="text-xs font-medium" style={{ color: APP_COLOR.inkSoft }}>Daftar Faktur Pembelian</div>
         <Button onClick={() => setExpanded(allInvOpen ? new Set() : new Set(allPurchaseDocs.map((d) => d.id)))} variant="ghost" className="text-xs no-print">{allInvOpen ? "Tutup Semua" : "Buka Semua"}</Button>
       </div>
       <Card className="!p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ background: COLOR.primarySoft }}>
+              <tr style={{ background: APP_COLOR.primarySoft }}>
                 <th className="w-8 px-2 py-2 report-toggle-btn" />
                 {["No. Faktur Vendor", "Tipe", "Supplier", "Tanggal"].map((h) => (
-                  <th key={h} className={th} style={{ color: COLOR.primary }}>{h}</th>
+                  <th key={h} className={th} style={{ color: APP_COLOR.primary }}>{h}</th>
                 ))}
-                <th className={thR} style={{ color: COLOR.primary }}>Total Tagihan</th>
+                <th className={thR} style={{ color: APP_COLOR.primary }}>Total Tagihan</th>
               </tr>
             </thead>
             <tbody>
@@ -2819,22 +2825,22 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
                 const isOpen = expanded.has(doc.id);
                 return (
                   <Fragment key={doc.id}>
-                    <tr style={{ borderTop: `1px solid ${COLOR.border}`, cursor: "pointer" }} onClick={() => toggle(doc.id)}>
-                      <td className="px-2 py-2.5 text-center select-none report-toggle-btn" style={{ color: COLOR.primary }}>
+                    <tr style={{ borderTop: `1px solid ${APP_COLOR.border}`, cursor: "pointer" }} onClick={() => toggle(doc.id)}>
+                      <td className="px-2 py-2.5 text-center select-none report-toggle-btn" style={{ color: APP_COLOR.primary }}>
                         <span style={{ display: "inline-block", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", fontSize: 11, fontWeight: 700 }}>▶</span>
                       </td>
-                      <td className="px-3 py-2.5 tabular-nums font-semibold whitespace-nowrap" style={{ color: COLOR.ink }}>{doc.docNumber}</td>
+                      <td className="px-3 py-2.5 tabular-nums font-semibold whitespace-nowrap" style={{ color: APP_COLOR.ink }}>{doc.docNumber}</td>
                       <td className="px-3 py-2.5"><Badge tone={doc.type === "Langsung" ? "warn" : "neutral"}>{doc.type}</Badge></td>
-                      <td className="px-3 py-2.5" style={{ color: COLOR.ink }}>{doc.partyName}</td>
-                      <td className="px-3 py-2.5 tabular-nums text-xs whitespace-nowrap" style={{ color: COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: COLOR.ink }}>{fmtIDR(doc.total)}</td>
+                      <td className="px-3 py-2.5" style={{ color: APP_COLOR.ink }}>{doc.partyName}</td>
+                      <td className="px-3 py-2.5 tabular-nums text-xs whitespace-nowrap" style={{ color: APP_COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: APP_COLOR.ink }}>{fmtIDR(doc.total)}</td>
                     </tr>
-                    <tr className="report-invoice-detail" style={{ borderTop: `1px solid ${COLOR.border}`, background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}>
+                    <tr className="report-invoice-detail" style={{ borderTop: `1px solid ${APP_COLOR.border}`, background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}>
                       <td className="report-toggle-btn" />
                       <td colSpan={5} style={{ padding: "6px 12px 10px" }}>
                         <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
                           <thead>
-                            <tr style={{ color: COLOR.inkSoft }}>
+                            <tr style={{ color: APP_COLOR.inkSoft }}>
                               <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>Produk</th>
                               <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>No. Batch</th>
                               <th style={{ ...sub, fontWeight: 600 }}>Qty</th>
@@ -2848,12 +2854,12 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
                               const p = productOf(it.productId);
                               return (
                                 <tr key={idx} style={{ borderTop: "1px dashed #dbe3ee" }}>
-                                  <td style={{ padding: "3px 0", color: COLOR.ink }}>{p?.name || "-"}</td>
-                                  <td style={{ padding: "3px 6px", color: COLOR.inkSoft }}>{it.batchNo || "-"}</td>
-                                  <td style={{ ...sub, color: COLOR.inkSoft }}>{it.qty} {p?.unit || ""}</td>
-                                  <td style={{ ...sub, color: COLOR.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
-                                  <td style={{ ...sub, fontWeight: 600, color: COLOR.ink }}>{fmtIDR(netUnit(it, doc))}</td>
-                                  <td style={{ ...sub, fontWeight: 600, color: COLOR.ink }}>{fmtIDR(itemLineTotal(it))}</td>
+                                  <td style={{ padding: "3px 0", color: APP_COLOR.ink }}>{p?.name || "-"}</td>
+                                  <td style={{ padding: "3px 6px", color: APP_COLOR.inkSoft }}>{it.batchNo || "-"}</td>
+                                  <td style={{ ...sub, color: APP_COLOR.inkSoft }}>{it.qty} {p?.unit || ""}</td>
+                                  <td style={{ ...sub, color: APP_COLOR.inkSoft }}>{fmtIDR(it.unitPrice)}</td>
+                                  <td style={{ ...sub, fontWeight: 600, color: APP_COLOR.ink }}>{fmtIDR(netUnit(it, doc))}</td>
+                                  <td style={{ ...sub, fontWeight: 600, color: APP_COLOR.ink }}>{fmtIDR(itemLineTotal(it))}</td>
                                 </tr>
                               );
                             })}
@@ -2864,7 +2870,7 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
                   </Fragment>
                 );
               })}
-              {allPurchaseDocs.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada Faktur Pembelian di periode ini.</td></tr>}
+              {allPurchaseDocs.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-sm" style={{ color: APP_COLOR.inkSoft }}>Tidak ada Faktur Pembelian di periode ini.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -3116,10 +3122,10 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
   return (
     <div>
       <Eyebrow>Laporan Operasional & Keuangan</Eyebrow>
-      <h2 className="text-xl font-semibold mb-4" style={{ color: COLOR.ink }}>Laporan Per Periode</h2>
+      <h2 className="text-xl font-semibold mb-4" style={{ color: APP_COLOR.ink }}>Laporan Per Periode</h2>
 
       {subTab !== "ar_aging" && (
-        <div className="flex flex-wrap items-end gap-x-3 gap-y-0 mb-5 p-3 bg-white rounded-xl border no-print" style={{ borderColor: COLOR.border }}>
+        <div className="flex flex-wrap items-end gap-x-3 gap-y-0 mb-5 p-3 bg-white rounded-xl border no-print" style={{ borderColor: APP_COLOR.border }}>
           <Field label="Dari Tanggal"><TextInput type="date" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
           <Field label="Sampai Tanggal"><TextInput type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
           <div className="pb-3 text-xs tabular-nums text-emerald-800 font-semibold w-full sm:w-auto">
@@ -3128,13 +3134,13 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         </div>
       )}
 
-      <div className="flex gap-1 mb-4 p-1 rounded-lg w-fit flex-wrap no-print" style={{ background: COLOR.primarySoft }}>
+      <div className="flex gap-1 mb-4 p-1 rounded-lg w-fit flex-wrap no-print" style={{ background: APP_COLOR.primarySoft }}>
         {SUBNAV.map((s) => (
           <button
             key={s.id}
             onClick={() => setSubTab(s.id)}
             className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer"
-            style={{ background: subTab === s.id ? COLOR.primary : "transparent", color: subTab === s.id ? "#fff" : COLOR.primary }}
+            style={{ background: subTab === s.id ? APP_COLOR.primary : "transparent", color: subTab === s.id ? "#fff" : APP_COLOR.primary }}
           >
             {s.label}
           </button>
@@ -3171,8 +3177,8 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
               </Field>
             </div>
 
-            <div className="flex justify-between items-center mt-4 pt-3 border-t" style={{ borderColor: COLOR.border }}>
-              <div className="text-sm font-semibold" style={{ color: COLOR.ink }}>
+            <div className="flex justify-between items-center mt-4 pt-3 border-t" style={{ borderColor: APP_COLOR.border }}>
+              <div className="text-sm font-semibold" style={{ color: APP_COLOR.ink }}>
                 Total Piutang Terfilter: <span className="tabular-nums text-emerald-700">{fmtIDR(totalARAging)}</span>
               </div>
               <div className="flex gap-2">
@@ -3195,19 +3201,19 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
             `}</style>
             <table className="w-full text-sm">
               <thead>
-                <tr style={{ background: COLOR.primarySoft }}>
+                <tr style={{ background: APP_COLOR.primarySoft }}>
                   {/* kolom chevron / expand */}
                   <th className="w-8 px-2 py-2" />
-                  <th className="text-left px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Pelanggan</th>
-                  <th className="text-center px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Jml. Faktur</th>
-                  <th className="text-left px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Status Aging</th>
-                  <th className="text-right px-4 py-2 text-xs uppercase" style={{ color: COLOR.primary }}>Total Piutang</th>
+                  <th className="text-left px-4 py-2 text-xs uppercase" style={{ color: APP_COLOR.primary }}>Pelanggan</th>
+                  <th className="text-center px-4 py-2 text-xs uppercase" style={{ color: APP_COLOR.primary }}>Jml. Faktur</th>
+                  <th className="text-left px-4 py-2 text-xs uppercase" style={{ color: APP_COLOR.primary }}>Status Aging</th>
+                  <th className="text-right px-4 py-2 text-xs uppercase" style={{ color: APP_COLOR.primary }}>Total Piutang</th>
                 </tr>
               </thead>
               <tbody>
                 {agingByCustomer.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="text-center py-8 text-sm" style={{ color: COLOR.inkSoft }}>
+                    <td colSpan={5} className="text-center py-8 text-sm" style={{ color: APP_COLOR.inkSoft }}>
                       Tidak ada piutang yang sesuai dengan filter.
                     </td>
                   </tr>
@@ -3233,13 +3239,13 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
                       onClick={toggleOpen}
                       className="cursor-pointer transition-colors"
                       style={{
-                        borderTop: `1px solid ${COLOR.border}`,
-                        background: isOpen ? COLOR.primarySoft : undefined,
+                        borderTop: `1px solid ${APP_COLOR.border}`,
+                        background: isOpen ? APP_COLOR.primarySoft : undefined,
                       }}
                       onMouseEnter={(e) => { if (!isOpen) e.currentTarget.style.background = "#f8fafc"; }}
                       onMouseLeave={(e) => { if (!isOpen) e.currentTarget.style.background = ""; }}
                     >
-                      <td className="px-2 py-3 text-center select-none aging-toggle-btn" style={{ color: COLOR.primary }}>
+                      <td className="px-2 py-3 text-center select-none aging-toggle-btn" style={{ color: APP_COLOR.primary }}>
                         <span
                           style={{
                             display: "inline-block",
@@ -3250,10 +3256,10 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
                           }}
                         >▶</span>
                       </td>
-                      <td className="px-4 py-3 font-semibold" style={{ color: COLOR.ink }}>
+                      <td className="px-4 py-3 font-semibold" style={{ color: APP_COLOR.ink }}>
                         {grp.customerName}
                       </td>
-                      <td className="px-4 py-3 text-center tabular-nums text-xs font-medium" style={{ color: COLOR.inkSoft }}>
+                      <td className="px-4 py-3 text-center tabular-nums text-xs font-medium" style={{ color: APP_COLOR.inkSoft }}>
                         {grp.invoices.length} faktur
                       </td>
                       <td className="px-4 py-3">
@@ -3261,7 +3267,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
                           {bucketLabel(grp.worstBucket)}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 tabular-nums text-right font-bold text-base" style={{ color: COLOR.ink }}>
+                      <td className="px-4 py-3 tabular-nums text-right font-bold text-base" style={{ color: APP_COLOR.ink }}>
                         {fmtIDR(grp.totalSisa)}
                       </td>
                     </tr>,
@@ -3271,19 +3277,19 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
                       <tr
                         key={`inv-${item.id}`}
                         className="aging-invoice-detail"
-                        style={{ borderTop: `1px solid ${COLOR.border}`, background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}
+                        style={{ borderTop: `1px solid ${APP_COLOR.border}`, background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}
                       >
                         {/* indent spacer */}
                         <td />
                         <td className="px-4 py-2" colSpan={4}>
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                            <span className="tabular-nums font-semibold w-36" style={{ color: COLOR.primary }}>
+                            <span className="tabular-nums font-semibold w-36" style={{ color: APP_COLOR.primary }}>
                               {item.noFaktur}
                             </span>
-                            <span className="tabular-nums w-28" style={{ color: COLOR.inkSoft }}>
+                            <span className="tabular-nums w-28" style={{ color: APP_COLOR.inkSoft }}>
                               {fmtDate(item.date)}
                             </span>
-                            <span className="tabular-nums w-20" style={{ color: COLOR.ink }}>
+                            <span className="tabular-nums w-20" style={{ color: APP_COLOR.ink }}>
                               {item.ageDays} hari
                             </span>
                             <span className="w-24">
@@ -3291,7 +3297,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
                                 {bucketLabel(item.bucket)}
                               </Badge>
                             </span>
-                            <span className="tabular-nums font-bold ml-auto" style={{ color: COLOR.ink }}>
+                            <span className="tabular-nums font-bold ml-auto" style={{ color: APP_COLOR.ink }}>
                               {fmtIDR(item.sisaHutang)}
                             </span>
                           </div>
@@ -3311,8 +3317,8 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         <div className="space-y-4 max-w-3xl">
           <Card className="!p-6 bg-white printable-area">
             <div className="relative border-b pb-3 mb-4 text-center">
-              <div className="text-base font-bold uppercase tracking-wide" style={{ color: COLOR.ink }}>{(company || COMPANY_PROFILE)?.name || "PT WIRYATAMA PUTERA MANDIRI"}</div>
-              <h3 className="font-bold text-sm uppercase" style={{ color: COLOR.primary }}>Laporan Laba Rugi Operasional</h3>
+              <div className="text-base font-bold uppercase tracking-wide" style={{ color: APP_COLOR.ink }}>{(company || COMPANY_PROFILE)?.name || "PT WIRYATAMA PUTERA MANDIRI"}</div>
+              <h3 className="font-bold text-sm uppercase" style={{ color: APP_COLOR.primary }}>Laporan Laba Rugi Operasional</h3>
               <p className="text-xs text-gray-500">Periode: {fmtDate(start)} s/d {fmtDate(end)}</p>
               <div className="absolute right-0 top-0 no-print">
                 <Button onClick={() => window.print()} variant="ghost" className="text-xs">
@@ -3397,7 +3403,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         <SalesReportTab
           start={start} end={end}
           salesTotal={salesTotal} salesAgg={salesAgg} allSalesDocs={allSalesDocs}
-          products={products} COLOR={COLOR} fmtDate={fmtDate} fmtIDR={fmtIDR}
+          products={products} APP_COLOR={APP_COLOR} fmtDate={fmtDate} fmtIDR={fmtIDR}
           profitById={profitById} showHpp={isSuperAdminOrFinance} pnlData={pnlData}
           companyName={(company || COMPANY_PROFILE)?.name}
         />
@@ -3411,7 +3417,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
           paymentsIn={paymentsIn} paymentsOut={paymentsOut} returns={returns} pReturns={pReturns}
           invoiceTotal={invoiceTotal} pInvoiceTotal={pInvoiceTotal} invoiceDPAmount={invoiceDPAmount}
           invoiceReturnedAmount={invoiceReturnedAmount} pInvoiceReturnedAmount={pInvoiceReturnedAmount}
-          findName={findName} fmtDate={fmtDate} fmtIDR={fmtIDR} COLOR={COLOR}
+          findName={findName} fmtDate={fmtDate} fmtIDR={fmtIDR} APP_COLOR={APP_COLOR}
           companyName={(company || COMPANY_PROFILE)?.name} printStyle={REPORT_PRINT_STYLE}
         />
       )}
@@ -3421,7 +3427,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
         <PurchaseReportTab
           start={start} end={end}
           purchaseTotal={purchaseTotal} purchaseAgg={purchaseAgg} allPurchaseDocs={allPurchaseDocs}
-          products={products} COLOR={COLOR} fmtDate={fmtDate} fmtIDR={fmtIDR}
+          products={products} APP_COLOR={APP_COLOR} fmtDate={fmtDate} fmtIDR={fmtIDR}
           companyName={(company || COMPANY_PROFILE)?.name}
         />
       )}
@@ -3885,17 +3891,17 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
   return (
     <div>
       <Eyebrow>Sistem & Konfigurasi</Eyebrow>
-      <h2 className="text-xl font-semibold mb-4" style={{ color: COLOR.ink }}>
+      <h2 className="text-xl font-semibold mb-4" style={{ color: APP_COLOR.ink }}>
         {isSuperAdmin ? "Pengaturan Aplikasi (Settings)" : "Pengaturan Akun Saya"}
       </h2>
 
-      <div className="flex gap-1 mb-5 p-1 rounded-lg w-fit flex-wrap no-print" style={{ background: COLOR.primarySoft }}>
+      <div className="flex gap-1 mb-5 p-1 rounded-lg w-fit flex-wrap no-print" style={{ background: APP_COLOR.primarySoft }}>
         {SUBNAV.map((s) => (
           <button
             key={s.id}
             onClick={() => setSubTab(s.id)}
             className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
-            style={{ background: subTab === s.id ? COLOR.primary : "transparent", color: subTab === s.id ? "#fff" : COLOR.primary }}
+            style={{ background: subTab === s.id ? APP_COLOR.primary : "transparent", color: subTab === s.id ? "#fff" : APP_COLOR.primary }}
           >
             {s.label}
           </button>
@@ -4030,11 +4036,11 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
               <Card className="!p-0 overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr style={{ background: COLOR.primarySoft }}>
-                      <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: COLOR.primary }}>Nama & Email</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: COLOR.primary }}>Role / Jabatan</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: COLOR.primary }}>Akses Modul</th>
-                      <th className="text-right px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: COLOR.primary }}>Aksi</th>
+                    <tr style={{ background: APP_COLOR.primarySoft }}>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: APP_COLOR.primary }}>Nama & Email</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: APP_COLOR.primary }}>Role / Jabatan</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: APP_COLOR.primary }}>Akses Modul</th>
+                      <th className="text-right px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: APP_COLOR.primary }}>Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -4043,7 +4049,7 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
                       const isSelf = (u.email || "").toLowerCase() === (currentUserEmail || "").toLowerCase();
 
                       return (
-                        <tr key={u.id} className="border-t" style={{ borderColor: COLOR.border }}>
+                        <tr key={u.id} className="border-t" style={{ borderColor: APP_COLOR.border }}>
                           <td className="px-4 py-3">
                             <div className="font-semibold text-gray-900">{u.name}</div>
                             <div className="text-xs tabular-nums text-gray-500">{u.email}</div>
@@ -4305,8 +4311,8 @@ function SettingsView({ notify, refreshAll, users, saveUsers, currentUserEmail, 
 function AccessDenied() {
   return (
     <Card className="text-center py-16 max-w-lg mx-auto mt-10">
-      <ShieldAlert size={56} className="mx-auto mb-4" style={{ color: COLOR.danger }} />
-      <h3 className="font-bold text-lg mb-1" style={{ color: COLOR.ink }}>Akses Modul Dibatasi</h3>
+      <ShieldAlert size={56} className="mx-auto mb-4" style={{ color: APP_COLOR.danger }} />
+      <h3 className="font-bold text-lg mb-1" style={{ color: APP_COLOR.ink }}>Akses Modul Dibatasi</h3>
       <p className="text-xs text-gray-500 leading-relaxed max-w-sm mx-auto">
         Akun Anda tidak memiliki hak akses untuk membuka modul ini. Silakan hubungi <b>Super Admin / Direktur</b> jika Anda memerlukan akses ke halaman ini.
       </p>
