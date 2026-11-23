@@ -30,6 +30,7 @@ import SalesView from "./modules/SalesModule";
 import FinanceView from "./modules/FinanceModule";
 import QAView from "./modules/QAModule";
 import PelunasanReport from "./modules/PelunasanReport";
+import PPNReport from "./modules/PPNReport";
 import { settledAmount, potonganOf, potonganLabel } from "./paymentDeductions";
 import { myClasses, setOfficersCache, setSignaturesCache, signatureMode, isCleared } from "./qa";
 import { subscribeSignatures, subscribeRoles, syncRoles, backfillLegacySignatures, watchBackfill } from "./qaSignatures";
@@ -3218,6 +3219,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
     { id: "purchases", label: "Pembelian" },
     { id: "ar_aging", label: "Umur Piutang" },
     { id: "pelunasan", label: "Pelunasan" },
+    ...(isSuperAdminOrFinance ? [{ id: "ppn", label: "PPN Keluaran" }] : []),
     ...(isSuperAdminOrFinance ? [{ id: "pnl", label: "Laba Rugi (P&L)" }] : []),
   ];
 
@@ -3508,6 +3510,15 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
           products={products} COLOR={APP_COLOR} fmtDate={fmtDate} fmtIDR={fmtIDR}
           profitById={profitById} showHpp={isSuperAdminOrFinance} pnlData={pnlData}
           companyName={(company || COMPANY_PROFILE)?.name}
+        />
+      )}
+
+      {/* TAB: REKAP PPN KELUARAN (disetor sendiri vs dipungut pemungut) */}
+      {subTab === "ppn" && isSuperAdminOrFinance && (
+        <PPNReport
+          start={start} end={end} invoices={invoices} sos={sos} customers={customers} paymentsIn={paymentsIn}
+          invoiceReturnedAmount={invoiceReturnedAmount} findName={findName} fmtDate={fmtDate} fmtIDR={fmtIDR}
+          COLOR={APP_COLOR} companyName={(company || COMPANY_PROFILE)?.name} printStyle={REPORT_PRINT_STYLE}
         />
       )}
 
