@@ -2,12 +2,17 @@ import React from "react";
 
 // Riwayat pembayaran satu faktur (ditampilkan di bawah baris faktur).
 // rows: [{ date, label, sub, amount, kind: "bayar" | "dp" | "retur" }]
-export default function PaymentHistory({ rows, total, deductions = [], sisa, fmtIDR, fmtDate, colorConfig: c, emptyText = "Belum ada pembayaran." }) {
+export default function PaymentHistory({ rows, total, docNo, partyLabel, partyName, deductions = [], sisa, fmtIDR, fmtDate, colorConfig: c, emptyText = "Belum ada pembayaran." }) {
   const sorted = [...(rows || [])].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
   const tone = (k) => (k === "retur" ? c?.warn : k === "dp" ? c?.accent : c?.good);
   return (
     <div className="rounded-lg p-3 text-xs" style={{ background: c?.bg, border: `1px solid ${c?.border}` }}>
-      <div className="font-semibold mb-2" style={{ color: c?.ink }}>Riwayat Pembayaran</div>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 mb-2">
+        <div className="font-semibold" style={{ color: c?.ink }}>Riwayat Pembayaran{docNo ? <span className="tabular-nums"> · {docNo}</span> : null}</div>
+        {partyName ? (
+          <div style={{ color: c?.inkSoft }}>{partyLabel ? `${partyLabel}: ` : ""}<span className="font-semibold" style={{ color: c?.ink }}>{partyName}</span></div>
+        ) : null}
+      </div>
       {sorted.length === 0 ? (
         <div className="mb-2" style={{ color: c?.inkSoft }}>{emptyText}</div>
       ) : (
