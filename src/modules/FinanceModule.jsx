@@ -452,7 +452,7 @@ export default function FinanceView(props) {
           <ResponsiveTable minWidth={700} colorConfig={COLOR}>
             <thead>
               <tr style={{ background: COLOR.primarySoft }}>
-                {["Tanggal", "Tipe", "Referensi", "Jumlah", "Metode", "Catatan", ""].map((h) => (
+                {["Tanggal", "Tipe", "Referensi", "Pelanggan", "Jumlah", "Metode", "Catatan", ""].map((h) => (
                   <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                 ))}
               </tr>
@@ -462,11 +462,14 @@ export default function FinanceView(props) {
                 const inv = (invoices || []).find((x) => x.id === p.invoiceId);
                 const so = (sos || []).find((x) => x.id === p.soId);
                 const ref = inv ? inv.noFaktur : so ? so.soNumber : "-";
+                const invSO = inv && !inv.customerId ? (sos || []).find((x) => x.id === inv.soId) : null;
+                const custId = inv?.customerId || invSO?.customerId || so?.customerId;
                 return (
                   <tr key={p.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                     <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(p.date)}</td>
                     <td className="px-4 py-2.5"><Badge tone="good" colorConfig={COLOR}>{p.type || "Pelunasan"}</Badge></td>
                     <td className="px-4 py-2.5 tabular-nums text-xs font-semibold" style={{ color: COLOR.ink }}>{ref}</td>
+                    <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.ink }}>{custId ? findName(customers, custId) : "-"}</td>
                     <td className="px-4 py-2.5 tabular-nums font-medium" style={{ color: COLOR.good }}>{fmtIDR(p.amount)}</td>
                     <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.method}</td>
                     <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.note || "-"}</td>
@@ -477,7 +480,7 @@ export default function FinanceView(props) {
                   </tr>
                 );
               })}
-              {filteredPaymentsIn.length === 0 && <tr><td colSpan={7} className="text-center py-6 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada pembayaran masuk pada periode ini.</td></tr>}
+              {filteredPaymentsIn.length === 0 && <tr><td colSpan={8} className="text-center py-6 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada pembayaran masuk pada periode ini.</td></tr>}
             </tbody>
           </ResponsiveTable>
 
@@ -485,7 +488,7 @@ export default function FinanceView(props) {
           <ResponsiveTable minWidth={700} colorConfig={COLOR}>
             <thead>
               <tr style={{ background: COLOR.primarySoft }}>
-                {["Tanggal", "No. Faktur Vendor / PO", "Jumlah", "Metode", "Catatan", ""].map((h) => (
+                {["Tanggal", "No. Faktur Vendor / PO", "Supplier", "Jumlah", "Metode", "Catatan", ""].map((h) => (
                   <th key={h} className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wide" style={{ color: COLOR.primary }}>{h}</th>
                 ))}
               </tr>
@@ -495,10 +498,13 @@ export default function FinanceView(props) {
                 const inv = (pInvoices || []).find((x) => x.id === p.pInvoiceId);
                 const po = (pos || []).find((x) => x.id === p.poId);
                 const ref = inv ? inv.noFaktur : po ? po.poNumber : "-";
+                const invPO = inv && !inv.supplierId ? (pos || []).find((x) => x.id === inv.poId) : null;
+                const suppId = inv?.supplierId || invPO?.supplierId || po?.supplierId;
                 return (
                   <tr key={p.id} style={{ borderTop: `1px solid ${COLOR.border}` }}>
                     <td className="px-4 py-2.5 tabular-nums text-xs" style={{ color: COLOR.inkSoft }}>{fmtDate(p.date)}</td>
                     <td className="px-4 py-2.5 tabular-nums text-xs font-semibold" style={{ color: COLOR.ink }}>{ref}</td>
+                    <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.ink }}>{suppId ? findName(suppliers, suppId) : "-"}</td>
                     <td className="px-4 py-2.5 tabular-nums font-medium" style={{ color: COLOR.danger }}>{fmtIDR(p.amount)}</td>
                     <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.method}</td>
                     <td className="px-4 py-2.5 text-xs" style={{ color: COLOR.inkSoft }}>{p.note || "-"}</td>
@@ -509,7 +515,7 @@ export default function FinanceView(props) {
                   </tr>
                 );
               })}
-              {filteredPaymentsOut.length === 0 && <tr><td colSpan={6} className="text-center py-6 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada pembayaran keluar pada periode ini.</td></tr>}
+              {filteredPaymentsOut.length === 0 && <tr><td colSpan={7} className="text-center py-6 text-sm" style={{ color: COLOR.inkSoft }}>Tidak ada pembayaran keluar pada periode ini.</td></tr>}
             </tbody>
           </ResponsiveTable>
         </div>
