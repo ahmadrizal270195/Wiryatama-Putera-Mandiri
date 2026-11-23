@@ -2350,7 +2350,7 @@ function InvoiceItemRows({ doc, products, fmtIDR, COLOR: APP_COLOR, colSpan }) {
   return (
     <tr
       className="report-invoice-detail"
-      style={{ borderTop: `1px solid ${APP_COLOR.border}`, background: "#f4f7fb" }}
+      style={{ borderTop: `1px solid ${APP_COLOR.border}`, background: APP_COLOR.cardSoft }}
     >
       <td />
       <td colSpan={colSpan}>
@@ -2415,22 +2415,38 @@ const HPP_ISSUE_HELP = {
 function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR: APP_COLOR, fmtDate, fmtIDR, profitById = {}, showHpp = false, pnlData, companyName }) {
   const [expanded, setExpanded] = useState(new Set());
   const toggle = (id) => setExpanded((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
-  const allOpen = allSalesDocs.length > 0 && allSalesDocs.every((d) => expanded.has(d.id));
-  const toggleAll = () => setExpanded(allOpen ? new Set() : new Set(allSalesDocs.map((d) => d.id)));
   const pct = (part, whole) => (whole > 0 ? ((part / whole) * 100).toFixed(1) + "%" : "-");
   const productOf = (pid) => (products || []).find((x) => x.id === pid);
+  // Tampilan: "produk" = penjualan per produk, "faktur" = penjualan per faktur
+  const [view, setView] = useState("produk");
+  const [prodSearch, setProdSearch] = useState("");
+  const [openProd, setOpenProd] = useState(new Set());
+  const toggleProd = (id) => setOpenProd((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
 
-  // Rekap per produk (subtotal setelah diskon item + HPP)
+  // Rekap per produk (subtotal setelah diskon item + HPP) + daftar faktur asalnya
   const agg = {};
   allSalesDocs.forEach((doc) => {
     (profitById[doc.id]?.items || []).forEach((it) => {
-      if (!agg[it.productId]) agg[it.productId] = { qty: 0, value: 0, hpp: 0 };
+      if (!agg[it.productId]) agg[it.productId] = { qty: 0, value: 0, hpp: 0, lines: [] };
       agg[it.productId].qty += it.qty;
       agg[it.productId].value += it.lineTotal;
       agg[it.productId].hpp += it.hppTotal;
+      agg[it.productId].lines.push({ docId: doc.id, docNumber: doc.docNumber, partyName: doc.partyName, date: doc.date, qty: it.qty, unitPrice: it.unitPrice, lineTotal: it.lineTotal, hppTotal: it.hppTotal });
     });
   });
-  const aggRows = Object.entries(agg).sort((a, b) => b[1].value - a[1].value);
+  const pq = prodSearch.trim().toLowerCase();
+  const aggRows = Object.entries(agg)
+    .filter(([pid]) => !pq || (productOf(pid)?.name || "").toLowerCase().includes(pq))
+    .sort((a, b) => b[1].value - a[1].value);
+  const aggTot = aggRows.reduce((t, [, a]) => ({ value: t.value + a.value, hpp: t.hpp + a.hpp }), { value: 0, hpp: 0 });
+
+  const allOpen = view === "faktur"
+    ? allSalesDocs.length > 0 && allSalesDocs.every((d) => expanded.has(d.id))
+    : aggRows.length > 0 && aggRows.every(([pid]) => openProd.has(pid));
+  const toggleAll = () => {
+    if (view === "faktur") setExpanded(allOpen ? new Set() : new Set(allSalesDocs.map((d) => d.id)));
+    else setOpenProd(allOpen ? new Set() : new Set(aggRows.map(([pid]) => pid)));
+  };
 
   // Hitung item yang HPP-nya bermasalah, per penyebab
   const issueCount = {};
@@ -2448,13 +2464,21 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR:
     <div className="printable-area">
       <style>{REPORT_PRINT_STYLE}</style>
 
-      <div className="flex justify-end gap-2 mb-2 no-print">
-        <Button onClick={toggleAll} variant="ghost" className="text-xs">{allOpen ? "Tutup Semua" : "Buka Semua"}</Button>
-        <Button onClick={() => window.print()} variant="ghost" className="text-xs"><Printer size={14} /> Cetak Laporan</Button>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2 no-print">
+        <div className="flex gap-1 p-1 rounded-lg w-fit" style={{ background: APP_COLOR.primarySoft }}>
+          {[["produk", "Penjualan per Produk"], ["faktur", "Penjualan per Faktur"]].map(([id, label]) => (
+            <button key={id} onClick={() => setView(id)} className="px-3 py-1.5 rounded-md text-sm font-medium cursor-pointer"
+              style={{ background: view === id ? APP_COLOR.primary : "transparent", color: view === id ? "#fff" : APP_COLOR.primary }}>{label}</button>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={toggleAll} variant="ghost" className="text-xs">{allOpen ? "Tutup Semua" : "Buka Semua"}</Button>
+          <Button onClick={() => window.print()} variant="ghost" className="text-xs"><Printer size={14} /> Cetak Laporan</Button>
+        </div>
       </div>
       <div className="border-b pb-3 mb-4 text-center">
         <div className="text-base font-bold uppercase tracking-wide" style={{ color: APP_COLOR.ink }}>{companyName || "PT WIRYATAMA PUTERA MANDIRI"}</div>
-        <h3 className="font-bold text-sm uppercase" style={{ color: APP_COLOR.primary }}>{showHpp ? "Laporan Penjualan & Laba Kotor" : "Laporan Penjualan"}</h3>
+        <h3 className="font-bold text-sm uppercase" style={{ color: APP_COLOR.primary }}>{showHpp ? "Laporan Penjualan & Laba Kotor" : "Laporan Penjualan"} · {view === "produk" ? "Per Produk" : "Per Faktur"}</h3>
         <p className="text-xs text-gray-500">Periode: {fmtDate(start)} s/d {fmtDate(end)}</p>
       </div>
 
@@ -2487,14 +2511,21 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR:
         </Card>
       )}
 
-      <div className="text-xs font-medium mb-2" style={{ color: APP_COLOR.inkSoft }}>Rekap Produk Difakturkan</div>
+      {view === "produk" && (<>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <div className="text-xs font-medium" style={{ color: APP_COLOR.inkSoft }}>Penjualan per Produk (klik baris buat lihat faktur-fakturnya)</div>
+        <div className="w-full sm:w-72 no-print"><TextInput placeholder="Cari produk..." value={prodSearch} onChange={(e) => setProdSearch(e.target.value)} /></div>
+      </div>
       <Card className="!p-0 mb-5">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: APP_COLOR.primarySoft }}>
+                <th className="w-8 px-2 py-2 report-toggle-btn" />
                 <th className={th} style={{ color: APP_COLOR.primary }}>Produk</th>
+                <th className={thR} style={{ color: APP_COLOR.primary }}>Jml Faktur</th>
                 <th className={thR} style={{ color: APP_COLOR.primary }}>Qty Terjual</th>
+                <th className={thR} style={{ color: APP_COLOR.primary }}>Harga Rata-rata</th>
                 <th className={thR} style={{ color: APP_COLOR.primary }}>Nilai Penjualan</th>
                 {showHpp && <th className={thR} style={{ color: APP_COLOR.primary }}>Total HPP</th>}
                 {showHpp && <th className={thR} style={{ color: APP_COLOR.primary }}>Margin</th>}
@@ -2504,29 +2535,83 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR:
             <tbody>
               {aggRows.map(([pid, a]) => {
                 const p = productOf(pid);
+                const isOpen = openProd.has(pid);
+                const nInv = new Set(a.lines.map((l) => l.docId)).size;
                 return (
-                  <tr key={pid} style={{ borderTop: `1px solid ${APP_COLOR.border}` }}>
+                  <Fragment key={pid}>
+                  <tr style={{ borderTop: `1px solid ${APP_COLOR.border}`, cursor: "pointer" }} onClick={() => toggleProd(pid)}>
+                    <td className="px-2 py-2 text-center select-none report-toggle-btn" style={{ color: APP_COLOR.primary }}>
+                      <span style={{ display: "inline-block", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", fontSize: 11, fontWeight: 700 }}>▶</span>
+                    </td>
                     <td className="px-3 py-2" style={{ color: APP_COLOR.ink }}>{p?.name || "-"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums" style={{ color: APP_COLOR.inkSoft }}>{nInv}</td>
                     <td className="px-3 py-2 text-right tabular-nums" style={{ color: APP_COLOR.inkSoft }}>{a.qty} {p?.unit}</td>
-                    <td className="px-3 py-2 text-right tabular-nums" style={{ color: APP_COLOR.ink }}>{fmtIDR(a.value)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums" style={{ color: APP_COLOR.inkSoft }}>{fmtIDR(a.qty > 0 ? a.value / a.qty : 0)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{ color: APP_COLOR.ink }}>{fmtIDR(a.value)}</td>
                     {showHpp && <td className="px-3 py-2 text-right tabular-nums text-red-600">{fmtIDR(a.hpp)}</td>}
-                    {showHpp && <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{ color: a.value - a.hpp >= 0 ? "#047857" : "#DC2626" }}>{fmtIDR(a.value - a.hpp)}</td>}
+                    {showHpp && <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{ color: a.value - a.hpp >= 0 ? APP_COLOR.good : APP_COLOR.danger }}>{fmtIDR(a.value - a.hpp)}</td>}
                     {showHpp && <td className="px-3 py-2 text-right tabular-nums text-xs" style={{ color: APP_COLOR.inkSoft }}>{pct(a.value - a.hpp, a.value)}</td>}
                   </tr>
+                  <tr className="report-invoice-detail" style={{ borderTop: `1px solid ${APP_COLOR.border}`, background: APP_COLOR.cardSoft, display: isOpen ? "table-row" : "none" }}>
+                    <td className="report-toggle-btn" />
+                    <td colSpan={showHpp ? 8 : 5} style={{ padding: "6px 12px 10px" }}>
+                      <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ color: APP_COLOR.inkSoft }}>
+                            <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>No. Faktur</th>
+                            <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>Tanggal</th>
+                            <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: 600 }}>Pelanggan</th>
+                            <th style={{ textAlign: "right", paddingBottom: 3, fontWeight: 600 }}>Qty</th>
+                            <th style={{ textAlign: "right", paddingBottom: 3, fontWeight: 600 }}>Harga Jual</th>
+                            <th style={{ textAlign: "right", paddingBottom: 3, fontWeight: 600 }}>Subtotal</th>
+                            {showHpp && <th style={{ textAlign: "right", paddingBottom: 3, fontWeight: 600 }}>HPP</th>}
+                            {showHpp && <th style={{ textAlign: "right", paddingBottom: 3, fontWeight: 600 }}>Margin</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...a.lines].sort((x, y) => String(x.date || "").localeCompare(String(y.date || ""))).map((l, i) => (
+                            <tr key={i} style={{ borderTop: `1px dashed ${APP_COLOR.border}` }}>
+                              <td style={{ padding: "3px 6px 3px 0", color: APP_COLOR.ink, fontWeight: 600, whiteSpace: "nowrap" }}>{l.docNumber}</td>
+                              <td style={{ padding: "3px 6px", color: APP_COLOR.inkSoft, whiteSpace: "nowrap" }}>{fmtDate(l.date)}</td>
+                              <td style={{ padding: "3px 6px", color: APP_COLOR.ink }}>{l.partyName}</td>
+                              <td style={{ textAlign: "right", padding: "3px 6px", color: APP_COLOR.inkSoft, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{l.qty} {p?.unit || ""}</td>
+                              <td style={{ textAlign: "right", padding: "3px 6px", color: APP_COLOR.inkSoft, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(l.unitPrice)}</td>
+                              <td style={{ textAlign: "right", padding: "3px 6px", color: APP_COLOR.ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(l.lineTotal)}</td>
+                              {showHpp && <td style={{ textAlign: "right", padding: "3px 6px", color: APP_COLOR.danger, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(l.hppTotal)}</td>}
+                              {showHpp && <td style={{ textAlign: "right", padding: "3px 0", fontWeight: 600, color: l.lineTotal - l.hppTotal < 0 ? APP_COLOR.danger : APP_COLOR.good, fontVariantNumeric: "tabular-nums" }}>{fmtIDR(l.lineTotal - l.hppTotal)}</td>}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                  </Fragment>
                 );
               })}
-              {aggRows.length === 0 && <tr><td colSpan={showHpp ? 6 : 3} className="text-center py-8 text-sm" style={{ color: APP_COLOR.inkSoft }}>Tidak ada Faktur Penjualan di periode ini.</td></tr>}
+              {aggRows.length === 0 && <tr><td colSpan={showHpp ? 9 : 6} className="text-center py-8 text-sm" style={{ color: APP_COLOR.inkSoft }}>{pq ? `Nggak ada produk yang cocok dengan "${prodSearch}".` : "Tidak ada Faktur Penjualan di periode ini."}</td></tr>}
             </tbody>
+            {aggRows.length > 0 && (
+              <tfoot>
+                <tr style={{ borderTop: `2px solid ${APP_COLOR.border}`, background: APP_COLOR.primarySoft }}>
+                  <td className="report-toggle-btn" />
+                  <td colSpan={4} className="px-3 py-2.5 text-xs font-bold uppercase" style={{ color: APP_COLOR.primary }}>Total {aggRows.length} produk</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums font-bold">{fmtIDR(aggTot.value)}</td>
+                  {showHpp && <td className="px-3 py-2.5 text-right tabular-nums font-bold text-red-600">{fmtIDR(aggTot.hpp)}</td>}
+                  {showHpp && <td className="px-3 py-2.5 text-right tabular-nums font-bold" style={{ color: APP_COLOR.good }}>{fmtIDR(aggTot.value - aggTot.hpp)}</td>}
+                  {showHpp && <td className="px-3 py-2.5 text-right tabular-nums text-xs">{pct(aggTot.value - aggTot.hpp, aggTot.value)}</td>}
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
-        {showHpp && aggRows.length > 0 && (
-          <div className="px-3 py-2 text-[11px] border-t" style={{ color: APP_COLOR.inkSoft, borderColor: APP_COLOR.border }}>
-            Nilai penjualan per produk = qty x harga setelah diskon item, sebelum diskon nota & pajak. Margin final per faktur ada di daftar di bawah.
-          </div>
-        )}
+        <div className="px-3 py-2 text-[11px] border-t" style={{ color: APP_COLOR.inkSoft, borderColor: APP_COLOR.border }}>
+          Nilai penjualan per produk = qty x harga setelah diskon item, sebelum diskon nota & pajak{showHpp ? ". Margin final per faktur (setelah diskon nota & retur) ada di tab Penjualan per Faktur" : ""}.
+        </div>
       </Card>
+      </>)}
 
-      <div className="text-xs font-medium mb-2" style={{ color: APP_COLOR.inkSoft }}>Daftar Faktur Penjualan {showHpp && "(klik baris buat lihat rincian harga jual vs HPP)"}</div>
+      {view === "faktur" && (<>
+      <div className="text-xs font-medium mb-2" style={{ color: APP_COLOR.inkSoft }}>Penjualan per Faktur {showHpp && "(klik baris buat lihat rincian harga jual vs HPP)"}</div>
       <Card className="!p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -2565,7 +2650,7 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR:
                     </tr>
 
                     {/* Detail – tersembunyi di layar kalau belum dibuka, selalu muncul saat print */}
-                    <tr className="report-invoice-detail" style={{ borderTop: `1px solid ${APP_COLOR.border}`, background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}>
+                    <tr className="report-invoice-detail" style={{ borderTop: `1px solid ${APP_COLOR.border}`, background: APP_COLOR.cardSoft, display: isOpen ? "table-row" : "none" }}>
                       <td className="report-toggle-btn" />
                       <td colSpan={colCount - 1} style={{ padding: "6px 12px 10px" }}>
                         <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
@@ -2652,6 +2737,7 @@ function SalesReportTab({ start, end, salesTotal, allSalesDocs, products, COLOR:
           </table>
         </div>
       </Card>
+      </>)}
     </div>
   );
 }
@@ -2754,7 +2840,7 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: APP_COLOR.ink }}>{fmtIDR(a.qty > 0 ? a.modal / a.qty : 0)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: APP_COLOR.ink }}>{fmtIDR(a.value)}</td>
                     </tr>
-                    <tr className="report-invoice-detail" style={{ background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}>
+                    <tr className="report-invoice-detail" style={{ background: APP_COLOR.cardSoft, display: isOpen ? "table-row" : "none" }}>
                       <td className="report-toggle-btn" />
                       <td colSpan={5} style={{ padding: "6px 12px 10px" }}>
                         <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
@@ -2835,7 +2921,7 @@ function PurchaseReportTab({ start, end, purchaseTotal, allPurchaseDocs, product
                       <td className="px-3 py-2.5 tabular-nums text-xs whitespace-nowrap" style={{ color: APP_COLOR.inkSoft }}>{fmtDate(doc.date)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: APP_COLOR.ink }}>{fmtIDR(doc.total)}</td>
                     </tr>
-                    <tr className="report-invoice-detail" style={{ borderTop: `1px solid ${APP_COLOR.border}`, background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}>
+                    <tr className="report-invoice-detail" style={{ borderTop: `1px solid ${APP_COLOR.border}`, background: APP_COLOR.cardSoft, display: isOpen ? "table-row" : "none" }}>
                       <td className="report-toggle-btn" />
                       <td colSpan={5} style={{ padding: "6px 12px 10px" }}>
                         <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
@@ -3277,7 +3363,7 @@ function ReportsView({ products, suppliers, customers, pos, sos, invoices, pInvo
                       <tr
                         key={`inv-${item.id}`}
                         className="aging-invoice-detail"
-                        style={{ borderTop: `1px solid ${APP_COLOR.border}`, background: "#f4f7fb", display: isOpen ? "table-row" : "none" }}
+                        style={{ borderTop: `1px solid ${APP_COLOR.border}`, background: APP_COLOR.cardSoft, display: isOpen ? "table-row" : "none" }}
                       >
                         {/* indent spacer */}
                         <td />
