@@ -96,10 +96,8 @@ export default function PPNReport({ start, end, invoices, sos, customers, paymen
           <Field label="Jenis">
             <Select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)}>
               <option value="ALL">Semua faktur ber-PPN</option>
-              <option value="self">Disetor sendiri (pelanggan biasa)</option>
-              <option value="pungut">Dipungut pemungut (instansi + BUMN)</option>
-              <option value="pemerintah">Dipungut instansi pemerintah</option>
-              <option value="bumn">Dipungut BUMN / pemungut lain</option>
+              <option value="self">Disetor sendiri</option>
+              <option value="pungut">Dipungut instansi/BUMN</option>
             </Select>
           </Field>
           <Field label="Pelanggan">
