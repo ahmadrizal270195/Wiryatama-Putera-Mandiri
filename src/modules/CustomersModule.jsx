@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Plus, Download, Search } from "lucide-react";
 import { Eyebrow, Card, Badge, Button, Modal, Field, TextInput, Select } from "../components/UIComponents";
+import { TAX_COLLECTOR_TYPES, isTaxCollector, looksLikeInstansi } from "../paymentDeductions";
 
 const CUSTOMER_TYPES = ["Apotek", "Rumah Sakit", "Klinik", "Individu/Dokter Pribadi", "Distributor Lain"];
 
@@ -10,13 +11,25 @@ export default function CustomersView({ customers, sos, invoices, save, notify, 
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [sortBy, setSortBy] = useState("name_asc");
+  // Saran pelanggan instansi (nama mirip RSUD, Puskesmas, Dinas, ...) yang belum ditandai pemungut pajak
+  const [showSuggest, setShowSuggest] = useState(false);
+  const [pickSuggest, setPickSuggest] = useState(() => new Set());
+  const suggestions = useMemo(() => (customers || []).filter((c) => !isTaxCollector(c) && !c.notTaxCollector && looksLikeInstansi(c.name)), [customers]);
+  async function applySuggest(kind) {
+    const ids = pickSuggest;
+    if (!ids.size) return;
+    await save((customers || []).map((c) => (ids.has(c.id) ? (kind ? { ...c, taxCollector: kind } : { ...c, notTaxCollector: true }) : c)));
+    notify(kind ? `${ids.size} pelanggan ditandai pemungut pajak` : `${ids.size} pelanggan ditandai bukan pemungut`);
+    setPickSuggest(new Set());
+  }
 
   // Daftar pelanggan: dicari (nama, tipe, NPWP, kontak, alamat) lalu diurutkan
   const shown = useMemo(() => {
     const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const rank = new Map((customers || []).map((c, i) => [c.id, i]));
     const list = (customers || []).filter((c) => {
-      if (typeFilter !== "ALL" && c.type !== typeFilter) return false;
+      if (typeFilter === "PEMUNGUT") { if (!isTaxCollector(c)) return false; }
+      else if (typeFilter !== "ALL" && c.type !== typeFilter) return false;
       const hay = [c.name, c.type, c.npwp, c.contact, c.address].filter(Boolean).join(" ").toLowerCase();
       return words.every((w) => hay.includes(w));
     });
@@ -121,6 +134,7 @@ export default function CustomersView({ customers, sos, invoices, save, notify, 
         <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="w-full sm:w-52" colorConfig={colorConfig}>
           <option value="ALL">Semua Tipe</option>
           {CUSTOMER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          <option value="PEMUNGUT">Pemungut Pajak (instansi/BUMN)</option>
         </Select>
         <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="w-full sm:w-48" colorConfig={colorConfig}>
           <option value="name_asc">Nama A–Z</option>
@@ -130,6 +144,36 @@ export default function CustomersView({ customers, sos, invoices, save, notify, 
         </Select>
         <span className="text-xs sm:ml-auto" style={{ color: colorConfig?.inkSoft }}>{shown.length} dari {(customers || []).length} pelanggan</span>
       </div>
+
+      {suggestions.length > 0 && (
+        <Card className="mb-3" colorConfig={colorConfig}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs" style={{ color: colorConfig?.ink }}>
+              <b style={{ color: colorConfig?.warn }}>{suggestions.length} pelanggan</b> namanya mirip instansi pemerintah / BUMN tapi belum ditandai <b>Pemungut Pajak</b>.
+              Kalau iya, PPN & PPh 22 otomatis diusulkan sebagai potongan waktu catat pembayaran.
+            </div>
+            <button onClick={() => setShowSuggest(!showSuggest)} className="text-xs font-semibold underline cursor-pointer" style={{ color: colorConfig?.accent }}>{showSuggest ? "Tutup" : "Lihat & tandai"}</button>
+          </div>
+          {showSuggest && (
+            <div className="mt-3">
+              <div className="flex flex-col gap-1 max-h-64 overflow-y-auto mb-3">
+                {suggestions.map((c) => (
+                  <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: colorConfig?.ink }}>
+                    <input type="checkbox" checked={pickSuggest.has(c.id)} onChange={() => setPickSuggest((prev) => { const n = new Set(prev); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; })} />
+                    {c.name} <span className="text-[11px]" style={{ color: colorConfig?.inkSoft }}>{c.type}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="ghost" onClick={() => setPickSuggest(pickSuggest.size === suggestions.length ? new Set() : new Set(suggestions.map((c) => c.id)))} colorConfig={colorConfig}>{pickSuggest.size === suggestions.length ? "Batal pilih" : "Pilih semua"}</Button>
+                <Button onClick={() => applySuggest("pemerintah")} disabled={!pickSuggest.size} colorConfig={colorConfig}>Tandai Instansi Pemerintah</Button>
+                <Button onClick={() => applySuggest("bumn")} disabled={!pickSuggest.size} variant="secondary" colorConfig={colorConfig}>Tandai BUMN / Pemungut lain</Button>
+                <Button onClick={() => applySuggest("")} disabled={!pickSuggest.size} variant="ghost" colorConfig={colorConfig}>Bukan pemungut (sembunyikan)</Button>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {shown.length === 0 && (
@@ -145,6 +189,7 @@ export default function CustomersView({ customers, sos, invoices, save, notify, 
                 <div className="flex items-center gap-2 mt-0.5">
                   <Badge tone="neutral" colorConfig={colorConfig}>{c.type}</Badge>
                   {c.npwp && <span className="text-[11px] tabular-nums text-emerald-700 font-medium">NPWP: {c.npwp}</span>}
+                  {isTaxCollector(c) && <Badge tone="warn" colorConfig={colorConfig}>Pemungut Pajak</Badge>}
                   {Number(c.maxInvoiceAmount) > 0 && <span className="text-[11px] tabular-nums font-medium" style={{ color: colorConfig?.warn || "#D97706" }}>Maks/faktur: Rp{Number(c.maxInvoiceAmount).toLocaleString("id-ID")}</span>}
                 </div>
                 <div className="text-xs mt-1" style={{ color: colorConfig?.inkSoft }}>{c.contact}</div>
@@ -182,6 +227,12 @@ export default function CustomersView({ customers, sos, invoices, save, notify, 
           </Field>
           <Field label="Alamat" colorConfig={colorConfig}>
             <TextInput value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} colorConfig={colorConfig} />
+          </Field>
+          <Field label="Pemungut Pajak" colorConfig={colorConfig}>
+            <Select value={form.taxCollector || ""} onChange={(e) => setForm({ ...form, taxCollector: e.target.value, notTaxCollector: !e.target.value })} colorConfig={colorConfig}>
+              {TAX_COLLECTOR_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </Select>
+            <p className="text-[11px] mt-1" style={{ color: colorConfig?.inkSoft }}>Instansi/BUMN memungut PPN & memotong PPh 22 waktu bayar. Kalau ditandai, potongan itu otomatis diusulkan saat catat pembayaran di Finance.</p>
           </Field>
           <Field label="Maks nilai per faktur (Rp, opsional)" colorConfig={colorConfig}>
             <TextInput type="number" placeholder="Contoh: 50000000 · kosongkan kalau nggak ada batas" value={form.maxInvoiceAmount || ""} onChange={(e) => setForm({ ...form, maxInvoiceAmount: e.target.value })} colorConfig={colorConfig} />
