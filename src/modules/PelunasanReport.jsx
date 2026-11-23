@@ -251,7 +251,7 @@ export default function PelunasanReport({
                 {open.has(r.id) && (
                   <tr>
                     <td colSpan={cols} className="px-3 pb-3">
-                      <PaymentHistory rows={r.history} total={r.total} deductions={r.deductions} sisa={0} fmtIDR={fmtIDR} fmtDate={fmtDate} colorConfig={COLOR} />
+                      <PaymentHistory rows={r.history} total={r.total} docNo={r.no} partyLabel={partyLabel} partyName={findName(partyList, r.partyId)} deductions={r.deductions} sisa={0} fmtIDR={fmtIDR} fmtDate={fmtDate} colorConfig={COLOR} />
                     </td>
                   </tr>
                 )}
