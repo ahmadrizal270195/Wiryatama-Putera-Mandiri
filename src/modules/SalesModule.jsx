@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { withAtomic } from "../atomicScope";
 import PaymentHistory from "../components/PaymentHistory";
+import { potonganHistoryRows, potonganTotal, isTaxCollector } from "../paymentDeductions";
 import { Plus, Search, Printer, FileText, Trash2 } from "lucide-react";
 import { newReview, isCleared, blockedReason, QABadge, reviewState, qaSignatureText, requiredClasses } from "../qa";
 import { invoiceSoIds, invoiceHasSO, mergeDeductions, newestFirst, createdRank, remainingSOItems, soIsSplit } from "../invoiceLinks";
@@ -1282,7 +1283,10 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
     const soNo = (id) => (sos || []).find((x) => x.id === id)?.soNumber || "SO";
     const rows = [];
     (paymentsIn || []).forEach((p) => {
-      if (p.invoiceId === inv.id) rows.push({ date: p.date, kind: "bayar", label: p.type || "Pelunasan", sub: [p.method, p.note].filter(Boolean).join(" · "), amount: Number(p.amount) || 0 });
+      if (p.invoiceId === inv.id) {
+        if ((Number(p.amount) || 0) > 0 || !potonganTotal(p)) rows.push({ date: p.date, kind: "bayar", label: p.type || "Pelunasan", sub: [p.method, p.note].filter(Boolean).join(" · "), amount: Number(p.amount) || 0 });
+        rows.push(...potonganHistoryRows(p));
+      }
       else if (p.soId && soIds.includes(p.soId)) rows.push({ date: p.date, kind: "dp", label: `DP ${soNo(p.soId)}`, sub: [p.method, p.note].filter(Boolean).join(" · "), amount: Number(p.amount) || 0 });
     });
     (returns || []).filter((r) => r.invoiceId === inv.id).forEach((r) => {
@@ -1295,7 +1299,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
       deductions: [
         { label: "Retur", amount: invoiceReturnedAmount ? invoiceReturnedAmount(inv.id) : 0 },
         { label: dpPaid > dpUsed + 0.5 ? "DP (bagian yang dipakai faktur ini)" : "DP", amount: dpUsed },
-        { label: "Dibayar", amount: invoicePaidAmount ? invoicePaidAmount(inv.id) : 0 },
+        { label: "Dibayar (uang masuk)", amount: (paymentsIn || []).filter((p) => p.invoiceId === inv.id).reduce((s, p) => s + (Number(p.amount) || 0), 0) },
+        { label: "Potongan (pajak / admin / lain)", amount: (paymentsIn || []).filter((p) => p.invoiceId === inv.id).reduce((s, p) => s + potonganTotal(p), 0) },
       ],
     };
   }
@@ -2046,6 +2051,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                 const taxInfo = { ..._bill, total: _bill.afterTax - _bill.fee };
                 const ongkirVal = Number(printInv.ongkir) || 0;
                 const sisa = Math.max(0, taxInfo.total + ongkirVal - ret - dp - paid);
+                const printCust = (customers || []).find((c) => c.id === (printInv.customerId || (sos || []).find((x) => x.id === printInv.soId)?.customerId));
+                const ppnDipungut = isTaxCollector(printCust) && taxInfo.ppn > 0;
 
                 return (
                   <div>
@@ -2105,7 +2112,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                         <div className="flex justify-between py-1 border-b"><span className="text-gray-600">Subtotal Item</span><span className="tabular-nums font-bold">{fmtIDR(rawSub)}</span></div>
                         {taxInfo.discHeaderAmount > 0 && <div className="flex justify-between py-1 border-b text-red-600"><span>Diskon Nota</span><span className="tabular-nums font-bold">- {fmtIDR(taxInfo.discHeaderAmount)}</span></div>}
                         <div className="flex justify-between py-1 border-b"><span className="text-gray-600">DPP</span><span className="tabular-nums font-bold">{fmtIDR(taxInfo.dpp)}</span></div>
-                        {taxInfo.ppn > 0 && <div className="flex justify-between py-1 border-b text-emerald-800"><span>PPN (11%)</span><span className="tabular-nums font-bold">{fmtIDR(taxInfo.ppn)}</span></div>}
+                        {taxInfo.ppn > 0 && <div className="flex justify-between py-1 border-b text-emerald-800"><span>PPN (11%){ppnDipungut ? <span className="block text-[10px] font-normal text-gray-600">PPN dipungut oleh pemungut PPN</span> : null}</span><span className="tabular-nums font-bold">{fmtIDR(taxInfo.ppn)}</span></div>}
                         {(taxInfo.feeLines || []).filter((d) => d.amount > 0).map((d) => <div key={d.id} className="flex justify-between py-1 border-b text-red-600"><span>Fee{d.mode !== "amount" ? ` ${d.value}%` : ""}{d.note ? ` (${d.note})` : ""}</span><span className="tabular-nums font-bold">- {fmtIDR(d.amount)}</span></div>)}
                         {ongkirVal > 0 && <div className="flex justify-between py-1 border-b"><span className="text-gray-600">Ongkir</span><span className="tabular-nums font-bold">{fmtIDR(ongkirVal)}</span></div>}
                         <div className="flex justify-between py-1 border-b font-semibold text-gray-900 bg-gray-50 px-1 rounded"><span>Total Faktur</span><span className="tabular-nums font-bold">{fmtIDR(taxInfo.total + ongkirVal)}</span></div>
