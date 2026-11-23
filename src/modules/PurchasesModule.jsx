@@ -1521,7 +1521,7 @@ function FakturPembelianTab({ products, suppliers, pos, batches, pReceipts, pInv
                 return (
                   <tr>
                     <td colSpan={7} className="px-4 pb-3">
-                      <PaymentHistory rows={h.rows} total={total} deductions={h.deductions} sisa={sisa} fmtIDR={fmtIDR} fmtDate={fmtDate} colorConfig={colorConfig} />
+                      <PaymentHistory rows={h.rows} total={total} docNo={inv.noFaktur} partyLabel="Supplier" partyName={findName(suppliers, inv.supplierId)} deductions={h.deductions} sisa={sisa} fmtIDR={fmtIDR} fmtDate={fmtDate} colorConfig={colorConfig} />
                     </td>
                   </tr>
                 );
