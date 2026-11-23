@@ -1888,7 +1888,7 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
                 return (
                   <tr>
                     <td colSpan={7} className="px-4 pb-3">
-                      <PaymentHistory rows={h.rows} total={total} deductions={h.deductions} sisa={sisa} fmtIDR={fmtIDR} fmtDate={fmtDate} colorConfig={colorConfig} />
+                      <PaymentHistory rows={h.rows} total={total} docNo={inv.noFaktur} partyLabel="Pelanggan" partyName={custName} deductions={h.deductions} sisa={sisa} fmtIDR={fmtIDR} fmtDate={fmtDate} colorConfig={colorConfig} />
                     </td>
                   </tr>
                 );
