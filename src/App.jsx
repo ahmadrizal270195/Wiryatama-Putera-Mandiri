@@ -2152,6 +2152,7 @@ setActivityActor({ email: userEmail, name: currentUser?.name || "", role: isHard
       savePaymentsOut={persist.paymentsOut} 
       savePaymentsIn={persist.paymentsIn} 
       saveExpenses={persist.expenses}
+      saveCustomers={persist.customers}
       colorConfig={APP_COLOR} 
       uid={uid} 
       todayISO={todayISO} 
