@@ -52,7 +52,7 @@ function SearchBar({ value, onChange, placeholder, shown, total, COLOR }) {
 export default function FinanceView(props) {
   const {
     pos, sos, suppliers, customers, batches, invoices, pInvoices, pReturns, returns, paymentsOut, paymentsIn, expenses,
-    findName, notify, savePaymentsOut, savePaymentsIn, saveExpenses,
+    findName, notify, savePaymentsOut, savePaymentsIn, saveExpenses, saveCustomers,
     arOutstanding, apOutstanding, cashInMonth, cashOutMonth, grossProfitMonth, expensesMonth,
     invoiceTotal, soDPAmount, invoiceDPAmount, invoicePaidAmount, invoiceReturnedAmount, invoiceSisa,
     pInvoiceTotal, pInvoicePaidAmount, pInvoiceReturnedAmount, pInvoiceSisa,
@@ -579,7 +579,7 @@ export default function FinanceView(props) {
       {/* KOREKSI TRANSAKSI INSTANSI LAMA (PPN dipungut & PPh 22) */}
       {subTab === "instansi" && (
         <InstansiFixPanel
-          invoices={invoices} sos={sos} customers={customers} paymentsIn={paymentsIn} savePaymentsIn={savePaymentsIn}
+          invoices={invoices} sos={sos} customers={customers} paymentsIn={paymentsIn} savePaymentsIn={savePaymentsIn} saveCustomers={saveCustomers}
           invoiceSisa={getInvoiceSisa} invoiceReturnedAmount={invoiceReturnedAmount}
           findName={findName} fmtIDR={fmtIDR} fmtDate={fmtDate} notify={notify} uid={uid} todayISO={todayISO} COLOR={COLOR}
         />
