@@ -15,7 +15,7 @@ import { settledAmount, potonganTotal, suggestTaxPotongan, isTaxCollector, looks
 const TOL_ABS = 1000;   // toleransi selisih Rp
 const TOL_PCT = 0.01;   // atau 1% dari usulan potongan
 
-export default function InstansiFixPanel({ invoices, sos, customers, paymentsIn, savePaymentsIn, invoiceSisa, invoiceReturnedAmount, findName, fmtIDR, fmtDate, notify, uid, todayISO, COLOR }) {
+export default function InstansiFixPanel({ invoices, sos, customers, paymentsIn, savePaymentsIn, saveCustomers, invoiceSisa, invoiceReturnedAmount, findName, fmtIDR, fmtDate, notify, uid, todayISO, COLOR }) {
   const [pickA, setPickA] = useState(() => new Set());
   const [pickB, setPickB] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
@@ -25,7 +25,15 @@ export default function InstansiFixPanel({ invoices, sos, customers, paymentsIn,
     return (customers || []).find((c) => c.id === (inv.customerId || so?.customerId));
   };
   const flagged = (customers || []).filter(isTaxCollector);
-  const candidates = (customers || []).filter((c) => !isTaxCollector(c) && looksLikeInstansi(c.name));
+  // Pelanggan yang sudah ditandai "bukan pemungut" (notTaxCollector) nggak disarankan lagi
+  const candidates = (customers || []).filter((c) => !isTaxCollector(c) && !c.notTaxCollector && looksLikeInstansi(c.name));
+  async function markNotCollector(c) {
+    setBusy(true);
+    try {
+      await saveCustomers((customers || []).map((x) => (x.id === c.id ? { ...x, taxCollector: "", notTaxCollector: true } : x)));
+      notify(`${c.name} ditandai bukan pemungut pajak`);
+    } finally { setBusy(false); }
+  }
 
   const rows = useMemo(() => {
     const A = [], B = [];
@@ -111,8 +119,20 @@ export default function InstansiFixPanel({ invoices, sos, customers, paymentsIn,
         <div className="text-sm font-semibold mb-1" style={{ color: COLOR.ink }}>Pelanggan pemungut pajak: {flagged.length}</div>
         <div className="text-xs" style={{ color: COLOR.inkSoft }}>
           Daftar di bawah cuma membaca pelanggan yang sudah ditandai "Pemungut Pajak" di Master Pelanggan.
-          {candidates.length > 0 && <> Ada <b style={{ color: COLOR.warn }}>{candidates.length} pelanggan</b> yang namanya mirip instansi tapi belum ditandai: {candidates.slice(0, 6).map((c) => c.name).join(", ")}{candidates.length > 6 ? ", ..." : ""}. Tandai dulu di menu Pelanggan.</>}
+          {candidates.length > 0 && <> Ada <b style={{ color: COLOR.warn }}>{candidates.length} pelanggan</b> yang namanya mirip instansi tapi belum ditandai. Kalau memang pemungut, tandai di menu Pelanggan. Kalau bukan, klik "Bukan pemungut" biar nggak muncul lagi.</>}
         </div>
+        {candidates.length > 0 && (
+          <div className="flex flex-col gap-1 mt-2">
+            {candidates.map((c) => (
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-xs py-1" style={{ borderTop: `1px dashed ${COLOR.border}`, color: COLOR.ink }}>
+                <span>{c.name} <span style={{ color: COLOR.inkSoft }}>{c.type}</span></span>
+                {saveCustomers && (
+                  <button onClick={() => markNotCollector(c)} disabled={busy} className="text-xs font-semibold cursor-pointer" style={{ color: COLOR.accent }}>Bukan pemungut</button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
 
       {/* A */}
