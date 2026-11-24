@@ -58,15 +58,27 @@ export function suggestTaxPotongan(inv, { returned = 0 } = {}) {
 
 export function cleanPotongan(list) {
   return (Array.isArray(list) ? list : [])
-    .map((x) => ({ kind: x.kind, amount: round(x.amount), note: String(x.note || "").trim() }))
+    .map((x) => ({
+      kind: x.kind, amount: round(x.amount), note: String(x.note || "").trim(),
+      // potongan yang dihitung pakai persen: simpan persen & dasar hitungnya buat jejak audit
+      ...(num(x.pct) > 0 ? { pct: num(x.pct), base: round(x.base) } : {}),
+    }))
     .filter((x) => x.amount > 0);
+}
+
+// Dasar hitung "potongan lain" kalau pakai persen:
+//  - pelanggan pemungut (instansi/BUMN): nilai tagihan - retur - PPN dipungut - PPh dipotong
+//  - pelanggan biasa                    : nilai tagihan - retur
+export function lainBase(inv, { returned = 0, collector = false, ppn = 0, pph22 = 0, pph23 = 0 } = {}) {
+  const tagihan = Math.max(0, num(computeBill(inv).total) - num(returned));
+  return Math.max(0, tagihan - (collector ? num(ppn) + num(pph22) + num(pph23) : 0));
 }
 
 // Baris riwayat pembayaran (dipakai di daftar faktur, laporan pelunasan, dll)
 export function potonganHistoryRows(p) {
   return (Array.isArray(p?.potongan) ? p.potongan : []).filter((x) => num(x.amount) > 0).map((x) => ({
     date: p.date, kind: "potongan", label: potonganLabel(x.kind),
-    sub: [x.note, p.buktiNo ? `bukti ${p.buktiNo}` : ""].filter(Boolean).join(" · "), amount: num(x.amount),
+    sub: [num(x.pct) > 0 ? `${x.pct}% x Rp${round(x.base).toLocaleString("id-ID")}` : "", x.note, p.buktiNo ? `bukti ${p.buktiNo}` : ""].filter(Boolean).join(" · "), amount: num(x.amount),
   }));
 }
 
