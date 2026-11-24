@@ -12,6 +12,7 @@ import { choosePaperAndPrint, printDocumentContent, QASignatureBlock, PrintArea,
 import { computeBill, normalizeDeductions, legacyDiscountFields, cleanDeductions, itemsSubtotal } from "../billing";
 import { ItemsTable, DeductionsEditor, BillSummary, AddedBadge } from "../components/OrderEditor";
 import SearchableSelect from "../components/SearchableSelect";
+import DuplicateCheckModal from "../components/DuplicateCheck";
 const withRowIds = (list) => (list || []).map((d, i) => ({ ...d, id: d.id && d.id !== "legacy" ? d.id : `ded-${Date.now().toString(36)}-${i}` }));
 
 // Helper Input Diskon Dwi-Mode (% / Rp)
@@ -1275,6 +1276,8 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
   const [invSearch, setInvSearch] = useState("");
   // Filter bulan: "paid" = bulan faktur itu LUNAS (tanggal bayar terakhir), "date" = bulan tanggal faktur
   const [invMonth, setInvMonth] = useState("");
+  // Cek faktur / SO dobel
+  const [dupOpen, setDupOpen] = useState(false);
   // Faktur yang riwayat pembayarannya lagi dibuka
   const [openHist, setOpenHist] = useState(() => new Set());
   const toggleHist = (id) => setOpenHist((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -1712,9 +1715,22 @@ function FakturTab({ products, customers, sos, deliveryNotes, invoices, payments
 
   return (
     <div>
-      <div className="flex justify-end mb-4 no-print">
+      <div className="flex justify-end gap-2 mb-4 no-print">
+        <Button onClick={() => setDupOpen(true)} variant="ghost" colorConfig={colorConfig}><Search size={15} /> Cek Faktur Dobel</Button>
         <Button onClick={openDirectModal} colorConfig={colorConfig}><Plus size={15} /> Buat Faktur Penjualan Langsung</Button>
       </div>
+      {dupOpen && (
+        <DuplicateCheckModal
+          onClose={() => setDupOpen(false)} invoices={invoices} sos={sos} customers={customers} products={products}
+          findName={findName} fmtDate={fmtDate} fmtIDR={fmtIDR} colorConfig={colorConfig}
+          invoiceInfo={(inv) => {
+            const paid = invoicePaidAmount ? invoicePaidAmount(inv.id) : 0;
+            const hasReturn = (returns || []).some((r) => r.invoiceId === inv.id);
+            return { paid, hasReturn, canCancel: paid === 0 && !hasReturn };
+          }}
+          onCancelInvoice={(inv) => cancelInvoice(inv)}
+        />
+      )}
 
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 no-print">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto flex-1 max-w-4xl">
