@@ -5,7 +5,7 @@ import { isCleared, blockedReason } from "../qa";
 import { computeBill } from "../billing";
 import { invoiceSoIds, invoiceHasSO } from "../invoiceLinks";
 import { startOfMonthISO, startOfLastMonthISO, endOfLastMonthISO } from "../dateUtils";
-import { POTONGAN_KINDS, potonganTotal, settledAmount, suggestTaxPotongan, cleanPotongan, isTaxCollector, potonganLabel } from "../paymentDeductions";
+import { POTONGAN_KINDS, potonganTotal, settledAmount, suggestTaxPotongan, cleanPotongan, isTaxCollector, potonganLabel, lainBase } from "../paymentDeductions";
 import InstansiFixPanel from "./InstansiFixPanel";
 
 
@@ -90,12 +90,26 @@ export default function FinanceView(props) {
 
   const [payModal, setPayModal] = useState(null);
   const EMPTY_POT = { ppn: "", pph22: "", pph23: "", admin: "", lain: "" };
-  const [payForm, setPayForm] = useState({ amount: "", date: todayISO(), method: PAYMENT_METHODS[0], note: "", pot: EMPTY_POT, lainNote: "", buktiNo: "" });
-  const potList = (f) => cleanPotongan(POTONGAN_KINDS.map((k) => ({ kind: k.id, amount: f.pot?.[k.id], note: k.id === "lain" ? f.lainNote : "" })));
+  const [payForm, setPayForm] = useState({ amount: "", date: todayISO(), method: PAYMENT_METHODS[0], note: "", pot: EMPTY_POT, lainNote: "", lainMode: "amount", lainPct: "", buktiNo: "" });
+  // Faktur yang sedang dibayar di modal (buat dasar hitung potongan persen)
+  const modalInvoice = (m) => (!m ? null : m.kind === "invoice" ? m.doc : m.kind === "edit-in" && m.pay?.invoiceId ? (invoices || []).find((i) => i.id === m.pay.invoiceId) : null);
+  // Dasar hitung potongan lain (%): instansi = tagihan - retur - PPN - PPh, biasa = tagihan - retur
+  const lainBaseOf = (f, inv) => (!inv ? 0 : lainBase(inv, {
+    returned: invoiceReturnedAmount ? invoiceReturnedAmount(inv.id) : 0,
+    collector: isTaxCollector(invoiceCustomer(inv)),
+    ppn: f.pot?.ppn, pph22: f.pot?.pph22, pph23: f.pot?.pph23,
+  }));
+  const lainAmountOf = (f, inv) => (f.lainMode === "percent" ? Math.round(lainBaseOf(f, inv) * (Number(f.lainPct) || 0) / 100) : Number(f.pot?.lain) || 0);
+  const potList = (f, inv) => cleanPotongan(POTONGAN_KINDS.map((k) => (k.id === "lain"
+    ? { kind: "lain", amount: lainAmountOf(f, inv), note: f.lainNote, ...(f.lainMode === "percent" ? { pct: f.lainPct, base: lainBaseOf(f, inv) } : {}) }
+    : { kind: k.id, amount: f.pot?.[k.id], note: "" })));
   const potFormFrom = (list) => {
-    const pot = { ...EMPTY_POT }; let lainNote = "";
-    (list || []).forEach((x) => { pot[x.kind] = String((Number(pot[x.kind]) || 0) + (Number(x.amount) || 0)); if (x.kind === "lain") lainNote = x.note || ""; });
-    return { pot, lainNote };
+    const pot = { ...EMPTY_POT }; let lainNote = ""; let lainMode = "amount"; let lainPct = "";
+    (list || []).forEach((x) => {
+      pot[x.kind] = String((Number(pot[x.kind]) || 0) + (Number(x.amount) || 0));
+      if (x.kind === "lain") { lainNote = x.note || ""; if (Number(x.pct) > 0) { lainMode = "percent"; lainPct = String(x.pct); } }
+    });
+    return { pot, lainNote, lainMode, lainPct };
   };
   const invoiceCustomer = (inv) => {
     const so = !inv?.customerId ? (sos || []).find((x) => x.id === inv?.soId) : null;
@@ -158,7 +172,7 @@ export default function FinanceView(props) {
     }
     else if (kind === "dp") amount = 0;
     else if (kind === "pInvoice") amount = getPInvoiceSisa(doc);
-    setPayForm({ amount, date: todayISO(), method: PAYMENT_METHODS[0], note: "", pot, lainNote: "", buktiNo: "" });
+    setPayForm({ amount, date: todayISO(), method: PAYMENT_METHODS[0], note: "", pot, lainNote: "", lainMode: "amount", lainPct: "", buktiNo: "" });
     // CDOB: faktur langsung yang masih menunggu / ditolak APJ-PJT belum boleh ditagih.
     if (kind === "invoice" && doc && !isCleared(doc)) return notify(blockedReason(doc, `Faktur ${doc.noFaktur}`), "danger");
     setPayModal({ kind, doc });
@@ -172,7 +186,7 @@ export default function FinanceView(props) {
   async function submitPayment() {
     const amt = Number(payForm.amount) || 0;
     const allowPot = payModal.kind === "invoice" || (payModal.kind === "edit-in" && payModal.pay?.invoiceId);
-    const pot = allowPot ? potList(payForm) : [];
+    const pot = allowPot ? potList(payForm, modalInvoice(payModal)) : [];
     const potSum = pot.reduce((s, x) => s + x.amount, 0);
     if (amt < 0) return notify("Jumlah uang diterima nggak boleh minus", "danger");
     if (amt + potSum <= 0) return notify("Jumlah pembayaran harus lebih dari 0", "danger");
@@ -635,14 +649,24 @@ export default function FinanceView(props) {
             const allowPot = payModal.kind === "invoice" || (payModal.kind === "edit-in" && payModal.pay?.invoiceId);
             const inv = payModal.kind === "invoice" ? payModal.doc : allowPot ? (invoices || []).find((i) => i.id === payModal.pay.invoiceId) : null;
             const cust = inv ? invoiceCustomer(inv) : null;
-            const potSum = allowPot ? potList(payForm).reduce((s, x) => s + x.amount, 0) : 0;
+            const potSum = allowPot ? potList(payForm, inv).reduce((s, x) => s + x.amount, 0) : 0;
             const sisaNow = inv ? (payModal.kind === "invoice" ? getInvoiceSisa(inv) : getInvoiceSisa(inv) + settledAmount(payModal.pay)) : 0;
-            const setPot = (k, v) => setPayForm({ ...payForm, pot: { ...payForm.pot, [k]: v } });
+            // Mode persen: potongan lain dihitung ulang, uang diterima = sisa - semua potongan
+            const withRecalc = (f) => {
+              if (f.lainMode !== "percent" || !inv) return f;
+              const total = potList(f, inv).reduce((s, x) => s + x.amount, 0);
+              return { ...f, amount: String(Math.max(0, Math.round(sisaNow - total))) };
+            };
+            const setPot = (k, v) => setPayForm(withRecalc({ ...payForm, pot: { ...payForm.pot, [k]: v } }));
             const autoTax = () => {
               const sug = suggestTaxPotongan(inv, { returned: invoiceReturnedAmount ? invoiceReturnedAmount(inv.id) : 0 });
-              const otherPot = (Number(payForm.pot.pph23) || 0) + (Number(payForm.pot.admin) || 0) + (Number(payForm.pot.lain) || 0);
-              setPayForm({ ...payForm, pot: { ...payForm.pot, ppn: String(sug.ppn), pph22: String(sug.pph22) }, amount: String(Math.max(0, Math.round(sisaNow - sug.ppn - sug.pph22 - otherPot))) });
+              const next = { ...payForm, pot: { ...payForm.pot, ppn: String(sug.ppn), pph22: String(sug.pph22) } };
+              const total = potList(next, inv).reduce((s, x) => s + x.amount, 0);
+              setPayForm({ ...next, amount: String(Math.max(0, Math.round(sisaNow - total))) });
             };
+            const lainIsPct = payForm.lainMode === "percent";
+            const lainCalc = lainAmountOf(payForm, inv);
+            const collector = isTaxCollector(cust);
             return (
               <>
                 <Field label={allowPot ? "Uang diterima (masuk rekening / kas)" : "Jumlah dibayar"} colorConfig={COLOR}><TextInput type="number" value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} colorConfig={COLOR} /></Field>
@@ -658,14 +682,32 @@ export default function FinanceView(props) {
                       )}
                     </div>
                     <div className="grid grid-cols-2 gap-x-3">
-                      {POTONGAN_KINDS.map((k) => (
+                      {POTONGAN_KINDS.filter((k) => k.id !== "lain").map((k) => (
                         <Field key={k.id} label={k.label} colorConfig={COLOR}>
                           <TextInput type="number" value={payForm.pot?.[k.id] ?? ""} onChange={(e) => setPot(k.id, e.target.value)} placeholder="0" colorConfig={COLOR} />
                         </Field>
                       ))}
+                      <Field label="Potongan lain" colorConfig={COLOR}>
+                        <div className="flex gap-1">
+                          <Select value={payForm.lainMode} onChange={(e) => setPayForm(withRecalc({ ...payForm, lainMode: e.target.value, pot: { ...payForm.pot, lain: e.target.value === "amount" ? String(lainCalc || "") : payForm.pot.lain } }))} className="!w-20 shrink-0" colorConfig={COLOR}>
+                            <option value="amount">Rp</option>
+                            <option value="percent">%</option>
+                          </Select>
+                          {lainIsPct ? (
+                            <TextInput type="number" value={payForm.lainPct} onChange={(e) => setPayForm(withRecalc({ ...payForm, lainPct: e.target.value }))} placeholder="mis. 2,5" colorConfig={COLOR} />
+                          ) : (
+                            <TextInput type="number" value={payForm.pot?.lain ?? ""} onChange={(e) => setPot("lain", e.target.value)} placeholder="0" colorConfig={COLOR} />
+                          )}
+                        </div>
+                        {lainIsPct && inv && (
+                          <p className="text-[11px] mt-1 tabular-nums" style={{ color: COLOR.inkSoft }}>
+                            = {fmtIDR(lainCalc)} ({Number(payForm.lainPct) || 0}% x {fmtIDR(lainBaseOf(payForm, inv))}, {collector ? "tagihan setelah dikurangi PPN & PPh" : "nilai tagihan"})
+                          </p>
+                        )}
+                      </Field>
                       <Field label="No. bukti potong / SSP" colorConfig={COLOR}><TextInput value={payForm.buktiNo} onChange={(e) => setPayForm({ ...payForm, buktiNo: e.target.value })} placeholder="opsional" colorConfig={COLOR} /></Field>
                     </div>
-                    {Number(payForm.pot?.lain) > 0 && (
+                    {lainCalc > 0 && (
                       <Field label="Keterangan potongan lain (wajib)" colorConfig={COLOR}><TextInput value={payForm.lainNote} onChange={(e) => setPayForm({ ...payForm, lainNote: e.target.value })} placeholder="mis. selisih pembulatan, biaya materai" colorConfig={COLOR} /></Field>
                     )}
                     <div className="flex flex-col gap-0.5 pt-2 tabular-nums" style={{ borderTop: `1px solid ${COLOR.border}`, color: COLOR.ink }}>
